@@ -1,0 +1,98 @@
+services:
+  cmnc-postgres:
+    image: postgres:18.4-alpine3.23
+    container_name: cmnc-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${CMNC_POSTGRES_USER:-cmnc}
+      POSTGRES_PASSWORD: ${CMNC_POSTGRES_PASSWORD:-cmnc_password}
+      POSTGRES_DB: ${CMNC_POSTGRES_DB:-cmnc}
+    ports:
+      - "${CMNC_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - cmnc_postgres_data:/var/lib/postgresql
+    networks:
+      - cmnc-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  cmnc-rabbitmq:
+    image: rabbitmq:4.3.1-management
+    container_name: cmnc-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${CMNC_RABBITMQ_USER:-cmnc}
+      RABBITMQ_DEFAULT_PASS: ${CMNC_RABBITMQ_PASSWORD:-cmnc_password}
+      RABBITMQ_DEFAULT_VHOST: ${CMNC_RABBITMQ_VHOST:-cmnc}
+    ports:
+      - "${CMNC_RABBITMQ_PORT:-5672}:5672"
+      - "${CMNC_RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - cmnc_rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - cmnc-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  cmnc-auth-service:
+    build:
+      context: ..
+      dockerfile: services/cmnc-auth-service/Dockerfile
+    container_name: cmnc-auth-service
+    restart: unless-stopped
+    environment:
+      CMNC_AUTH_HOST: 0.0.0.0
+      CMNC_AUTH_PORT: 8001
+      CMNC_AUTH_STUB_USER_ID: 1
+      CMNC_AUTH_STUB_LOGIN: admin
+      CMNC_AUTH_STUB_ROLE: admin
+    ports:
+      - "${CMNC_AUTH_PORT:-8001}:8001"
+    networks:
+      - cmnc-network
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health').read()" ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  cmnc-classroom-service:
+    build:
+      context: ..
+      dockerfile: services/cmnc-classroom-service/Dockerfile
+    container_name: cmnc-classroom-service
+    restart: unless-stopped
+    environment:
+      CMNC_CLASSROOM_HOST: 0.0.0.0
+      CMNC_CLASSROOM_PORT: 8002
+      CMNC_CLASSROOM_DATABASE_URL: postgresql+asyncpg://cmnc:cmnc_password@cmnc-postgres:5432/cmnc
+      CMNC_CLASSROOM_SEED_DEMO_DATA: "true"
+      CMNC_CLASSROOM_DEFAULT_ROUTER_ID: 1
+      CMNC_CLASSROOM_MANAGED_ADDRESS_LIST_NAME: cmnc_wan_blocked
+    ports:
+      - "${CMNC_CLASSROOM_PORT:-8002}:8002"
+    depends_on:
+      cmnc-postgres:
+        condition: service_healthy
+    networks:
+      - cmnc-network
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health').read()" ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  cmnc_postgres_data:
+  cmnc_rabbitmq_data:
+
+networks:
+  cmnc-network:
+    name: cmnc-network
+    driver: bridge

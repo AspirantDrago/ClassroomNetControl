@@ -1,0 +1,24 @@
+[project]
+name = "classroom-mikrotik-net-control"
+version = "0.1.0"
+description = "Classroom MikroTik network control system"
+requires-python = ">=3.14"
+dependencies = []
+
+[tool.uv.workspace]
+members = [
+    "libs/cmnc-contracts",
+    "services/cmnc-api-gateway",
+    "services/cmnc-auth-service",
+    "services/cmnc-classroom-service",
+    "services/cmnc-inventory-service",
+    "services/cmnc-mikrotik-poller-service",
+    "services/cmnc-policy-sync-service",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.8.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+]

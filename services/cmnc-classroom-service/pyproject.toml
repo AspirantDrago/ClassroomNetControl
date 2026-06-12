@@ -1,0 +1,25 @@
+[project]
+name = "cmnc-classroom-service"
+version = "0.1.0"
+description = "Classroom configuration service for ClassroomMikrotikNetControl"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.136.3",
+    "uvicorn[standard]>=0.49.0",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.13.1",
+    "sqlalchemy>=2.0.50",
+    "asyncpg>=0.31.0",
+    "aio-pika>=9.6.2",
+    "cmnc-contracts",
+]
+
+[tool.uv.sources]
+cmnc-contracts = { workspace = true }
+
+[project.scripts]
+cmnc-classroom-service = "cmnc_classroom_service.main:run"
+
+[build-system]
+requires = ["uv_build>=0.9.0,<0.12.0"]
+build-backend = "uv_build"
