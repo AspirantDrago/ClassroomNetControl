@@ -72,6 +72,7 @@ services:
       CMNC_CLASSROOM_HOST: 0.0.0.0
       CMNC_CLASSROOM_PORT: 8002
       CMNC_CLASSROOM_DATABASE_URL: postgresql+asyncpg://cmnc:cmnc_password@cmnc-postgres:5432/cmnc
+      CMNC_CLASSROOM_RABBITMQ_URL: amqp://cmnc:cmnc_password@cmnc-rabbitmq:5672/cmnc
       CMNC_CLASSROOM_SEED_DEMO_DATA: "true"
       CMNC_CLASSROOM_DEFAULT_ROUTER_ID: 1
       CMNC_CLASSROOM_MANAGED_ADDRESS_LIST_NAME: cmnc_wan_blocked
@@ -79,6 +80,8 @@ services:
       - "${CMNC_CLASSROOM_PORT:-8002}:8002"
     depends_on:
       cmnc-postgres:
+        condition: service_healthy
+      cmnc-rabbitmq:
         condition: service_healthy
     networks:
       - cmnc-network

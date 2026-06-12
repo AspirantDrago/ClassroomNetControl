@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     )
     db_echo: bool = False
 
+    rabbitmq_url: str = "amqp://cmnc:cmnc_password@localhost:5672/cmnc"
+
     default_router_id: int = 1
     managed_address_list_name: str = "cmnc_wan_blocked"
 

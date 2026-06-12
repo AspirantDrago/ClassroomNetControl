@@ -1,8 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cmnc_contracts.events import WanPolicyChangedEvent
+from cmnc_contracts.routing_keys import CLASSROOM_DEVICE_WAN_POLICY_CHANGED
+
 from cmnc_classroom_service.db import get_session
+from cmnc_classroom_service.messaging import RabbitMqPublisher
 from cmnc_classroom_service.models import Classroom, Device
 from cmnc_classroom_service.schemas import (
     ClassroomLayoutResponse,
@@ -18,6 +22,15 @@ from cmnc_classroom_service.settings import settings
 router = APIRouter()
 
 
+def get_publisher(request: Request) -> RabbitMqPublisher:
+    publisher = getattr(request.app.state, "rabbitmq_publisher", None)
+
+    if publisher is None:
+        raise RuntimeError("RabbitMQ publisher is not initialized")
+
+    return publisher
+
+
 @router.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     return HealthResponse(
@@ -28,7 +41,7 @@ async def health() -> HealthResponse:
 
 @router.get("/internal/classrooms", response_model=list[ClassroomRead])
 async def get_classrooms(
-        session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session),
 ) -> list[ClassroomRead]:
     result = await session.execute(
         select(Classroom)
@@ -43,8 +56,8 @@ async def get_classrooms(
     response_model=ClassroomLayoutResponse,
 )
 async def get_classroom_layout(
-        classroom_id: int,
-        session: AsyncSession = Depends(get_session),
+    classroom_id: int,
+    session: AsyncSession = Depends(get_session),
 ) -> ClassroomLayoutResponse:
     classroom = await session.get(Classroom, classroom_id)
 
@@ -69,11 +82,13 @@ async def get_classroom_layout(
     response_model=WanPolicyChangeResponse,
 )
 async def block_device_wan(
-        device_id: int,
-        session: AsyncSession = Depends(get_session),
+    device_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
 ) -> WanPolicyChangeResponse:
     return await set_device_wan_state(
         session=session,
+        publisher=get_publisher(request),
         device_id=device_id,
         wan_allowed=False,
     )
@@ -84,20 +99,23 @@ async def block_device_wan(
     response_model=WanPolicyChangeResponse,
 )
 async def allow_device_wan(
-        device_id: int,
-        session: AsyncSession = Depends(get_session),
+    device_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
 ) -> WanPolicyChangeResponse:
     return await set_device_wan_state(
         session=session,
+        publisher=get_publisher(request),
         device_id=device_id,
         wan_allowed=True,
     )
 
 
 async def set_device_wan_state(
-        session: AsyncSession,
-        device_id: int,
-        wan_allowed: bool,
+    session: AsyncSession,
+    publisher: RabbitMqPublisher,
+    device_id: int,
+    wan_allowed: bool,
 ) -> WanPolicyChangeResponse:
     device = await session.get(Device, device_id)
 
@@ -114,6 +132,20 @@ async def set_device_wan_state(
     await session.commit()
     await session.refresh(device)
 
+    event = WanPolicyChangedEvent(
+        router_id=settings.default_router_id,
+        classroom_id=device.classroom_id,
+        device_id=device.id,
+        policy_generation=device.policy_generation,
+        wan_allowed=device.wan_allowed,
+        changed_by_user_id=None,
+    )
+
+    await publisher.publish_event(
+        event=event,
+        routing_key=CLASSROOM_DEVICE_WAN_POLICY_CHANGED,
+    )
+
     return WanPolicyChangeResponse(
         device_id=device.id,
         wan_allowed=device.wan_allowed,
@@ -127,8 +159,8 @@ async def set_device_wan_state(
     response_model=DesiredBlocklistResponse,
 )
 async def get_desired_blocklist(
-        router_id: int,
-        session: AsyncSession = Depends(get_session),
+    router_id: int,
+    session: AsyncSession = Depends(get_session),
 ) -> DesiredBlocklistResponse:
     generation_result = await session.execute(
         select(func.coalesce(func.max(Device.policy_generation), 0))
@@ -148,7 +180,10 @@ async def get_desired_blocklist(
             device_id=device.id,
             mac_address=device.mac_address,
             ip_address=device.static_ip or "",
-            comment=f"managed-by=cmnc; device-id={device.id}; generation={device.policy_generation}",
+            comment=(
+                f"managed-by=cmnc; device-id={device.id}; "
+                f"generation={device.policy_generation}"
+            ),
         )
         for device in blocked_devices
     ]
