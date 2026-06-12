@@ -4,8 +4,8 @@
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$/libs/cmnc-contracts" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/libs/cmnc-contracts/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/services/cmnc-mikrotik-poller-service" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/services/cmnc-mikrotik-poller-service/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/services/cmnc-api-gateway" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/services/cmnc-api-gateway/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
     </content>
     <orderEntry type="jdk" jdkName="uv (ClassroomMikrotikNetControl)" jdkType="Python SDK" />
