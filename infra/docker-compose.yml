@@ -91,6 +91,25 @@ services:
       timeout: 5s
       retries: 5
 
+  cmnc-policy-sync-service:
+    build:
+      context: ..
+      dockerfile: services/cmnc-policy-sync-service/Dockerfile
+    container_name: cmnc-policy-sync-service
+    restart: unless-stopped
+    environment:
+      CMNC_POLICY_SYNC_RABBITMQ_URL: amqp://cmnc:cmnc_password@cmnc-rabbitmq:5672/cmnc
+      CMNC_POLICY_SYNC_CLASSROOM_SERVICE_URL: http://cmnc-classroom-service:8002
+      CMNC_POLICY_SYNC_WAN_POLICY_CHANGED_QUEUE: cmnc.policy_sync.wan_policy_changed
+      CMNC_POLICY_SYNC_DEFAULT_ROUTER_ID: 1
+    depends_on:
+      cmnc-rabbitmq:
+        condition: service_healthy
+      cmnc-classroom-service:
+        condition: service_healthy
+    networks:
+      - cmnc-network
+
 volumes:
   cmnc_postgres_data:
   cmnc_rabbitmq_data:
