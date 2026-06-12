@@ -140,6 +140,28 @@ services:
       timeout: 5s
       retries: 5
 
+  cmnc-mikrotik-poller-service:
+    build:
+      context: ..
+      dockerfile: services/cmnc-mikrotik-poller-service/Dockerfile
+    container_name: cmnc-mikrotik-poller-service
+    restart: unless-stopped
+    environment:
+      CMNC_MIKROTIK_POLLER_RABBITMQ_URL: amqp://cmnc:cmnc_password@cmnc-rabbitmq:5672/cmnc
+      CMNC_MIKROTIK_POLLER_ROUTER_ID: 1
+      CMNC_MIKROTIK_POLLER_MIKROTIK_BASE_URL: ${CMNC_MIKROTIK_BASE_URL}
+      CMNC_MIKROTIK_POLLER_MIKROTIK_USERNAME: ${CMNC_MIKROTIK_USERNAME}
+      CMNC_MIKROTIK_POLLER_MIKROTIK_PASSWORD: ${CMNC_MIKROTIK_PASSWORD}
+      CMNC_MIKROTIK_POLLER_MIKROTIK_VERIFY_TLS: ${CMNC_MIKROTIK_VERIFY_TLS:-false}
+      CMNC_MIKROTIK_POLLER_MIKROTIK_TIMEOUT_SECONDS: 10
+      CMNC_MIKROTIK_POLLER_POLL_INTERVAL_SECONDS: 5
+      CMNC_MIKROTIK_POLLER_PUBLISH_EMPTY_SNAPSHOTS: "true"
+    depends_on:
+      cmnc-rabbitmq:
+        condition: service_healthy
+    networks:
+      - cmnc-network
+
 volumes:
   cmnc_postgres_data:
   cmnc_rabbitmq_data:
