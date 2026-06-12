@@ -13,6 +13,9 @@ class Settings(BaseSettings):
 
     rabbitmq_url: str = "amqp://cmnc:cmnc_password@localhost:5672/cmnc"
 
+    policy_sync_completed_queue: str = "cmnc.classroom.policy_sync_completed"
+    policy_sync_failed_queue: str = "cmnc.classroom.policy_sync_failed"
+
     default_router_id: int = 1
     managed_address_list_name: str = "cmnc_wan_blocked"
 

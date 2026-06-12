@@ -5,10 +5,16 @@ import uvicorn
 from fastapi import FastAPI
 from sqlalchemy import select
 
+from cmnc_contracts.routing_keys import POLICY_SYNC_COMPLETED, POLICY_SYNC_FAILED
+
 from cmnc_classroom_service.api import router
 from cmnc_classroom_service.db import async_session_maker, init_db
-from cmnc_classroom_service.messaging import RabbitMqPublisher
+from cmnc_classroom_service.messaging import RabbitMqClient
 from cmnc_classroom_service.models import Classroom, Device
+from cmnc_classroom_service.policy_sync_handlers import (
+    handle_policy_sync_completed,
+    handle_policy_sync_failed,
+)
 from cmnc_classroom_service.settings import settings
 
 
@@ -19,13 +25,26 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     if settings.seed_demo_data:
         await seed_demo_data()
 
-    publisher = RabbitMqPublisher(settings.rabbitmq_url)
-    await publisher.connect()
-    app.state.rabbitmq_publisher = publisher
+    rabbitmq_client = RabbitMqClient(settings.rabbitmq_url)
+    await rabbitmq_client.connect()
+
+    completed_queue = await rabbitmq_client.declare_queue(
+        queue_name=settings.policy_sync_completed_queue,
+        routing_key=POLICY_SYNC_COMPLETED,
+    )
+    await completed_queue.consume(handle_policy_sync_completed)
+
+    failed_queue = await rabbitmq_client.declare_queue(
+        queue_name=settings.policy_sync_failed_queue,
+        routing_key=POLICY_SYNC_FAILED,
+    )
+    await failed_queue.consume(handle_policy_sync_failed)
+
+    app.state.rabbitmq_client = rabbitmq_client
 
     yield
 
-    await publisher.close()
+    await rabbitmq_client.close()
 
 
 app = FastAPI(

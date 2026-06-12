@@ -6,7 +6,7 @@ from cmnc_contracts.events import WanPolicyChangedEvent
 from cmnc_contracts.routing_keys import CLASSROOM_DEVICE_WAN_POLICY_CHANGED
 
 from cmnc_classroom_service.db import get_session
-from cmnc_classroom_service.messaging import RabbitMqPublisher
+from cmnc_classroom_service.messaging import RabbitMqClient
 from cmnc_classroom_service.models import Classroom, Device
 from cmnc_classroom_service.schemas import (
     ClassroomLayoutResponse,
@@ -22,13 +22,13 @@ from cmnc_classroom_service.settings import settings
 router = APIRouter()
 
 
-def get_publisher(request: Request) -> RabbitMqPublisher:
-    publisher = getattr(request.app.state, "rabbitmq_publisher", None)
+def get_rabbitmq_client(request: Request) -> RabbitMqClient:
+    rabbitmq_client = getattr(request.app.state, "rabbitmq_client", None)
 
-    if publisher is None:
-        raise RuntimeError("RabbitMQ publisher is not initialized")
+    if rabbitmq_client is None:
+        raise RuntimeError("RabbitMQ client is not initialized")
 
-    return publisher
+    return rabbitmq_client
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -88,7 +88,7 @@ async def block_device_wan(
 ) -> WanPolicyChangeResponse:
     return await set_device_wan_state(
         session=session,
-        publisher=get_publisher(request),
+        rabbitmq_client=get_rabbitmq_client(request),
         device_id=device_id,
         wan_allowed=False,
     )
@@ -105,7 +105,7 @@ async def allow_device_wan(
 ) -> WanPolicyChangeResponse:
     return await set_device_wan_state(
         session=session,
-        publisher=get_publisher(request),
+        rabbitmq_client=get_rabbitmq_client(request),
         device_id=device_id,
         wan_allowed=True,
     )
@@ -113,7 +113,7 @@ async def allow_device_wan(
 
 async def set_device_wan_state(
     session: AsyncSession,
-    publisher: RabbitMqPublisher,
+    rabbitmq_client: RabbitMqClient,
     device_id: int,
     wan_allowed: bool,
 ) -> WanPolicyChangeResponse:
@@ -141,7 +141,7 @@ async def set_device_wan_state(
         changed_by_user_id=None,
     )
 
-    await publisher.publish_event(
+    await rabbitmq_client.publish_event(
         event=event,
         routing_key=CLASSROOM_DEVICE_WAN_POLICY_CHANGED,
     )

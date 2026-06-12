@@ -11,10 +11,11 @@ services:
       - "${CMNC_POSTGRES_PORT:-5432}:5432"
     volumes:
       - cmnc_postgres_data:/var/lib/postgresql
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
     networks:
       - cmnc-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -73,6 +74,8 @@ services:
       CMNC_CLASSROOM_PORT: 8002
       CMNC_CLASSROOM_DATABASE_URL: postgresql+asyncpg://cmnc:cmnc_password@cmnc-postgres:5432/cmnc
       CMNC_CLASSROOM_RABBITMQ_URL: amqp://cmnc:cmnc_password@cmnc-rabbitmq:5672/cmnc
+      CMNC_CLASSROOM_POLICY_SYNC_COMPLETED_QUEUE: cmnc.classroom.policy_sync_completed
+      CMNC_CLASSROOM_POLICY_SYNC_FAILED_QUEUE: cmnc.classroom.policy_sync_failed
       CMNC_CLASSROOM_SEED_DEMO_DATA: "true"
       CMNC_CLASSROOM_DEFAULT_ROUTER_ID: 1
       CMNC_CLASSROOM_MANAGED_ADDRESS_LIST_NAME: cmnc_wan_blocked
