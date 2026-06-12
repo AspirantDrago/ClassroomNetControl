@@ -122,6 +122,15 @@ async def set_device_wan_state(
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found")
 
+    if wan_allowed is False and device.static_ip is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Device has no static IP. WAN blocking is allowed only "
+                "for pinned devices with static IP."
+            ),
+        )
+
     if device.wan_allowed != wan_allowed:
         device.wan_allowed = wan_allowed
         device.policy_generation += 1
@@ -164,12 +173,15 @@ async def get_desired_blocklist(
 ) -> DesiredBlocklistResponse:
     generation_result = await session.execute(
         select(func.coalesce(func.max(Device.policy_generation), 0))
+        .where(Device.is_pinned.is_(True))
+        .where(Device.static_ip.is_not(None))
     )
     policy_generation = int(generation_result.scalar_one())
 
     result = await session.execute(
         select(Device)
         .where(Device.wan_allowed.is_(False))
+        .where(Device.is_pinned.is_(True))
         .where(Device.static_ip.is_not(None))
         .order_by(Device.id)
     )
@@ -181,7 +193,9 @@ async def get_desired_blocklist(
             mac_address=device.mac_address,
             ip_address=device.static_ip or "",
             comment=(
-                f"managed-by=cmnc; device-id={device.id}; "
+                f"managed-by=cmnc; "
+                f"device-id={device.id}; "
+                f"mac={device.mac_address}; "
                 f"generation={device.policy_generation}"
             ),
         )

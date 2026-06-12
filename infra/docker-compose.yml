@@ -105,6 +105,12 @@ services:
       CMNC_POLICY_SYNC_CLASSROOM_SERVICE_URL: http://cmnc-classroom-service:8002
       CMNC_POLICY_SYNC_WAN_POLICY_CHANGED_QUEUE: cmnc.policy_sync.wan_policy_changed
       CMNC_POLICY_SYNC_DEFAULT_ROUTER_ID: 1
+      CMNC_POLICY_SYNC_KILL_CONNECTIONS_ON_BLOCK: "true"
+
+      CMNC_MIKROTIK_BASE_URL: ${CMNC_MIKROTIK_BASE_URL}
+      CMNC_MIKROTIK_USERNAME: ${CMNC_MIKROTIK_USERNAME}
+      CMNC_MIKROTIK_PASSWORD: ${CMNC_MIKROTIK_PASSWORD}
+      CMNC_MIKROTIK_VERIFY_TLS: ${CMNC_MIKROTIK_VERIFY_TLS:-false}
     depends_on:
       cmnc-rabbitmq:
         condition: service_healthy

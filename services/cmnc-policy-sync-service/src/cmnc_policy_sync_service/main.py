@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import signal
+from contextlib import suppress
 from typing import Final
 
 from aio_pika import IncomingMessage
@@ -18,6 +19,7 @@ from cmnc_contracts.routing_keys import (
 
 from cmnc_policy_sync_service.classroom_client import ClassroomServiceClient
 from cmnc_policy_sync_service.messaging import RabbitMqClient
+from cmnc_policy_sync_service.mikrotik_client import MikroTikClient
 from cmnc_policy_sync_service.settings import settings
 
 logging.basicConfig(
@@ -35,10 +37,19 @@ def request_shutdown() -> None:
     _shutdown_event.set()
 
 
+def configure_signal_handlers() -> None:
+    loop = asyncio.get_running_loop()
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        with suppress(NotImplementedError):
+            loop.add_signal_handler(sig, request_shutdown)
+
+
 async def handle_wan_policy_changed(
-    message: IncomingMessage,
-    rabbitmq: RabbitMqClient,
-    classroom_client: ClassroomServiceClient,
+        message: IncomingMessage,
+        rabbitmq: RabbitMqClient,
+        classroom_client: ClassroomServiceClient,
+        mikrotik_client: MikroTikClient,
 ) -> None:
     async with message.process(requeue=False):
         event = WanPolicyChangedEvent.model_validate_json(message.body)
@@ -67,27 +78,46 @@ async def handle_wan_policy_changed(
                 len(desired_blocklist.blocked),
             )
 
-            for item in desired_blocklist.blocked:
-                logger.info(
-                    "Blocked device: device_id=%s, mac=%s, ip=%s, comment=%s",
-                    item.device_id,
-                    item.mac_address,
-                    item.ip_address,
-                    item.comment,
+            result = await mikrotik_client.apply_desired_blocklist(
+                desired=desired_blocklist,
+                kill_connections_on_block=settings.kill_connections_on_block,
+            )
+
+            if result.errors:
+                failed_event = PolicySyncFailedEvent(
+                    router_id=event.router_id,
+                    policy_generation=desired_blocklist.policy_generation,
+                    error="; ".join(result.errors),
                 )
+
+                await rabbitmq.publish_event(
+                    event=failed_event,
+                    routing_key=POLICY_SYNC_FAILED,
+                )
+
+                return
 
             completed_event = PolicySyncCompletedEvent(
                 router_id=event.router_id,
                 policy_generation=desired_blocklist.policy_generation,
-                added=0,
-                removed=0,
-                connections_killed=0,
+                added=result.added,
+                removed=result.removed,
+                connections_killed=result.connections_killed,
                 errors=[],
             )
 
             await rabbitmq.publish_event(
                 event=completed_event,
                 routing_key=POLICY_SYNC_COMPLETED,
+            )
+
+            logger.info(
+                "Policy sync completed: added=%s, removed=%s, updated=%s, "
+                "connections_killed=%s",
+                result.added,
+                result.removed,
+                result.updated,
+                result.connections_killed,
             )
 
         except Exception as exc:
@@ -106,13 +136,19 @@ async def handle_wan_policy_changed(
 
 
 async def main() -> None:
-    loop = asyncio.get_running_loop()
-
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, request_shutdown)
+    configure_signal_handlers()
 
     rabbitmq = RabbitMqClient(settings.rabbitmq_url)
     classroom_client = ClassroomServiceClient(settings.classroom_service_url)
+
+    mikrotik_client = MikroTikClient(
+        base_url=settings.mikrotik_base_url,
+        username=settings.mikrotik_username,
+        password=settings.mikrotik_password,
+        verify_tls=settings.mikrotik_verify_tls,
+        timeout_seconds=settings.mikrotik_timeout_seconds,
+        managed_comment_prefix=settings.managed_comment_prefix,
+    )
 
     await rabbitmq.connect()
 
@@ -126,6 +162,7 @@ async def main() -> None:
             message=message,
             rabbitmq=rabbitmq,
             classroom_client=classroom_client,
+            mikrotik_client=mikrotik_client,
         )
     )
 
