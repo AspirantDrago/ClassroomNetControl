@@ -1,0 +1,36 @@
+.dynamic-section {
+    margin-top: 36px;
+}
+
+.dynamic-section h3 {
+    margin: 0 0 12px;
+}
+
+.dynamic-table-wrapper {
+    overflow-x: auto;
+    border: 1px solid #334155;
+    border-radius: 12px;
+}
+
+.dynamic-table-wrapper table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #111827;
+}
+
+.dynamic-table-wrapper th,
+.dynamic-table-wrapper td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #1f2937;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.dynamic-table-wrapper th {
+    color: #9ca3af;
+    font-weight: 600;
+}
+
+.dynamic-table-wrapper tr:last-child td {
+    border-bottom: 0;
+}

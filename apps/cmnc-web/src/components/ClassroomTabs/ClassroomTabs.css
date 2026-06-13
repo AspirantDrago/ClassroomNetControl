@@ -1,0 +1,20 @@
+.classroom-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 24px;
+}
+
+.tab {
+    padding: 10px 14px;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    background: #111827;
+    color: #e5e7eb;
+    cursor: pointer;
+}
+
+.active-tab {
+    background: #1d4ed8;
+    border-color: #2563eb;
+}

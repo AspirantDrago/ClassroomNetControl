@@ -1,0 +1,32 @@
+.device-grid {
+    display: grid;
+    gap: 2px;
+    align-items: stretch;
+}
+
+.device-grid-cell {
+    min-width: 0;
+}
+
+.empty-device-cell {
+    min-height: 128px;
+    border: 1px dashed #334155;
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #475569;
+    font-size: 13px;
+}
+
+.unpositioned-section {
+    margin-top: 28px;
+}
+
+.unpositioned-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 2px;
+    align-items: stretch;
+}

@@ -1,0 +1,81 @@
+.device-card {
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 5px;
+    background: #111827;
+}
+
+.device-card.device-offline {
+    background: #797979;
+}
+
+.device-card-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+}
+
+.device-title {
+    font-weight: 700;
+    font-size: 18px;
+}
+
+.device-subtitle {
+    color: #9ca3af;
+    font-size: 13px;
+}
+
+.device-info {
+    display: grid;
+    color: #d1d5db;
+    font-size: 14px;
+}
+
+.device-actions {
+    margin-top: 5px;
+}
+
+.device-actions > button {
+    width: 100%;
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.device-actions > button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.device-actions .status-pill {
+    display: block;
+    width: 100%;
+}
+
+.status-pill {
+    height: 28px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.status-online {
+    background: #14532d;
+    color: #bbf7d0;
+}
+
+.status-offline {
+    background: #7f7e2d;
+    color: #fecaca;
+}
+
+.status-pending {
+    opacity: 0.4;
+}
+
+.error-text {
+    margin-top: 10px;
+    color: #fecaca;
+    font-size: 13px;
+}
