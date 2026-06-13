@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cmnc_contracts.routing_keys import MIKROTIK_DHCP_LEASES_OBSERVED
 
-from cmnc_inventory_service.db import get_session, init_db
+from cmnc_inventory_service.db import get_session
 from cmnc_inventory_service.dhcp_handlers import handle_dhcp_leases_observed
 from cmnc_inventory_service.messaging import RabbitMqClient
 from cmnc_inventory_service.models import ObservedDevice
@@ -28,8 +28,6 @@ logging.basicConfig(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-    await init_db()
-
     rabbitmq_client = RabbitMqClient(settings.rabbitmq_url)
     await rabbitmq_client.connect()
 

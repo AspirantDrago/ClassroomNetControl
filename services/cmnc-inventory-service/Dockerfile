@@ -19,4 +19,4 @@ RUN uv sync --package cmnc-inventory-service --no-dev
 
 EXPOSE 8003
 
-CMD ["uvicorn", "cmnc_inventory_service.main:app", "--host", "0.0.0.0", "--port", "8003"]
+CMD ["sh", "-c", "alembic -c services/cmnc-inventory-service/alembic.ini upgrade head && uvicorn cmnc_inventory_service.main:app --host 0.0.0.0 --port 8003"]
