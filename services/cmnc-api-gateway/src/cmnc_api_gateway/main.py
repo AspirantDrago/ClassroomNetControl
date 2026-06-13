@@ -20,10 +20,7 @@ from cmnc_api_gateway.settings import settings
 app = FastAPI(title=settings.service_name)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -337,10 +334,16 @@ async def admin_update_device(
     user = await get_current_user(authorization)
     require_admin(user)
 
+    allowed_payload = {
+        key: value
+        for key, value in payload.items()
+        if key in {"inventory_name", "row_index", "column_index"}
+    }
+
     try:
         return await classroom_client.patch_json(
             f"/internal/devices/{device_id}",
-            json=payload,
+            json=allowed_payload,
         )
     except httpx.HTTPStatusError as exc:
         raise HTTPException(

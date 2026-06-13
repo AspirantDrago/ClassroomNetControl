@@ -73,6 +73,7 @@ async def get_classroom_layout(
     result = await session.execute(
         select(Device)
         .where(Device.classroom_id == classroom_id)
+        .where(Device.is_pinned.is_(True))
         .order_by(Device.row_index, Device.column_index, Device.id)
     )
     devices = list(result.scalars().all())
