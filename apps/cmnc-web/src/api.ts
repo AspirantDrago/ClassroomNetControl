@@ -94,12 +94,34 @@ export type PinObservedDeviceRequest = {
 export function pinObservedDevice(
     classroomId: number,
     payload: PinObservedDeviceRequest,
-): Promise<DashboardDevice> {
-    return request<DashboardDevice>(
+): Promise<unknown> {
+    return request(
         `/api/admin/classrooms/${classroomId}/devices/pin-observed`,
         {
             method: "POST",
             body: JSON.stringify(payload),
         },
     );
+}
+
+export type UpdateDeviceRequest = {
+    inventory_name?: string | null;
+    row_index?: number | null;
+    column_index?: number | null;
+};
+
+export function updateDevice(
+    deviceId: number,
+    payload: UpdateDeviceRequest,
+): Promise<unknown> {
+    return request(`/api/admin/devices/${deviceId}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+    });
+}
+
+export function unpinDevice(deviceId: number): Promise<unknown> {
+    return request(`/api/admin/devices/${deviceId}/unpin`, {
+        method: "POST",
+    });
 }

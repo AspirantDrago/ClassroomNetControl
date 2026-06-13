@@ -4,19 +4,22 @@ import {
     blockDeviceWan,
     type Classroom,
     type ClassroomDashboard,
+    type DashboardDevice,
     type DynamicDevice,
     getClassroomDashboard,
     getClassrooms,
     pinObservedDevice,
+    unpinDevice,
+    updateDevice,
 } from "./api";
 import "./App.css";
 import { ClassroomTabs } from "./components/ClassroomTabs/ClassroomTabs";
+import {
+    DeviceFormModal,
+    type DeviceFormState,
+} from "./components/DeviceFormModal/DeviceFormModal";
 import { DeviceGrid } from "./components/DeviceGrid/DeviceGrid";
 import { DynamicDevicesTable } from "./components/DynamicDevicesTable/DynamicDevicesTable";
-import {
-    PinObservedDeviceModal,
-    type PinObservedFormState,
-} from "./components/PinObservedDeviceModal/PinObservedDeviceModal";
 import { Topbar } from "./components/Topbar/Topbar";
 import {
     buildDeviceGrid,
@@ -31,23 +34,8 @@ export function App() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [busyDeviceId, setBusyDeviceId] = useState<number | null>(null);
-    const [pinForm, setPinForm] = useState<PinObservedFormState | null>(null);
-    const [busyPinMac, setBusyPinMac] = useState<string | null>(null);
-
-    async function loadClassrooms() {
-        const data = await getClassrooms();
-
-        setClassrooms(data);
-
-        if (selectedClassroomId === null && data.length > 0) {
-            setSelectedClassroomId(data[0].id);
-        }
-    }
-
-    async function loadDashboard(classroomId: number) {
-        const data = await getClassroomDashboard(classroomId);
-        setDashboard(data);
-    }
+    const [deviceForm, setDeviceForm] = useState<DeviceFormState | null>(null);
+    const [busyForm, setBusyForm] = useState(false);
 
     async function reload() {
         if (selectedClassroomId === null) {
@@ -57,24 +45,51 @@ export function App() {
         setError(null);
 
         try {
-            await loadDashboard(selectedClassroomId);
+            const data = await getClassroomDashboard(selectedClassroomId);
+            setDashboard(data);
         } catch (err) {
             setError(err instanceof Error ? err.message : "Unknown error");
         }
     }
 
     useEffect(() => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setLoading(true);
-        setError(null);
+        let cancelled = false;
 
-        loadClassrooms()
-            .catch((err) => {
-                setError(err instanceof Error ? err.message : "Unknown error");
-            })
-            .finally(() => {
-                setLoading(false);
-            });
+        async function loadInitialClassrooms() {
+            setLoading(true);
+            setError(null);
+
+            try {
+                const data = await getClassrooms();
+
+                if (cancelled) {
+                    return;
+                }
+
+                setClassrooms(data);
+                setSelectedClassroomId((current) => {
+                    if (current !== null) {
+                        return current;
+                    }
+
+                    return data[0]?.id ?? null;
+                });
+            } catch (err) {
+                if (!cancelled) {
+                    setError(err instanceof Error ? err.message : "Unknown error");
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoading(false);
+                }
+            }
+        }
+
+        void loadInitialClassrooms();
+
+        return () => {
+            cancelled = true;
+        };
     }, []);
 
     useEffect(() => {
@@ -82,25 +97,47 @@ export function App() {
             return;
         }
 
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setLoading(true);
-        setError(null);
+        let cancelled = false;
 
-        loadDashboard(selectedClassroomId)
-            .catch((err) => {
-                setError(err instanceof Error ? err.message : "Unknown error");
-            })
-            .finally(() => {
-                setLoading(false);
-            });
+        async function loadSelectedDashboard() {
+            setLoading(true);
+            setError(null);
+
+            try {
+                const data = await getClassroomDashboard(selectedClassroomId);
+
+                if (!cancelled) {
+                    setDashboard(data);
+                }
+            } catch (err) {
+                if (!cancelled) {
+                    setError(err instanceof Error ? err.message : "Unknown error");
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoading(false);
+                }
+            }
+        }
+
+        void loadSelectedDashboard();
 
         const timerId = window.setInterval(() => {
-            loadDashboard(selectedClassroomId).catch(() => {
-                // Ошибку polling не показываем поверх экрана.
-            });
+            getClassroomDashboard(selectedClassroomId)
+                .then((data) => {
+                    if (!cancelled) {
+                        setDashboard(data);
+                    }
+                })
+                .catch(() => {
+                    // Ошибку polling не показываем поверх экрана.
+                });
         }, 5000);
 
-        return () => window.clearInterval(timerId);
+        return () => {
+            cancelled = true;
+            window.clearInterval(timerId);
+        };
     }, [selectedClassroomId]);
 
     async function handleBlock(deviceId: number) {
@@ -134,7 +171,8 @@ export function App() {
     function openPinObservedForm(device: DynamicDevice) {
         setError(null);
 
-        setPinForm({
+        setDeviceForm({
+            mode: "pin-observed",
             device,
             inventoryName: device.hostname ?? "",
             rowIndex: "",
@@ -142,43 +180,93 @@ export function App() {
         });
     }
 
-    function closePinObservedForm() {
-        setPinForm(null);
+    function openEditDeviceForm(device: DashboardDevice) {
+        setError(null);
+
+        setDeviceForm({
+            mode: "edit-device",
+            device,
+            inventoryName: device.inventory_name,
+            rowIndex: device.row_index?.toString() ?? "",
+            columnIndex: device.column_index?.toString() ?? "",
+        });
     }
 
-    async function handlePinObservedSubmit(event: FormEvent<HTMLFormElement>) {
+    function closeDeviceForm() {
+        setDeviceForm(null);
+    }
+
+    async function handleDeviceFormSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
 
-        if (selectedClassroomId === null || pinForm === null) {
+        if (selectedClassroomId === null || deviceForm === null) {
             return;
         }
 
         setError(null);
-        setBusyPinMac(pinForm.device.mac_address);
+        setBusyForm(true);
 
         try {
-            const rowIndex = parseOptionalPositiveInteger(pinForm.rowIndex, "row_index");
-            const columnIndex = parseOptionalPositiveInteger(pinForm.columnIndex, "column_index");
+            const rowIndex = parseOptionalPositiveInteger(
+                deviceForm.rowIndex,
+                "row_index",
+            );
+            const columnIndex = parseOptionalPositiveInteger(
+                deviceForm.columnIndex,
+                "column_index",
+            );
 
-            await pinObservedDevice(selectedClassroomId, {
-                mac_address: pinForm.device.mac_address,
-                inventory_name: emptyStringToNull(pinForm.inventoryName),
-                row_index: rowIndex,
-                column_index: columnIndex,
-            });
+            if (deviceForm.mode === "pin-observed") {
+                await pinObservedDevice(selectedClassroomId, {
+                    mac_address: deviceForm.device.mac_address,
+                    inventory_name: emptyStringToNull(deviceForm.inventoryName),
+                    row_index: rowIndex,
+                    column_index: columnIndex,
+                });
+            } else {
+                await updateDevice(deviceForm.device.id, {
+                    inventory_name: emptyStringToNull(deviceForm.inventoryName),
+                    row_index: rowIndex,
+                    column_index: columnIndex,
+                });
+            }
 
-            setPinForm(null);
+            setDeviceForm(null);
             await reload();
         } catch (err) {
             setError(err instanceof Error ? err.message : "Unknown error");
         } finally {
-            setBusyPinMac(null);
+            setBusyForm(false);
+        }
+    }
+
+    async function handleUnpinDevice() {
+        if (deviceForm === null || deviceForm.mode !== "edit-device") {
+            return;
+        }
+
+        setError(null);
+        setBusyForm(true);
+
+        try {
+            await unpinDevice(deviceForm.device.id);
+            setDeviceForm(null);
+            await reload();
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Unknown error");
+        } finally {
+            setBusyForm(false);
         }
     }
 
     const deviceGrid = useMemo(() => {
         return buildDeviceGrid(dashboard?.devices ?? []);
     }, [dashboard]);
+
+    const busyPinMac =
+        deviceForm?.mode === "pin-observed" && busyForm
+            ? deviceForm.device.mac_address
+            : null;
 
     return (
         <div className="page">
@@ -215,6 +303,7 @@ export function App() {
                             busyDeviceId={busyDeviceId}
                             onBlock={handleBlock}
                             onAllow={handleAllow}
+                            onEdit={openEditDeviceForm}
                         />
 
                         <DynamicDevicesTable
@@ -226,13 +315,18 @@ export function App() {
                 )}
             </main>
 
-            {pinForm && (
-                <PinObservedDeviceModal
-                    form={pinForm}
-                    busyPinMac={busyPinMac}
-                    onChange={setPinForm}
-                    onClose={closePinObservedForm}
-                    onSubmit={handlePinObservedSubmit}
+            {deviceForm && (
+                <DeviceFormModal
+                    form={deviceForm}
+                    busy={busyForm}
+                    onChange={setDeviceForm}
+                    onClose={closeDeviceForm}
+                    onSubmit={handleDeviceFormSubmit}
+                    onUnpin={
+                        deviceForm.mode === "edit-device"
+                            ? handleUnpinDevice
+                            : undefined
+                    }
                 />
             )}
         </div>

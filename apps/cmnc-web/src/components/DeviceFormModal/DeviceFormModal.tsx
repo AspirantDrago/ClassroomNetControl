@@ -1,24 +1,34 @@
 import type { FormEvent } from "react";
-import type { DynamicDevice } from "../../api";
-import "./PinObservedDeviceModal.css";
+import type { DashboardDevice, DynamicDevice } from "../../api";
+import "./DeviceFormModal.css";
 
-export type PinObservedFormState = {
+export type DeviceFormState =
+    | {
+    mode: "pin-observed";
     device: DynamicDevice;
+    inventoryName: string;
+    rowIndex: string;
+    columnIndex: string;
+}
+    | {
+    mode: "edit-device";
+    device: DashboardDevice;
     inventoryName: string;
     rowIndex: string;
     columnIndex: string;
 };
 
-type PinObservedDeviceModalProps = {
-    form: PinObservedFormState;
-    busyPinMac: string | null;
-    onChange: (form: PinObservedFormState) => void;
+type DeviceFormModalProps = {
+    form: DeviceFormState;
+    busy: boolean;
+    onChange: (form: DeviceFormState) => void;
     onClose: () => void;
     onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+    onUnpin?: () => void;
 };
 
-export function PinObservedDeviceModal(props: PinObservedDeviceModalProps) {
-    const { form, busyPinMac, onChange, onClose, onSubmit } = props;
+export function DeviceFormModal(props: DeviceFormModalProps) {
+    const { form, busy, onChange, onClose, onSubmit, onUnpin } = props;
 
     return (
         <div className="modal-backdrop" onMouseDown={onClose}>
@@ -29,9 +39,15 @@ export function PinObservedDeviceModal(props: PinObservedDeviceModalProps) {
             >
                 <div className="modal-header">
                     <div>
-                        <h3>Закрепить устройство</h3>
+                        <h3>
+                            {form.mode === "pin-observed"
+                                ? "Закрепить устройство"
+                                : "Редактировать устройство"}
+                        </h3>
                         <div className="muted">
-                            Устройство будет добавлено в сетку аудитории.
+                            {form.mode === "pin-observed"
+                                ? "Устройство будет добавлено в сетку аудитории."
+                                : "Можно изменить позицию в сетке или очистить Row/Column."}
                         </div>
                     </div>
 
@@ -45,10 +61,10 @@ export function PinObservedDeviceModal(props: PinObservedDeviceModalProps) {
                 </div>
 
                 <div className="readonly-grid">
-                    <ReadonlyField label="MAC" value={form.device.mac_address} />
-                    <ReadonlyField label="IP" value={form.device.active_ip ?? "-"} />
-                    <ReadonlyField label="Hostname из MikroTik" value={form.device.hostname ?? "-"} />
-                    <ReadonlyField label="Lease" value={getLeaseText(form.device)} />
+                    <ReadonlyField label="MAC" value={getMacAddress(form)} />
+                    <ReadonlyField label="IP" value={getIpAddress(form)} />
+                    <ReadonlyField label="Hostname из MikroTik" value={getHostname(form)} />
+                    <ReadonlyField label="Lease" value={getLeaseText(form)} />
                 </div>
 
                 <div className="pin-form-grid">
@@ -100,9 +116,21 @@ export function PinObservedDeviceModal(props: PinObservedDeviceModalProps) {
                 </div>
 
                 <div className="modal-actions">
+                    {form.mode === "edit-device" && onUnpin && (
+                        <button
+                            type="button"
+                            className="danger-button"
+                            disabled={busy}
+                            onClick={onUnpin}
+                        >
+                            Открепить
+                        </button>
+                    )}
+
                     <button
                         type="button"
                         className="secondary-button"
+                        disabled={busy}
                         onClick={onClose}
                     >
                         Отмена
@@ -111,9 +139,9 @@ export function PinObservedDeviceModal(props: PinObservedDeviceModalProps) {
                     <button
                         type="submit"
                         className="primary-button"
-                        disabled={busyPinMac === form.device.mac_address}
+                        disabled={busy}
                     >
-                        Закрепить
+                        {form.mode === "pin-observed" ? "Закрепить" : "Сохранить"}
                     </button>
                 </div>
             </form>
@@ -132,12 +160,36 @@ function ReadonlyField(props: { label: string; value: string }) {
     );
 }
 
-function getLeaseText(device: DynamicDevice): string {
-    if (device.dynamic === false) {
+function getMacAddress(form: DeviceFormState): string {
+    return form.device.mac_address;
+}
+
+function getIpAddress(form: DeviceFormState): string {
+    if (form.mode === "pin-observed") {
+        return form.device.active_ip ?? "-";
+    }
+
+    return form.device.static_ip ?? form.device.active_ip ?? "-";
+}
+
+function getHostname(form: DeviceFormState): string {
+    if (form.mode === "pin-observed") {
+        return form.device.hostname ?? "-";
+    }
+
+    return form.device.observed_hostname ?? form.device.hostname ?? "-";
+}
+
+function getLeaseText(form: DeviceFormState): string {
+    if (form.mode === "edit-device") {
+        return form.device.static_ip ? "static" : "unknown";
+    }
+
+    if (form.device.dynamic === false) {
         return "static";
     }
 
-    if (device.dynamic === true) {
+    if (form.device.dynamic === true) {
         return "dynamic";
     }
 

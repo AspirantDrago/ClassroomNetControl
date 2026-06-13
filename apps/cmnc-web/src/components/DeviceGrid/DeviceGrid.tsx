@@ -8,10 +8,11 @@ type DeviceGridProps = {
     busyDeviceId: number | null;
     onBlock: (deviceId: number) => Promise<void>;
     onAllow: (deviceId: number) => Promise<void>;
+    onEdit: (device: DashboardDevice) => void;
 };
 
 export function DeviceGrid(props: DeviceGridProps) {
-    const { deviceGrid, busyDeviceId, onBlock, onAllow } = props;
+    const { deviceGrid, busyDeviceId, onBlock, onAllow, onEdit } = props;
 
     return (
         <>
@@ -19,7 +20,7 @@ export function DeviceGrid(props: DeviceGridProps) {
                 <section
                     className="device-grid"
                     style={{
-                        gridTemplateColumns: `repeat(${deviceGrid.columnCount}, minmax(120px, 1fr))`,
+                        gridTemplateColumns: `repeat(${deviceGrid.columnCount}, 128px)`,
                     }}
                 >
                     {deviceGrid.rows.flatMap((row) =>
@@ -34,6 +35,7 @@ export function DeviceGrid(props: DeviceGridProps) {
                                         busyDeviceId={busyDeviceId}
                                         onBlock={onBlock}
                                         onAllow={onAllow}
+                                        onEdit={onEdit}
                                     />
                                 ) : (
                                     <div className="empty-device-cell">
@@ -58,6 +60,7 @@ export function DeviceGrid(props: DeviceGridProps) {
                     busyDeviceId={busyDeviceId}
                     onBlock={onBlock}
                     onAllow={onAllow}
+                    onEdit={onEdit}
                 />
             )}
         </>
@@ -69,8 +72,9 @@ function UnpositionedDevices(props: {
     busyDeviceId: number | null;
     onBlock: (deviceId: number) => Promise<void>;
     onAllow: (deviceId: number) => Promise<void>;
+    onEdit: (device: DashboardDevice) => void;
 }) {
-    const { devices, busyDeviceId, onBlock, onAllow } = props;
+    const { devices, busyDeviceId, onBlock, onAllow, onEdit } = props;
 
     return (
         <section className="unpositioned-section">
@@ -84,6 +88,7 @@ function UnpositionedDevices(props: {
                         busyDeviceId={busyDeviceId}
                         onBlock={onBlock}
                         onAllow={onAllow}
+                        onEdit={onEdit}
                     />
                 ))}
             </div>

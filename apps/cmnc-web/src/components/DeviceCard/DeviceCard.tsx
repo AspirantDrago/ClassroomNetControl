@@ -7,14 +7,17 @@ type DeviceCardProps = {
     busyDeviceId: number | null;
     onBlock: (deviceId: number) => Promise<void>;
     onAllow: (deviceId: number) => Promise<void>;
+    onEdit: (device: DashboardDevice) => void;
 };
 
 export function DeviceCard(props: DeviceCardProps) {
-    const { device, busyDeviceId, onBlock, onAllow } = props;
+    const { device, busyDeviceId, onBlock, onAllow, onEdit } = props;
     const busy = busyDeviceId === device.id;
 
     return (
-        <div className={`device-card ${device.online ? "device-online" : "device-offline"}`}>
+        <div className={`device-card ${device.online ? "device-online" : "device-offline"}`}
+             onDoubleClick={() => onEdit(device)}
+        >
             <div className="device-card-header">
                 <div className="device-title">{getDeviceTitle(device)}</div>
             </div>
@@ -33,7 +36,10 @@ export function DeviceCard(props: DeviceCardProps) {
                 {device.wan_allowed ? (
                     <button
                         disabled={busy}
-                        onClick={() => onBlock(device.id)}
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            void onBlock(device.id);
+                        }}
                     >
                         <span
                             className={`status-pill status-online ${
@@ -46,7 +52,10 @@ export function DeviceCard(props: DeviceCardProps) {
                 ) : (
                     <button
                         disabled={busy}
-                        onClick={() => onAllow(device.id)}
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            void onAllow(device.id);
+                        }}
                     >
                         <span
                             className={`status-pill status-offline ${
