@@ -271,3 +271,126 @@ tr:last-child td {
     gap: 2px;
     align-items: stretch;
 }
+
+.compact-button {
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 13px;
+}
+
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(2, 6, 23, 0.72);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.modal-card {
+    width: min(720px, 100%);
+    border: 1px solid #334155;
+    border-radius: 16px;
+    background: #111827;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+    padding: 18px;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.modal-header h3 {
+    margin: 0 0 4px;
+}
+
+.modal-close-button {
+    width: 34px;
+    height: 34px;
+    border: 0;
+    border-radius: 8px;
+    background: #1f2937;
+    color: #e5e7eb;
+    cursor: pointer;
+    font-size: 22px;
+    line-height: 1;
+}
+
+.readonly-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.readonly-field {
+    display: grid;
+    gap: 4px;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 10px;
+    background: #0f172a;
+}
+
+.readonly-field span {
+    color: #9ca3af;
+    font-size: 13px;
+}
+
+.readonly-field strong {
+    color: #e5e7eb;
+    font-size: 14px;
+    word-break: break-all;
+}
+
+.pin-form-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.pin-form-grid label {
+    display: grid;
+    gap: 5px;
+    color: #9ca3af;
+    font-size: 13px;
+}
+
+.pin-form-grid input {
+    width: 100%;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 8px 10px;
+    background: #0f172a;
+    color: #e5e7eb;
+}
+
+.pin-form-grid input:focus {
+    outline: 1px solid #2563eb;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+@media (max-width: 640px) {
+    .pin-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .modal-actions {
+        flex-direction: column-reverse;
+    }
+
+    .modal-actions button {
+        width: 100%;
+    }
+}

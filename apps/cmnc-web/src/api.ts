@@ -83,3 +83,23 @@ export function allowDeviceWan(deviceId: number): Promise<unknown> {
         method: "POST",
     });
 }
+
+export type PinObservedDeviceRequest = {
+    mac_address: string;
+    inventory_name?: string | null;
+    row_index?: number | null;
+    column_index?: number | null;
+};
+
+export function pinObservedDevice(
+    classroomId: number,
+    payload: PinObservedDeviceRequest,
+): Promise<DashboardDevice> {
+    return request<DashboardDevice>(
+        `/api/admin/classrooms/${classroomId}/devices/pin-observed`,
+        {
+            method: "POST",
+            body: JSON.stringify(payload),
+        },
+    );
+}

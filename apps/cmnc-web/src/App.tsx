@@ -1,21 +1,15 @@
-import {useEffect, useMemo, useState} from "react";
+import {type FormEvent, useEffect, useMemo, useState} from "react";
 import {
     allowDeviceWan,
     blockDeviceWan,
     type Classroom,
     type ClassroomDashboard,
     type DashboardDevice,
+    type DynamicDevice,
     getClassroomDashboard,
     getClassrooms,
+    pinObservedDevice,
 } from "./api";
-
-function formatDate(value: string | null): string {
-    if (!value) {
-        return "нет данных";
-    }
-
-    return new Date(value).toLocaleString();
-}
 
 function getDeviceTitle(device: DashboardDevice): string {
     return device.inventory_name || device.hostname || device.observed_hostname || device.mac_address;
@@ -34,6 +28,13 @@ type DeviceGridModel = {
     unpositionedDevices: DashboardDevice[];
 };
 
+type PinObservedFormState = {
+    device: DynamicDevice;
+    inventoryName: string;
+    rowIndex: string;
+    columnIndex: string;
+};
+
 function hasGridPosition(device: DashboardDevice): device is DashboardDevice & {
     row_index: number;
     column_index: number;
@@ -44,6 +45,50 @@ function hasGridPosition(device: DashboardDevice): device is DashboardDevice & {
         device.row_index > 0 &&
         device.column_index > 0
     );
+}
+
+function canPinObservedDevice(device: DynamicDevice): boolean {
+    return device.dynamic === false && Boolean(device.active_ip);
+}
+
+function getObservedDevicePinText(device: DynamicDevice): string {
+    if (canPinObservedDevice(device)) {
+        return "Закрепить";
+    }
+
+    if (device.dynamic !== false) {
+        return "Нужен static lease";
+    }
+
+    if (!device.active_ip) {
+        return "Нет IP";
+    }
+
+    return "Недоступно";
+}
+
+function parseOptionalPositiveInteger(
+    value: string,
+    fieldName: string,
+): number | null {
+    const trimmed = value.trim();
+
+    if (!trimmed) {
+        return null;
+    }
+
+    const parsed = Number(trimmed);
+
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+        throw new Error(`${fieldName} должен быть положительным целым числом`);
+    }
+
+    return parsed;
+}
+
+function emptyStringToNull(value: string): string | null {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
 }
 
 function buildDeviceGrid(devices: DashboardDevice[]): DeviceGridModel {
@@ -153,6 +198,8 @@ export function App() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [busyDeviceId, setBusyDeviceId] = useState<number | null>(null);
+    const [pinForm, setPinForm] = useState<PinObservedFormState | null>(null);
+    const [busyPinMac, setBusyPinMac] = useState<string | null>(null);
 
     async function loadClassrooms() {
         const data = await getClassrooms();
@@ -250,6 +297,51 @@ export function App() {
         }
     }
 
+    function openPinObservedForm(device: DynamicDevice) {
+        setError(null);
+
+        setPinForm({
+            device,
+            inventoryName: device.hostname ?? "",
+            rowIndex: "",
+            columnIndex: "",
+        });
+    }
+
+    function closePinObservedForm() {
+        setPinForm(null);
+    }
+
+    async function handlePinObservedSubmit(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+
+        if (selectedClassroomId === null || pinForm === null) {
+            return;
+        }
+
+        setError(null);
+        setBusyPinMac(pinForm.device.mac_address);
+
+        try {
+            const rowIndex = parseOptionalPositiveInteger(pinForm.rowIndex, "row_index");
+            const columnIndex = parseOptionalPositiveInteger(pinForm.columnIndex, "column_index");
+
+            await pinObservedDevice(selectedClassroomId, {
+                mac_address: pinForm.device.mac_address,
+                inventory_name: emptyStringToNull(pinForm.inventoryName),
+                row_index: rowIndex,
+                column_index: columnIndex,
+            });
+
+            setPinForm(null);
+            await reload();
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Unknown error");
+        } finally {
+            setBusyPinMac(null);
+        }
+    }
+
     const deviceGrid = useMemo(() => {
         return buildDeviceGrid(dashboard?.devices ?? []);
     }, [dashboard]);
@@ -332,7 +424,8 @@ export function App() {
                             </section>
                         ) : (
                             <div className="muted">
-                                В аудитории пока нет устройств с заданной позицией в сетке.
+                                В аудитории пока нет устройств с заданной позицией в
+                                сетке.
                             </div>
                         )}
 
@@ -370,7 +463,7 @@ export function App() {
                                             <th>Hostname</th>
                                             <th>Lease</th>
                                             <th>Active</th>
-                                            <th>Last seen</th>
+                                            <th>Действие</th>
                                         </tr>
                                         </thead>
                                         <tbody>
@@ -387,7 +480,19 @@ export function App() {
                                                             : "unknown"}
                                                 </td>
                                                 <td>{device.active ? "yes" : "no"}</td>
-                                                <td>{formatDate(device.last_seen_at)}</td>
+                                                <td>
+                                                    {canPinObservedDevice(device) ? (
+                                                        <button
+                                                            className="secondary-button compact-button"
+                                                            disabled={busyPinMac === device.mac_address}
+                                                            onClick={() => openPinObservedForm(device)}
+                                                        >
+                                                            {busyPinMac === device.mac_address ? "..." : "Закрепить"}
+                                                        </button>
+                                                    ) : (
+                                                        <span className="muted">{getObservedDevicePinText(device)}</span>
+                                                    )}
+                                                </td>
                                             </tr>
                                         ))}
                                         </tbody>
@@ -398,6 +503,127 @@ export function App() {
                     </>
                 )}
             </main>
+
+            {pinForm && (
+                <div className="modal-backdrop" onMouseDown={closePinObservedForm}>
+                    <form
+                        className="modal-card"
+                        onSubmit={handlePinObservedSubmit}
+                        onMouseDown={(event) => event.stopPropagation()}
+                    >
+                        <div className="modal-header">
+                            <div>
+                                <h3>Закрепить устройство</h3>
+                                <div className="muted">
+                                    Устройство будет добавлено в сетку аудитории.
+                                </div>
+                            </div>
+
+                            <button
+                                type="button"
+                                className="modal-close-button"
+                                onClick={closePinObservedForm}
+                            >
+                                ×
+                            </button>
+                        </div>
+
+                        <div className="readonly-grid">
+                            <div className="readonly-field">
+                                <span>MAC</span>
+                                <strong>{pinForm.device.mac_address}</strong>
+                            </div>
+
+                            <div className="readonly-field">
+                                <span>IP</span>
+                                <strong>{pinForm.device.active_ip ?? "-"}</strong>
+                            </div>
+
+                            <div className="readonly-field">
+                                <span>Hostname из MikroTik</span>
+                                <strong>{pinForm.device.hostname ?? "-"}</strong>
+                            </div>
+
+                            <div className="readonly-field">
+                                <span>Lease</span>
+                                <strong>
+                                    {pinForm.device.dynamic === false
+                                        ? "static"
+                                        : pinForm.device.dynamic === true
+                                            ? "dynamic"
+                                            : "unknown"}
+                                </strong>
+                            </div>
+                        </div>
+
+                        <div className="pin-form-grid">
+                            <label>
+                                Название в аудитории
+                                <input
+                                    value={pinForm.inventoryName}
+                                    onChange={(event) =>
+                                        setPinForm({
+                                            ...pinForm,
+                                            inventoryName: event.target.value,
+                                        })
+                                    }
+                                    placeholder="PC-01"
+                                />
+                            </label>
+
+                            <label>
+                                Row
+                                <input
+                                    type="number"
+                                    min="1"
+                                    value={pinForm.rowIndex}
+                                    onChange={(event) =>
+                                        setPinForm({
+                                            ...pinForm,
+                                            rowIndex: event.target.value,
+                                        })
+                                    }
+                                    placeholder="1"
+                                />
+                            </label>
+
+                            <label>
+                                Column
+                                <input
+                                    type="number"
+                                    min="1"
+                                    value={pinForm.columnIndex}
+                                    onChange={(event) =>
+                                        setPinForm({
+                                            ...pinForm,
+                                            columnIndex: event.target.value,
+                                        })
+                                    }
+                                    placeholder="1"
+                                />
+                            </label>
+                        </div>
+
+                        <div className="modal-actions">
+                            <button
+                                type="button"
+                                className="secondary-button"
+                                onClick={closePinObservedForm}
+                            >
+                                Отмена
+                            </button>
+
+                            <button
+                                type="submit"
+                                className="primary-button"
+                                disabled={busyPinMac === pinForm.device.mac_address}
+                            >
+                                Закрепить
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            )}
         </div>
     );
 }
