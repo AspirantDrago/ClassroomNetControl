@@ -8,7 +8,7 @@ from sqlalchemy import select
 from cmnc_contracts.routing_keys import POLICY_SYNC_COMPLETED, POLICY_SYNC_FAILED
 
 from cmnc_classroom_service.api import router
-from cmnc_classroom_service.db import async_session_maker, init_db
+from cmnc_classroom_service.db import async_session_maker
 from cmnc_classroom_service.messaging import RabbitMqClient
 from cmnc_classroom_service.models import Classroom, Device
 from cmnc_classroom_service.policy_sync_handlers import (
@@ -20,8 +20,6 @@ from cmnc_classroom_service.settings import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-    await init_db()
-
     if settings.seed_demo_data:
         await seed_demo_data()
 

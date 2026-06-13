@@ -19,4 +19,4 @@ RUN uv sync --package cmnc-classroom-service --no-dev
 
 EXPOSE 8002
 
-CMD ["uvicorn", "cmnc_classroom_service.main:app", "--host", "0.0.0.0", "--port", "8002"]
+CMD ["sh", "-c", "alembic -c services/cmnc-classroom-service/alembic.ini upgrade head && uvicorn cmnc_classroom_service.main:app --host 0.0.0.0 --port 8002"]

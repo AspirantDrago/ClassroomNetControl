@@ -11,6 +11,7 @@ dependencies = [
     "sqlalchemy>=2.0.50",
     "asyncpg>=0.31.0",
     "aio-pika>=9.6.2",
+    "alembic>=1.18.4",
     "cmnc-contracts",
 ]
 
