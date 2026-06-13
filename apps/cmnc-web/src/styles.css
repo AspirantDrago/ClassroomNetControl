@@ -86,30 +86,45 @@ button {
 
 .device-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 14px;
+    gap: 2px;
+    align-items: stretch;
+}
+
+.device-grid-cell {
+    min-width: 0;
+}
+
+.empty-device-cell {
+    min-height: 128px;
+    border: 1px dashed #334155;
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #475569;
+    font-size: 13px;
+}
+
+.unpositioned-section {
+    margin-top: 28px;
 }
 
 .device-card {
     border: 1px solid #334155;
-    border-radius: 14px;
-    padding: 16px;
+    border-radius: 10px;
+    padding: 5px;
     background: #111827;
 }
 
-.device-online {
-    border-color: #166534;
-}
-
-.device-offline {
-    border-color: #7f1d1d;
+.device-card.device-offline {
+    background: #797979;
 }
 
 .device-card-header {
     display: flex;
     justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 14px;
+    margin-bottom: 5px;
 }
 
 .device-title {
@@ -155,38 +170,17 @@ button {
 }
 
 .device-actions {
-    margin-top: 16px;
+    margin-top: 5px;
 }
 
 .device-actions > button {
     width: 100%;
-}
-
-.primary-button,
-.secondary-button,
-.danger-button {
-    border: 0;
-    border-radius: 10px;
-    padding: 10px 14px;
-    color: white;
+    background: none;
+    border: none;
     cursor: pointer;
 }
 
-.primary-button {
-    background: #2563eb;
-}
-
-.secondary-button {
-    background: #374151;
-}
-
-.danger-button {
-    background: #dc2626;
-}
-
-.primary-button:disabled,
-.secondary-button:disabled,
-.danger-button:disabled {
+.device-actions > button:disabled {
     opacity: 0.6;
     cursor: not-allowed;
 }
@@ -247,4 +241,33 @@ th {
 
 tr:last-child td {
     border-bottom: 0;
+}
+
+.primary-button,
+.secondary-button,
+.danger-button {
+    border: 0;
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: white;
+    cursor: pointer;
+}
+
+.primary-button {
+    background: #2563eb;
+}
+
+.secondary-button {
+    background: #374151;
+}
+
+.danger-button {
+    background: #dc2626;
+}
+
+.unpositioned-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 2px;
+    align-items: stretch;
 }
