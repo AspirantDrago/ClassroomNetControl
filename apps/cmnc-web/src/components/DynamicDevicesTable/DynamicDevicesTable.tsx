@@ -36,6 +36,7 @@ export function DynamicDevicesTable(props: DynamicDevicesTableProps) {
                             <th>Hostname</th>
                             <th>Lease</th>
                             <th>Active</th>
+                            <th>Last seen</th>
                             <th>Действие</th>
                         </tr>
                         </thead>
