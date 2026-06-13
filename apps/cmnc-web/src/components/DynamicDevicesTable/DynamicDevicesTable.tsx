@@ -47,6 +47,7 @@ export function DynamicDevicesTable(props: DynamicDevicesTableProps) {
                                 <td>{device.hostname ?? "-"}</td>
                                 <td>{getLeaseText(device)}</td>
                                 <td>{device.active ? "yes" : "no"}</td>
+                                <td>{formatDate(device.last_seen_at)}</td>
                                 <td>
                                     {canPinObservedDevice(device) ? (
                                         <button
@@ -70,6 +71,14 @@ export function DynamicDevicesTable(props: DynamicDevicesTableProps) {
             )}
         </section>
     );
+}
+
+function formatDate(value: string | null): string {
+    if (!value) {
+        return "нет данных";
+    }
+
+    return new Date(value).toLocaleString();
 }
 
 function getLeaseText(device: DynamicDevice): string {

@@ -17,3 +17,21 @@
     margin: 6px 0 0;
     color: #9ca3af;
 }
+
+.topbar-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.topbar__main {
+    display: flex;
+    align-items: center;
+}
+
+.topbar__logo img {
+    width: 64px;
+    height: 64px;
+    margin-right: 20px;
+    margin-bottom: -12px;
+}

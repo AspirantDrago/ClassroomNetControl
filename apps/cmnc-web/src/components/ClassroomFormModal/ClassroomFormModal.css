@@ -1,0 +1,56 @@
+.classroom-modal-card {
+    width: min(760px, 100%);
+}
+
+.classroom-form-grid {
+    display: grid;
+    grid-template-columns: 2fr 2fr 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.classroom-form-grid label {
+    display: grid;
+    gap: 5px;
+    color: #9ca3af;
+    font-size: 13px;
+}
+
+.classroom-form-grid input {
+    width: 100%;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 8px 10px;
+    background: #0f172a;
+    color: #e5e7eb;
+}
+
+.classroom-form-grid input:focus {
+    outline: 1px solid #2563eb;
+}
+
+.classroom-modal-actions {
+    justify-content: flex-end;
+}
+
+.classroom-modal-actions .danger-button {
+    margin-right: auto;
+}
+
+@media (max-width: 760px) {
+    .classroom-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .classroom-modal-actions {
+        flex-direction: column-reverse;
+    }
+
+    .classroom-modal-actions button {
+        width: 100%;
+    }
+
+    .classroom-modal-actions .danger-button {
+        margin-right: 0;
+    }
+}

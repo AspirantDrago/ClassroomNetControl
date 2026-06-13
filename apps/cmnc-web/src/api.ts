@@ -128,3 +128,38 @@ export function unpinDevice(deviceId: number): Promise<unknown> {
         method: "POST",
     });
 }
+
+export type ClassroomCreateRequest = {
+    name: string;
+    subnet_cidr: string;
+    vlan_id?: number | null;
+    display_order?: number;
+    is_active?: boolean;
+};
+
+export type ClassroomUpdateRequest = {
+    name?: string;
+    subnet_cidr?: string;
+    vlan_id?: number | null;
+    display_order?: number;
+    is_active?: boolean;
+};
+
+export function createClassroom(
+    payload: ClassroomCreateRequest,
+): Promise<Classroom> {
+    return request<Classroom>("/api/admin/classrooms", {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}
+
+export function updateClassroom(
+    classroomId: number,
+    payload: ClassroomUpdateRequest,
+): Promise<Classroom> {
+    return request<Classroom>(`/api/admin/classrooms/${classroomId}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+    });
+}
