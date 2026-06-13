@@ -177,6 +177,7 @@ export function App() {
             inventoryName: device.hostname ?? "",
             rowIndex: "",
             columnIndex: "",
+            wanProtected: false,
         });
     }
 
@@ -189,6 +190,7 @@ export function App() {
             inventoryName: device.inventory_name,
             rowIndex: device.row_index?.toString() ?? "",
             columnIndex: device.column_index?.toString() ?? "",
+            wanProtected: device.wan_protected,
         });
     }
 
@@ -222,12 +224,14 @@ export function App() {
                     inventory_name: emptyStringToNull(deviceForm.inventoryName),
                     row_index: rowIndex,
                     column_index: columnIndex,
+                    wan_protected: deviceForm.wanProtected,
                 });
             } else {
                 await updateDevice(deviceForm.device.id, {
                     inventory_name: emptyStringToNull(deviceForm.inventoryName),
                     row_index: rowIndex,
                     column_index: columnIndex,
+                    wan_protected: deviceForm.wanProtected,
                 });
             }
 

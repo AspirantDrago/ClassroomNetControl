@@ -1,6 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, \
+    text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -66,6 +67,12 @@ class Device(Base):
 
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     wan_allowed: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    wan_protected: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("false"),
+        default=False,
+    )
 
     policy_generation: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     sync_status: Mapped[str] = mapped_column(String(32), default="unknown",

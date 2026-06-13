@@ -32,6 +32,7 @@ class DeviceRead(BaseModel):
     column_index: int | None
     is_pinned: bool
     wan_allowed: bool
+    wan_protected: bool
     policy_generation: int
     sync_status: str
     sync_error: str | None
@@ -93,6 +94,7 @@ class DeviceCreate(BaseModel):
     column_index: int | None = None
     is_pinned: bool = True
     wan_allowed: bool = True
+    wan_protected: bool = False
 
 
 class DeviceUpdate(BaseModel):
@@ -104,6 +106,7 @@ class DeviceUpdate(BaseModel):
     row_index: int | None = None
     column_index: int | None = None
     is_pinned: bool | None = None
+    wan_protected: bool | None = None
 
 
 class DevicePinRequest(BaseModel):

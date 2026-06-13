@@ -337,7 +337,7 @@ async def admin_update_device(
     allowed_payload = {
         key: value
         for key, value in payload.items()
-        if key in {"inventory_name", "row_index", "column_index"}
+        if key in {"inventory_name", "row_index", "column_index", "wan_protected"}
     }
 
     try:
@@ -464,6 +464,7 @@ async def admin_pin_observed_device(
         "row_index": payload.row_index,
         "column_index": payload.column_index,
         "is_pinned": True,
+        "wan_protected": payload.wan_protected,
         "wan_allowed": True,
     }
 

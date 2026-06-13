@@ -9,6 +9,7 @@ export type DeviceFormState =
     inventoryName: string;
     rowIndex: string;
     columnIndex: string;
+    wanProtected: boolean;
 }
     | {
     mode: "edit-device";
@@ -16,6 +17,7 @@ export type DeviceFormState =
     inventoryName: string;
     rowIndex: string;
     columnIndex: string;
+    wanProtected: boolean;
 };
 
 type DeviceFormModalProps = {
@@ -114,6 +116,20 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                         />
                     </label>
                 </div>
+
+                <label className="checkbox-field">
+                    <input
+                        type="checkbox"
+                        checked={form.wanProtected}
+                        onChange={(event) =>
+                            onChange({
+                                ...form,
+                                wanProtected: event.target.checked,
+                            })
+                        }
+                    />
+                    <span>Защитить от отключения WAN</span>
+                </label>
 
                 <div className="modal-actions">
                     {form.mode === "edit-device" && onUnpin && (

@@ -79,3 +79,10 @@
     color: #fecaca;
     font-size: 13px;
 }
+
+.status-protected {
+    display: block;
+    width: 100%;
+    background: #1e3a8a;
+    color: #bfdbfe;
+}

@@ -130,6 +130,12 @@ async def set_device_wan_state(
         raise HTTPException(status_code=404, detail="Device not found")
 
     if wan_allowed is False:
+        if device.wan_protected:
+            raise HTTPException(
+                status_code=409,
+                detail="Device is protected from WAN blocking.",
+            )
+
         if not device.is_pinned:
             raise HTTPException(
                 status_code=409,
@@ -327,7 +333,8 @@ async def create_device(
         row_index=payload.row_index,
         column_index=payload.column_index,
         is_pinned=payload.is_pinned,
-        wan_allowed=payload.wan_allowed,
+        wan_allowed=True if payload.wan_protected else payload.wan_allowed,
+        wan_protected=payload.wan_protected,
         sync_status="applied",
         sync_error=None,
     )
@@ -350,6 +357,7 @@ async def create_device(
 async def update_device(
     device_id: int,
     payload: DeviceUpdate,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> DeviceRead:
     device = await session.get(Device, device_id)
@@ -365,6 +373,15 @@ async def update_device(
     if "mac_address" in update_data and update_data["mac_address"] is not None:
         update_data["mac_address"] = normalize_mac_address(update_data["mac_address"])
 
+    should_publish_policy_event = False
+
+    if update_data.get("wan_protected") is True and device.wan_allowed is False:
+        device.wan_allowed = True
+        device.policy_generation += 1
+        device.sync_status = "pending"
+        device.sync_error = None
+        should_publish_policy_event = True
+
     for field_name, value in update_data.items():
         setattr(device, field_name, value)
 
@@ -373,6 +390,21 @@ async def update_device(
         detail="Device update violates MAC or grid position constraints",
     )
     await session.refresh(device)
+
+    if should_publish_policy_event:
+        event = WanPolicyChangedEvent(
+            router_id=settings.default_router_id,
+            classroom_id=device.classroom_id,
+            device_id=device.id,
+            policy_generation=device.policy_generation,
+            wan_allowed=device.wan_allowed,
+            changed_by_user_id=None,
+        )
+
+        await get_rabbitmq_client(request).publish_event(
+            event=event,
+            routing_key=CLASSROOM_DEVICE_WAN_POLICY_CHANGED,
+        )
 
     return DeviceRead.model_validate(device)
 
@@ -433,6 +465,7 @@ async def unpin_device(
     device.row_index = None
     device.column_index = None
     device.static_ip = None
+    device.wan_protected = False
     device.sync_status = "applied"
     device.sync_error = None
 

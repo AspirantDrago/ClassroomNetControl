@@ -29,6 +29,7 @@ class DashboardDevice(BaseModel):
     column_index: int | None
     is_pinned: bool
     wan_allowed: bool
+    wan_protected: bool
     policy_generation: int
     sync_status: str
     sync_error: str | None
@@ -58,4 +59,4 @@ class PinObservedDeviceRequest(BaseModel):
     inventory_name: str | None = Field(default=None, min_length=1, max_length=255)
     row_index: int | None = None
     column_index: int | None = None
-    hostname: str | None = None
+    wan_protected: bool = False

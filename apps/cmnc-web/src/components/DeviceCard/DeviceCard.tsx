@@ -33,7 +33,9 @@ export function DeviceCard(props: DeviceCardProps) {
             {device.sync_error && <div className="error-text">{device.sync_error}</div>}
 
             <div className="device-actions">
-                {device.wan_allowed ? (
+                {device.wan_protected ? (
+                    <span className="status-pill status-protected">Protected WAN</span>
+                ) : device.wan_allowed ? (
                     <button
                         disabled={busy}
                         onClick={(event) => {

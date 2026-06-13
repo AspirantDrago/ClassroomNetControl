@@ -22,6 +22,7 @@ export type DashboardDevice = {
     column_index: number | null;
     is_pinned: boolean;
     wan_allowed: boolean;
+    wan_protected: boolean;
     policy_generation: number;
     sync_status: string;
     sync_error: string | null;
@@ -89,6 +90,7 @@ export type PinObservedDeviceRequest = {
     inventory_name?: string | null;
     row_index?: number | null;
     column_index?: number | null;
+    wan_protected?: boolean;
 };
 
 export function pinObservedDevice(
@@ -108,6 +110,7 @@ export type UpdateDeviceRequest = {
     inventory_name?: string | null;
     row_index?: number | null;
     column_index?: number | null;
+    wan_protected?: boolean;
 };
 
 export function updateDevice(
