@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class HealthResponse(BaseModel):
@@ -51,3 +51,11 @@ class ClassroomDashboardResponse(BaseModel):
     classroom: dict[str, Any]
     devices: list[DashboardDevice]
     dynamic_devices: list[DynamicDevice]
+
+
+class PinObservedDeviceRequest(BaseModel):
+    mac_address: str = Field(min_length=1, max_length=32)
+    inventory_name: str | None = Field(default=None, min_length=1, max_length=255)
+    row_index: int | None = None
+    column_index: int | None = None
+    hostname: str | None = None

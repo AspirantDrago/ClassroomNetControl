@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class HealthResponse(BaseModel):
@@ -65,3 +65,51 @@ class DesiredBlocklistResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
+
+
+class ClassroomCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    subnet_cidr: str = Field(min_length=1, max_length=64)
+    vlan_id: int | None = None
+    display_order: int = 0
+    is_active: bool = True
+
+
+class ClassroomUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    subnet_cidr: str | None = Field(default=None, min_length=1, max_length=64)
+    vlan_id: int | None = None
+    display_order: int | None = None
+    is_active: bool | None = None
+
+
+class DeviceCreate(BaseModel):
+    classroom_id: int
+    mac_address: str = Field(min_length=1, max_length=32)
+    inventory_name: str = Field(min_length=1, max_length=255)
+    hostname: str | None = None
+    static_ip: str | None = None
+    row_index: int | None = None
+    column_index: int | None = None
+    is_pinned: bool = True
+    wan_allowed: bool = True
+
+
+class DeviceUpdate(BaseModel):
+    classroom_id: int | None = None
+    mac_address: str | None = Field(default=None, min_length=1, max_length=32)
+    inventory_name: str | None = Field(default=None, min_length=1, max_length=255)
+    hostname: str | None = None
+    static_ip: str | None = None
+    row_index: int | None = None
+    column_index: int | None = None
+    is_pinned: bool | None = None
+
+
+class DevicePinRequest(BaseModel):
+    classroom_id: int
+    inventory_name: str = Field(min_length=1, max_length=255)
+    static_ip: str | None = None
+    row_index: int | None = None
+    column_index: int | None = None
+    hostname: str | None = None

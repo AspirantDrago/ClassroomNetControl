@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cmnc_contracts.events import WanPolicyChangedEvent
@@ -9,11 +10,16 @@ from cmnc_classroom_service.db import get_session
 from cmnc_classroom_service.messaging import RabbitMqClient
 from cmnc_classroom_service.models import Classroom, Device
 from cmnc_classroom_service.schemas import (
+    ClassroomCreate,
     ClassroomLayoutResponse,
     ClassroomRead,
+    ClassroomUpdate,
     DesiredBlocklistItem,
     DesiredBlocklistResponse,
+    DeviceCreate,
+    DevicePinRequest,
     DeviceRead,
+    DeviceUpdate,
     HealthResponse,
     WanPolicyChangeResponse,
 )
@@ -122,14 +128,21 @@ async def set_device_wan_state(
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found")
 
-    if wan_allowed is False and device.static_ip is None:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "Device has no static IP. WAN blocking is allowed only "
-                "for pinned devices with static IP."
-            ),
-        )
+    if wan_allowed is False:
+        if not device.is_pinned:
+            raise HTTPException(
+                status_code=409,
+                detail="Device is not pinned. WAN blocking is allowed only for pinned devices.",
+            )
+
+        if device.static_ip is None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Device has no static IP. WAN blocking is allowed only "
+                    "for pinned devices with static IP."
+                ),
+            )
 
     if device.wan_allowed != wan_allowed:
         device.wan_allowed = wan_allowed
@@ -208,3 +221,224 @@ async def get_desired_blocklist(
         address_list_name=settings.managed_address_list_name,
         blocked=blocked,
     )
+
+
+def normalize_mac_address(mac_address: str) -> str:
+    return mac_address.strip().upper()
+
+
+async def ensure_classroom_exists(
+    session: AsyncSession,
+    classroom_id: int,
+) -> Classroom:
+    classroom = await session.get(Classroom, classroom_id)
+
+    if classroom is None:
+        raise HTTPException(status_code=404, detail="Classroom not found")
+
+    return classroom
+
+
+async def commit_or_409(
+    session: AsyncSession,
+    detail: str = "Database constraint violation",
+) -> None:
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=409, detail=detail) from exc
+
+
+@router.post(
+    "/internal/classrooms",
+    response_model=ClassroomRead,
+    status_code=201,
+)
+async def create_classroom(
+    payload: ClassroomCreate,
+    session: AsyncSession = Depends(get_session),
+) -> ClassroomRead:
+    classroom = Classroom(
+        name=payload.name,
+        subnet_cidr=payload.subnet_cidr,
+        vlan_id=payload.vlan_id,
+        display_order=payload.display_order,
+        is_active=payload.is_active,
+    )
+
+    session.add(classroom)
+
+    await commit_or_409(
+        session,
+        detail="Classroom with the same unique fields already exists",
+    )
+    await session.refresh(classroom)
+
+    return ClassroomRead.model_validate(classroom)
+
+
+@router.patch(
+    "/internal/classrooms/{classroom_id}",
+    response_model=ClassroomRead,
+)
+async def update_classroom(
+    classroom_id: int,
+    payload: ClassroomUpdate,
+    session: AsyncSession = Depends(get_session),
+) -> ClassroomRead:
+    classroom = await session.get(Classroom, classroom_id)
+
+    if classroom is None:
+        raise HTTPException(status_code=404, detail="Classroom not found")
+
+    update_data = payload.model_dump(exclude_unset=True)
+
+    for field_name, value in update_data.items():
+        setattr(classroom, field_name, value)
+
+    await commit_or_409(
+        session,
+        detail="Classroom update violates database constraints",
+    )
+    await session.refresh(classroom)
+
+    return ClassroomRead.model_validate(classroom)
+
+
+@router.post(
+    "/internal/devices",
+    response_model=DeviceRead,
+    status_code=201,
+)
+async def create_device(
+    payload: DeviceCreate,
+    session: AsyncSession = Depends(get_session),
+) -> DeviceRead:
+    await ensure_classroom_exists(session, payload.classroom_id)
+
+    device = Device(
+        classroom_id=payload.classroom_id,
+        mac_address=normalize_mac_address(payload.mac_address),
+        inventory_name=payload.inventory_name,
+        hostname=payload.hostname,
+        static_ip=payload.static_ip,
+        row_index=payload.row_index,
+        column_index=payload.column_index,
+        is_pinned=payload.is_pinned,
+        wan_allowed=payload.wan_allowed,
+        sync_status="applied",
+        sync_error=None,
+    )
+
+    session.add(device)
+
+    await commit_or_409(
+        session,
+        detail="Device with the same MAC or grid position already exists",
+    )
+    await session.refresh(device)
+
+    return DeviceRead.model_validate(device)
+
+
+@router.patch(
+    "/internal/devices/{device_id}",
+    response_model=DeviceRead,
+)
+async def update_device(
+    device_id: int,
+    payload: DeviceUpdate,
+    session: AsyncSession = Depends(get_session),
+) -> DeviceRead:
+    device = await session.get(Device, device_id)
+
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    update_data = payload.model_dump(exclude_unset=True)
+
+    if "classroom_id" in update_data and update_data["classroom_id"] is not None:
+        await ensure_classroom_exists(session, update_data["classroom_id"])
+
+    if "mac_address" in update_data and update_data["mac_address"] is not None:
+        update_data["mac_address"] = normalize_mac_address(update_data["mac_address"])
+
+    for field_name, value in update_data.items():
+        setattr(device, field_name, value)
+
+    await commit_or_409(
+        session,
+        detail="Device update violates MAC or grid position constraints",
+    )
+    await session.refresh(device)
+
+    return DeviceRead.model_validate(device)
+
+
+@router.post(
+    "/internal/devices/{device_id}/pin",
+    response_model=DeviceRead,
+)
+async def pin_device(
+    device_id: int,
+    payload: DevicePinRequest,
+    session: AsyncSession = Depends(get_session),
+) -> DeviceRead:
+    await ensure_classroom_exists(session, payload.classroom_id)
+
+    device = await session.get(Device, device_id)
+
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    device.classroom_id = payload.classroom_id
+    device.inventory_name = payload.inventory_name
+    device.hostname = payload.hostname
+    device.static_ip = payload.static_ip
+    device.row_index = payload.row_index
+    device.column_index = payload.column_index
+    device.is_pinned = True
+
+    await commit_or_409(
+        session,
+        detail="Pinning device violates grid position constraints",
+    )
+    await session.refresh(device)
+
+    return DeviceRead.model_validate(device)
+
+
+@router.post(
+    "/internal/devices/{device_id}/unpin",
+    response_model=DeviceRead,
+)
+async def unpin_device(
+    device_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> DeviceRead:
+    device = await session.get(Device, device_id)
+
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    if device.wan_allowed is False:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot unpin device while WAN is blocked. Allow WAN first.",
+        )
+
+    device.is_pinned = False
+    device.row_index = None
+    device.column_index = None
+    device.static_ip = None
+    device.sync_status = "applied"
+    device.sync_error = None
+
+    await commit_or_409(
+        session,
+        detail="Unpin device failed",
+    )
+    await session.refresh(device)
+
+    return DeviceRead.model_validate(device)

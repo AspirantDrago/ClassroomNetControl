@@ -12,6 +12,7 @@ from cmnc_api_gateway.schemas import (
     DashboardDevice,
     DynamicDevice,
     HealthResponse,
+    PinObservedDeviceRequest,
 )
 from cmnc_api_gateway.settings import settings
 
@@ -66,6 +67,25 @@ def ip_in_subnet(
         return ipaddress.ip_address(ip) in ipaddress.ip_network(subnet_cidr, strict=False)
     except ValueError:
         return False
+
+
+def normalize_mac_address(mac_address: str) -> str:
+    return mac_address.strip().upper()
+
+
+def ensure_ip_belongs_to_classroom(
+    ip: str | None,
+    subnet_cidr: str,
+    field_name: str,
+) -> None:
+    if not ip:
+        return
+
+    if not ip_in_subnet(ip, subnet_cidr):
+        raise HTTPException(
+            status_code=409,
+            detail=f"{field_name} does not belong to classroom subnet",
+        )
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -219,6 +239,251 @@ async def allow_device_wan(
             status_code=exc.response.status_code,
             detail=exc.response.text,
         ) from exc
+
+
+def require_admin(user: AuthUserResponse) -> None:
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin role required")
+
+
+@app.post("/api/admin/classrooms")
+async def admin_create_classroom(
+    payload: dict[str, Any],
+    authorization: str | None = Header(default=None),
+) -> Any:
+    user = await get_current_user(authorization)
+    require_admin(user)
+
+    try:
+        return await classroom_client.post_json(
+            "/internal/classrooms",
+            json=payload,
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+
+
+@app.patch("/api/admin/classrooms/{classroom_id}")
+async def admin_update_classroom(
+    classroom_id: int,
+    payload: dict[str, Any],
+    authorization: str | None = Header(default=None),
+) -> Any:
+    user = await get_current_user(authorization)
+    require_admin(user)
+
+    try:
+        return await classroom_client.patch_json(
+            f"/internal/classrooms/{classroom_id}",
+            json=payload,
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+
+
+@app.post("/api/admin/devices")
+async def admin_create_device(
+    payload: dict[str, Any],
+    authorization: str | None = Header(default=None),
+) -> Any:
+    user = await get_current_user(authorization)
+    require_admin(user)
+
+    if payload.get("is_pinned") is True:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Pinned devices must be created through "
+                "/api/admin/classrooms/{classroom_id}/devices/pin-observed "
+                "so MikroTik static DHCP lease can be verified."
+            ),
+        )
+
+    try:
+        return await classroom_client.post_json(
+            "/internal/devices",
+            json=payload,
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+
+
+@app.patch("/api/admin/devices/{device_id}")
+async def admin_update_device(
+    device_id: int,
+    payload: dict[str, Any],
+    authorization: str | None = Header(default=None),
+) -> Any:
+    user = await get_current_user(authorization)
+    require_admin(user)
+
+    try:
+        return await classroom_client.patch_json(
+            f"/internal/devices/{device_id}",
+            json=payload,
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+
+
+@app.post("/api/admin/devices/{device_id}/pin")
+async def admin_pin_device(
+    device_id: int,
+    payload: dict[str, Any],
+    authorization: str | None = Header(default=None),
+) -> Any:
+    user = await get_current_user(authorization)
+    require_admin(user)
+
+    try:
+        return await classroom_client.post_json(
+            f"/internal/devices/{device_id}/pin",
+            json=payload,
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+
+
+@app.post("/api/admin/devices/{device_id}/unpin")
+async def admin_unpin_device(
+    device_id: int,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    user = await get_current_user(authorization)
+    require_admin(user)
+
+    try:
+        return await classroom_client.post_json(
+            f"/internal/devices/{device_id}/unpin",
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+
+
+@app.post("/api/admin/classrooms/{classroom_id}/devices/pin-observed")
+async def admin_pin_observed_device(
+    classroom_id: int,
+    payload: PinObservedDeviceRequest,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    user = await get_current_user(authorization)
+    require_admin(user)
+
+    mac_address = normalize_mac_address(payload.mac_address)
+
+    try:
+        layout = await classroom_client.get_json(
+            f"/internal/classrooms/{classroom_id}/layout"
+        )
+        observed = await inventory_client.get_json(
+            f"/internal/routers/{settings.default_router_id}/observed-devices"
+        )
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Classroom not found") from exc
+
+        raise HTTPException(status_code=502, detail=exc.response.text) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    classroom = layout["classroom"]
+    observed_devices = observed["devices"]
+
+    observed_device = None
+
+    for item in observed_devices:
+        if normalize_mac_address(item["mac_address"]) == mac_address:
+            observed_device = item
+            break
+
+    if observed_device is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Observed device with this MAC was not found in inventory",
+        )
+
+    ensure_observed_device_has_static_lease(observed_device)
+
+    static_ip = observed_device["active_ip"]
+
+    ensure_ip_belongs_to_classroom(
+        ip=static_ip,
+        subnet_cidr=classroom["subnet_cidr"],
+        field_name="static_ip",
+    )
+
+    inventory_name = (
+        payload.inventory_name
+        or observed_device.get("hostname")
+        or f"Device {mac_address}"
+    )
+
+    hostname = payload.hostname
+
+    if hostname is None:
+        hostname = observed_device.get("hostname")
+
+    create_payload = {
+        "classroom_id": classroom_id,
+        "mac_address": mac_address,
+        "inventory_name": inventory_name,
+        "hostname": hostname,
+        "static_ip": static_ip,
+        "row_index": payload.row_index,
+        "column_index": payload.column_index,
+        "is_pinned": True,
+        "wan_allowed": True,
+    }
+
+    try:
+        return await classroom_client.post_json(
+            "/internal/devices",
+            json=create_payload,
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+
+
+def ensure_observed_device_has_static_lease(
+    observed_device: dict[str, Any],
+) -> None:
+    dynamic = observed_device.get("dynamic")
+
+    if dynamic is not False:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Device cannot be pinned because MikroTik DHCP lease is not static. "
+                "Create a static DHCP lease on MikroTik first."
+            ),
+        )
+
+    if not observed_device.get("active_ip"):
+        raise HTTPException(
+            status_code=409,
+            detail="Device cannot be pinned because static IP was not received from MikroTik.",
+        )
 
 
 def run() -> None:

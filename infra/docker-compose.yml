@@ -74,7 +74,7 @@ services:
     environment:
       CMNC_CLASSROOM_HOST: 0.0.0.0
       CMNC_CLASSROOM_PORT: 8002
-      CMNC_CLASSROOM_DATABASE_URL: postgresql+asyncpg://cmnc:cmnc_password@cmnc-postgres:5432/cmnc
+      CMNC_CLASSROOM_DATABASE_URL: postgresql+asyncpg://cmnc:cmnc_password@cmnc-postgres:5432/cmnc_classroom
       CMNC_CLASSROOM_RABBITMQ_URL: amqp://cmnc:cmnc_password@cmnc-rabbitmq:5672/cmnc
       CMNC_CLASSROOM_POLICY_SYNC_COMPLETED_QUEUE: cmnc.classroom.policy_sync_completed
       CMNC_CLASSROOM_POLICY_SYNC_FAILED_QUEUE: cmnc.classroom.policy_sync_failed
