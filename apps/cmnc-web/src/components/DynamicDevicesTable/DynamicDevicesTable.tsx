@@ -79,7 +79,7 @@ function formatDate(value: string | null): string {
         return "нет данных";
     }
 
-    return new Date(value).toLocaleString();
+    return new Date(value).toLocaleString().replace(',', '');
 }
 
 function getLeaseText(device: DynamicDevice): string {

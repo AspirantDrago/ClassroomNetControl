@@ -69,7 +69,7 @@ export function getClassrooms(): Promise<Classroom[]> {
     return request<Classroom[]>("/api/classrooms");
 }
 
-export function getClassroomDashboard(classroomId: number): Promise<ClassroomDashboard> {
+export function getClassroomDashboard(classroomId: number | null): Promise<ClassroomDashboard> {
     return request<ClassroomDashboard>(`/api/classrooms/${classroomId}/dashboard`);
 }
 
