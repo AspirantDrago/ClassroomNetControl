@@ -4,6 +4,7 @@ from typing import Any
 import httpx
 import uvicorn
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from cmnc_api_gateway.clients import ServiceClient
 from cmnc_api_gateway.schemas import (
@@ -17,6 +18,16 @@ from cmnc_api_gateway.schemas import (
 from cmnc_api_gateway.settings import settings
 
 app = FastAPI(title=settings.service_name)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 auth_client = ServiceClient(settings.auth_service_url)
 classroom_client = ServiceClient(settings.classroom_service_url)

@@ -1,0 +1,250 @@
+:root {
+    font-family:
+            Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: #e5e7eb;
+    background: #0f172a;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-width: 320px;
+    min-height: 100vh;
+    background: #0f172a;
+}
+
+button {
+    font: inherit;
+}
+
+.page {
+    min-height: 100vh;
+}
+
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+    padding: 24px 32px;
+    background: #111827;
+    border-bottom: 1px solid #1f2937;
+}
+
+.topbar h1 {
+    margin: 0;
+    font-size: 24px;
+}
+
+.topbar p {
+    margin: 6px 0 0;
+    color: #9ca3af;
+}
+
+.content {
+    padding: 24px 32px 40px;
+}
+
+.classroom-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 24px;
+}
+
+.tab {
+    padding: 10px 14px;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    background: #111827;
+    color: #e5e7eb;
+    cursor: pointer;
+}
+
+.active-tab {
+    background: #1d4ed8;
+    border-color: #2563eb;
+}
+
+.classroom-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 18px;
+}
+
+.classroom-header h2 {
+    margin: 0 0 4px;
+}
+
+.muted {
+    color: #9ca3af;
+}
+
+.device-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 14px;
+}
+
+.device-card {
+    border: 1px solid #334155;
+    border-radius: 14px;
+    padding: 16px;
+    background: #111827;
+}
+
+.device-online {
+    border-color: #166534;
+}
+
+.device-offline {
+    border-color: #7f1d1d;
+}
+
+.device-card-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 14px;
+}
+
+.device-title {
+    font-weight: 700;
+    font-size: 18px;
+}
+
+.device-subtitle {
+    color: #9ca3af;
+    font-size: 13px;
+}
+
+.status-pill {
+    height: 28px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.status-online {
+    background: #14532d;
+    color: #bbf7d0;
+}
+
+.status-offline {
+    background: #7f7e2d;
+    color: #fecaca;
+}
+
+.status-pending {
+    opacity: 0.4;
+}
+
+.device-info {
+    display: grid;
+    color: #d1d5db;
+    font-size: 14px;
+}
+
+.device-info span {
+    color: #9ca3af;
+}
+
+.device-actions {
+    margin-top: 16px;
+}
+
+.device-actions > button {
+    width: 100%;
+}
+
+.primary-button,
+.secondary-button,
+.danger-button {
+    border: 0;
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: white;
+    cursor: pointer;
+}
+
+.primary-button {
+    background: #2563eb;
+}
+
+.secondary-button {
+    background: #374151;
+}
+
+.danger-button {
+    background: #dc2626;
+}
+
+.primary-button:disabled,
+.secondary-button:disabled,
+.danger-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.error-text {
+    margin-top: 10px;
+    color: #fecaca;
+    font-size: 13px;
+}
+
+.error-box {
+    padding: 14px;
+    margin-bottom: 20px;
+    border: 1px solid #7f1d1d;
+    border-radius: 12px;
+    background: #450a0a;
+    color: #fecaca;
+    overflow: auto;
+}
+
+.loading {
+    padding: 16px;
+    color: #9ca3af;
+}
+
+.dynamic-section {
+    margin-top: 36px;
+}
+
+.dynamic-section h3 {
+    margin: 0 0 12px;
+}
+
+.dynamic-table-wrapper {
+    overflow-x: auto;
+    border: 1px solid #334155;
+    border-radius: 12px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #111827;
+}
+
+th,
+td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #1f2937;
+    text-align: left;
+    white-space: nowrap;
+}
+
+th {
+    color: #9ca3af;
+    font-weight: 600;
+}
+
+tr:last-child td {
+    border-bottom: 0;
+}
