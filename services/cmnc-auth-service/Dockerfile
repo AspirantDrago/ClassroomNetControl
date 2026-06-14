@@ -19,4 +19,4 @@ RUN uv sync --package cmnc-auth-service --no-dev
 
 EXPOSE 8001
 
-CMD ["uvicorn", "cmnc_auth_service.main:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["sh", "-c", "alembic -c services/cmnc-auth-service/alembic.ini upgrade head && uvicorn cmnc_auth_service.main:app --host 0.0.0.0 --port 8001"]

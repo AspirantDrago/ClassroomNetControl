@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_USER: ${CMNC_POSTGRES_USER:-cmnc}
       POSTGRES_PASSWORD: ${CMNC_POSTGRES_PASSWORD:-cmnc_password}
-      POSTGRES_DB: ${CMNC_POSTGRES_DB:-cmnc}
+      POSTGRES_DB: postgres
     ports:
       - "127.0.0.1:${CMNC_POSTGRES_PORT:-5432}:5432"
     volumes:
@@ -15,7 +15,7 @@ services:
     networks:
       - cmnc-network
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -50,17 +50,20 @@ services:
     environment:
       CMNC_AUTH_HOST: 0.0.0.0
       CMNC_AUTH_PORT: 8001
-      CMNC_AUTH_STUB_USER_ID: 1
-      CMNC_AUTH_STUB_LOGIN: admin
-      CMNC_AUTH_STUB_ROLE: admin
-#    ports:
-#      - "${CMNC_AUTH_PORT:-8001}:8001"
+      CMNC_AUTH_DATABASE_URL: postgresql+asyncpg://${CMNC_POSTGRES_USER:-cmnc}:${CMNC_POSTGRES_PASSWORD:-cmnc_password}@cmnc-postgres:5432/${CMNC_AUTH_DB:-cmnc_auth}
+      CMNC_AUTH_JWT_SECRET: ${CMNC_AUTH_JWT_SECRET}
+      CMNC_AUTH_BOOTSTRAP_SUPERADMIN_USERNAME: ${CMNC_AUTH_BOOTSTRAP_SUPERADMIN_USERNAME:-superadmin}
+      CMNC_AUTH_BOOTSTRAP_SUPERADMIN_PASSWORD: ${CMNC_AUTH_BOOTSTRAP_SUPERADMIN_PASSWORD}
+      CMNC_AUTH_BOOTSTRAP_SUPERADMIN_DISPLAY_NAME: ${CMNC_AUTH_BOOTSTRAP_SUPERADMIN_DISPLAY_NAME:-Super Administrator}
     expose:
       - "8001"
+    depends_on:
+      cmnc-postgres:
+        condition: service_healthy
     networks:
       - cmnc-network
     healthcheck:
-      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health').read()" ]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health').read()"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -74,15 +77,13 @@ services:
     environment:
       CMNC_CLASSROOM_HOST: 0.0.0.0
       CMNC_CLASSROOM_PORT: 8002
-      CMNC_CLASSROOM_DATABASE_URL: postgresql+asyncpg://cmnc:cmnc_password@cmnc-postgres:5432/cmnc_classroom
-      CMNC_CLASSROOM_RABBITMQ_URL: amqp://cmnc:cmnc_password@cmnc-rabbitmq:5672/cmnc
+      CMNC_CLASSROOM_DATABASE_URL: postgresql+asyncpg://${CMNC_POSTGRES_USER:-cmnc}:${CMNC_POSTGRES_PASSWORD:-cmnc_password}@cmnc-postgres:5432/${CMNC_CLASSROOM_DB:-cmnc_classroom}
+      CMNC_CLASSROOM_RABBITMQ_URL: amqp://${CMNC_RABBITMQ_USER:-cmnc}:${CMNC_RABBITMQ_PASSWORD:-cmnc_password}@cmnc-rabbitmq:5672/${CMNC_RABBITMQ_VHOST:-cmnc}
       CMNC_CLASSROOM_POLICY_SYNC_COMPLETED_QUEUE: cmnc.classroom.policy_sync_completed
       CMNC_CLASSROOM_POLICY_SYNC_FAILED_QUEUE: cmnc.classroom.policy_sync_failed
       CMNC_CLASSROOM_SEED_DEMO_DATA: "false"
       CMNC_CLASSROOM_DEFAULT_ROUTER_ID: 1
-      CMNC_CLASSROOM_MANAGED_ADDRESS_LIST_NAME: cmnc_wan_blocked
-#    ports:
-#      - "${CMNC_CLASSROOM_PORT:-8002}:8002"
+      CMNC_CLASSROOM_MANAGED_ADDRESS_LIST_NAME: ${CMNC_POLICY_SYNC_ADDRESS_LIST_NAME:-cmnc_wan_blocked}
     expose:
       - "8002"
     depends_on:
@@ -93,7 +94,7 @@ services:
     networks:
       - cmnc-network
     healthcheck:
-      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health').read()" ]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health').read()"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -105,12 +106,12 @@ services:
     container_name: cmnc-policy-sync-service
     restart: unless-stopped
     environment:
-      CMNC_POLICY_SYNC_RABBITMQ_URL: amqp://cmnc:cmnc_password@cmnc-rabbitmq:5672/cmnc
+      CMNC_POLICY_SYNC_RABBITMQ_URL: amqp://${CMNC_RABBITMQ_USER:-cmnc}:${CMNC_RABBITMQ_PASSWORD:-cmnc_password}@cmnc-rabbitmq:5672/${CMNC_RABBITMQ_VHOST:-cmnc}
       CMNC_POLICY_SYNC_CLASSROOM_SERVICE_URL: http://cmnc-classroom-service:8002
       CMNC_POLICY_SYNC_WAN_POLICY_CHANGED_QUEUE: cmnc.policy_sync.wan_policy_changed
       CMNC_POLICY_SYNC_DEFAULT_ROUTER_ID: 1
       CMNC_POLICY_SYNC_KILL_CONNECTIONS_ON_BLOCK: "true"
-
+      CMNC_POLICY_SYNC_ADDRESS_LIST_NAME: ${CMNC_POLICY_SYNC_ADDRESS_LIST_NAME:-cmnc_wan_blocked}
       CMNC_MIKROTIK_BASE_URL: ${CMNC_MIKROTIK_BASE_URL}
       CMNC_MIKROTIK_USERNAME: ${CMNC_MIKROTIK_USERNAME}
       CMNC_MIKROTIK_PASSWORD: ${CMNC_MIKROTIK_PASSWORD}
@@ -132,11 +133,9 @@ services:
     environment:
       CMNC_INVENTORY_HOST: 0.0.0.0
       CMNC_INVENTORY_PORT: 8003
-      CMNC_INVENTORY_DATABASE_URL: postgresql+asyncpg://cmnc:cmnc_password@cmnc-postgres:5432/cmnc_inventory
-      CMNC_INVENTORY_RABBITMQ_URL: amqp://cmnc:cmnc_password@cmnc-rabbitmq:5672/cmnc
+      CMNC_INVENTORY_DATABASE_URL: postgresql+asyncpg://${CMNC_POSTGRES_USER:-cmnc}:${CMNC_POSTGRES_PASSWORD:-cmnc_password}@cmnc-postgres:5432/${CMNC_INVENTORY_DB:-cmnc_inventory}
+      CMNC_INVENTORY_RABBITMQ_URL: amqp://${CMNC_RABBITMQ_USER:-cmnc}:${CMNC_RABBITMQ_PASSWORD:-cmnc_password}@cmnc-rabbitmq:5672/${CMNC_RABBITMQ_VHOST:-cmnc}
       CMNC_INVENTORY_DHCP_LEASES_OBSERVED_QUEUE: cmnc.inventory.dhcp_leases_observed
-#    ports:
-#      - "${CMNC_INVENTORY_PORT:-8003}:8003"
     expose:
       - "8003"
     depends_on:
@@ -147,7 +146,7 @@ services:
     networks:
       - cmnc-network
     healthcheck:
-      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8003/health').read()" ]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8003/health').read()"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -159,7 +158,7 @@ services:
     container_name: cmnc-mikrotik-poller-service
     restart: unless-stopped
     environment:
-      CMNC_MIKROTIK_POLLER_RABBITMQ_URL: amqp://cmnc:cmnc_password@cmnc-rabbitmq:5672/cmnc
+      CMNC_MIKROTIK_POLLER_RABBITMQ_URL: amqp://${CMNC_RABBITMQ_USER:-cmnc}:${CMNC_RABBITMQ_PASSWORD:-cmnc_password}@cmnc-rabbitmq:5672/${CMNC_RABBITMQ_VHOST:-cmnc}
       CMNC_MIKROTIK_POLLER_ROUTER_ID: 1
       CMNC_MIKROTIK_POLLER_MIKROTIK_BASE_URL: ${CMNC_MIKROTIK_BASE_URL}
       CMNC_MIKROTIK_POLLER_MIKROTIK_USERNAME: ${CMNC_MIKROTIK_USERNAME}
@@ -199,10 +198,26 @@ services:
     networks:
       - cmnc-network
     healthcheck:
-      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()" ]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()"]
       interval: 30s
       timeout: 5s
       retries: 5
+
+  cmnc-web:
+    build:
+      context: ..
+      dockerfile: apps/cmnc-web/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${CMNC_WEB_API_BASE_URL:-}
+    container_name: cmnc-web
+    restart: unless-stopped
+    ports:
+      - "${CMNC_WEB_PORT:-8080}:80"
+    depends_on:
+      cmnc-api-gateway:
+        condition: service_healthy
+    networks:
+      - cmnc-network
 
 volumes:
   cmnc_postgres_data:

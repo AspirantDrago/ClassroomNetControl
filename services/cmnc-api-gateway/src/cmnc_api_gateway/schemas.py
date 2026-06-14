@@ -9,13 +9,6 @@ class HealthResponse(BaseModel):
     status: str
 
 
-class AuthUserResponse(BaseModel):
-    user_id: int
-    login: str
-    role: str
-    allowed_classroom_ids: list[int]
-
-
 class DashboardDevice(BaseModel):
     id: int
     classroom_id: int
@@ -61,3 +54,27 @@ class PinObservedDeviceRequest(BaseModel):
     column_index: int | None = None
     hostname: str | None = None
     wan_protected: bool = False
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str
+
+
+class PrincipalResponse(BaseModel):
+    principal_type: str
+    id: int
+    role: str
+    display_name: str
+    classroom_ids: list[int]
+    permissions: list[str]
+
+
+class ResolvePrincipalResponse(BaseModel):
+    authenticated: bool
+    principal: PrincipalResponse | None = None

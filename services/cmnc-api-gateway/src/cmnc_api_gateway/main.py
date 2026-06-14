@@ -3,21 +3,31 @@ from typing import Any
 
 import httpx
 import uvicorn
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from cmnc_api_gateway.clients import ServiceClient
 from cmnc_api_gateway.schemas import (
-    AuthUserResponse,
     ClassroomDashboardResponse,
     DashboardDevice,
     DynamicDevice,
     HealthResponse,
-    PinObservedDeviceRequest,
+    LoginRequest,
+    PrincipalResponse,
+    ResolvePrincipalResponse,
+    TokenResponse,
 )
 from cmnc_api_gateway.settings import settings
+from cmnc_contracts.permissions import (
+    PERMISSION_CLASSROOMS_MANAGE,
+    PERMISSION_CLASSROOMS_READ_ALL,
+    PERMISSION_DEVICES_MANAGE,
+    PERMISSION_WAN_CONTROL_ALL,
+    PERMISSION_WAN_CONTROL_ASSIGNED,
+)
 
 app = FastAPI(title=settings.service_name)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -31,37 +41,92 @@ classroom_client = ServiceClient(settings.classroom_service_url)
 inventory_client = ServiceClient(settings.inventory_service_url)
 
 
-async def get_current_user(
-    authorization: str | None = None,
-) -> AuthUserResponse:
-    token = None
+def extract_bearer_token(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
 
-    if authorization:
-        token = authorization.removeprefix("Bearer ").strip()
+    prefix = "Bearer "
+
+    if not authorization.startswith(prefix):
+        return None
+
+    token = authorization.removeprefix(prefix).strip()
+    return token or None
+
+
+def get_client_ip(request: Request) -> str | None:
+    forwarded_for = request.headers.get("x-forwarded-for")
+
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+
+    if request.client is None:
+        return None
+
+    return request.client.host
+
+
+async def get_current_principal(
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> PrincipalResponse:
+    bearer_token = extract_bearer_token(authorization)
+    client_ip = get_client_ip(request)
 
     try:
         data = await auth_client.post_json(
-            "/internal/auth/validate-token",
-            json={"token": token},
+            "/internal/auth/resolve-principal",
+            json={
+                "bearer_token": bearer_token,
+                "client_ip": client_ip,
+            },
         )
     except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"Auth service unavailable: {exc}") from exc
+        raise HTTPException(
+            status_code=502,
+            detail=f"Auth service unavailable: {exc}",
+        ) from exc
 
-    if not isinstance(data, dict) or not data.get("valid"):
-        raise HTTPException(status_code=401, detail="Invalid token")
+    response = ResolvePrincipalResponse.model_validate(data)
 
-    return AuthUserResponse.model_validate(data["user"])
+    if not response.authenticated or response.principal is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    return response.principal
+
+
+def has_permission(principal: PrincipalResponse, permission: str) -> bool:
+    return permission in principal.permissions
+
+
+def require_permission(principal: PrincipalResponse, permission: str) -> None:
+    if not has_permission(principal, permission):
+        raise HTTPException(status_code=403, detail="Permission denied")
+
+
+def can_access_all_classrooms(principal: PrincipalResponse) -> bool:
+    return has_permission(principal, PERMISSION_CLASSROOMS_READ_ALL)
 
 
 def ensure_classroom_access(
-    user: AuthUserResponse,
+    principal: PrincipalResponse,
     classroom_id: int,
 ) -> None:
-    if user.role == "admin":
+    if can_access_all_classrooms(principal):
         return
 
-    if classroom_id not in user.allowed_classroom_ids:
+    if classroom_id not in principal.classroom_ids:
         raise HTTPException(status_code=403, detail="Classroom access denied")
+
+
+def require_wan_control_permission(principal: PrincipalResponse) -> None:
+    if has_permission(principal, PERMISSION_WAN_CONTROL_ALL):
+        return
+
+    if has_permission(principal, PERMISSION_WAN_CONTROL_ASSIGNED):
+        return
+
+    raise HTTPException(status_code=403, detail="WAN control is not allowed")
 
 
 def ip_in_subnet(
@@ -96,6 +161,63 @@ def ensure_ip_belongs_to_classroom(
         )
 
 
+def ensure_observed_device_has_static_lease(
+    observed_device: dict[str, Any],
+) -> None:
+    dynamic = observed_device.get("dynamic")
+
+    if dynamic is not False:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Device cannot be pinned because MikroTik DHCP lease is not static. "
+                "Create a static DHCP lease on MikroTik first."
+            ),
+        )
+
+    if not observed_device.get("active_ip"):
+        raise HTTPException(
+            status_code=409,
+            detail="Device cannot be pinned because static IP was not received from MikroTik.",
+        )
+
+
+async def get_device_classroom_id(device_id: int) -> int | None:
+    try:
+        data = await classroom_client.get_json(f"/internal/devices/{device_id}")
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            return None
+        raise
+
+    if not isinstance(data, dict):
+        return None
+
+    classroom_id = data.get("classroom_id")
+
+    if not isinstance(classroom_id, int):
+        return None
+
+    return classroom_id
+
+
+async def ensure_wan_device_access(
+    principal: PrincipalResponse,
+    device_id: int,
+) -> None:
+    require_wan_control_permission(principal)
+
+    if has_permission(principal, PERMISSION_WAN_CONTROL_ALL):
+        return
+
+    classroom_id = await get_device_classroom_id(device_id)
+
+    if classroom_id is None:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    ensure_classroom_access(principal, classroom_id)
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     return HealthResponse(
@@ -104,31 +226,54 @@ async def health() -> HealthResponse:
     )
 
 
-@app.get("/api/me", response_model=AuthUserResponse)
+@app.post("/api/auth/login", response_model=TokenResponse)
+async def login(payload: LoginRequest) -> TokenResponse:
+    try:
+        data = await auth_client.post_json(
+            "/internal/auth/login",
+            json=payload.model_dump(),
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Auth service unavailable: {exc}",
+        ) from exc
+
+    return TokenResponse.model_validate(data)
+
+
+@app.get("/api/me", response_model=PrincipalResponse)
 async def me(
+    request: Request,
     authorization: str | None = Header(default=None),
-) -> AuthUserResponse:
-    return await get_current_user(authorization)
+) -> PrincipalResponse:
+    return await get_current_principal(request, authorization)
 
 
 @app.get("/api/classrooms")
 async def get_classrooms(
+    request: Request,
     authorization: str | None = Header(default=None),
 ) -> Any:
-    user = await get_current_user(authorization)
+    principal = await get_current_principal(request, authorization)
 
     try:
         classrooms = await classroom_client.get_json("/internal/classrooms")
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"Classroom service unavailable: {exc}") from exc
 
-    if user.role == "admin":
+    if can_access_all_classrooms(principal):
         return classrooms
 
     return [
         classroom
         for classroom in classrooms
-        if classroom["id"] in user.allowed_classroom_ids
+        if classroom["id"] in principal.classroom_ids
     ]
 
 
@@ -138,10 +283,11 @@ async def get_classrooms(
 )
 async def get_classroom_dashboard(
     classroom_id: int,
+    request: Request,
     authorization: str | None = Header(default=None),
 ) -> ClassroomDashboardResponse:
-    user = await get_current_user(authorization)
-    ensure_classroom_access(user, classroom_id)
+    principal = await get_current_principal(request, authorization)
+    ensure_classroom_access(principal, classroom_id)
 
     try:
         layout = await classroom_client.get_json(
@@ -210,12 +356,11 @@ async def get_classroom_dashboard(
 @app.post("/api/devices/{device_id}/wan/block")
 async def block_device_wan(
     device_id: int,
+    request: Request,
     authorization: str | None = Header(default=None),
 ) -> Any:
-    user = await get_current_user(authorization)
-
-    if user.role not in {"admin", "teacher"}:
-        raise HTTPException(status_code=403, detail="WAN control is not allowed")
+    principal = await get_current_principal(request, authorization)
+    await ensure_wan_device_access(principal, device_id)
 
     try:
         return await classroom_client.post_json(
@@ -231,12 +376,11 @@ async def block_device_wan(
 @app.post("/api/devices/{device_id}/wan/allow")
 async def allow_device_wan(
     device_id: int,
+    request: Request,
     authorization: str | None = Header(default=None),
 ) -> Any:
-    user = await get_current_user(authorization)
-
-    if user.role not in {"admin", "teacher"}:
-        raise HTTPException(status_code=403, detail="WAN control is not allowed")
+    principal = await get_current_principal(request, authorization)
+    await ensure_wan_device_access(principal, device_id)
 
     try:
         return await classroom_client.post_json(
@@ -249,18 +393,14 @@ async def allow_device_wan(
         ) from exc
 
 
-def require_admin(user: AuthUserResponse) -> None:
-    if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Admin role required")
-
-
 @app.post("/api/admin/classrooms")
 async def admin_create_classroom(
     payload: dict[str, Any],
+    request: Request,
     authorization: str | None = Header(default=None),
 ) -> Any:
-    user = await get_current_user(authorization)
-    require_admin(user)
+    principal = await get_current_principal(request, authorization)
+    require_permission(principal, PERMISSION_CLASSROOMS_MANAGE)
 
     try:
         return await classroom_client.post_json(
@@ -278,10 +418,11 @@ async def admin_create_classroom(
 async def admin_update_classroom(
     classroom_id: int,
     payload: dict[str, Any],
+    request: Request,
     authorization: str | None = Header(default=None),
 ) -> Any:
-    user = await get_current_user(authorization)
-    require_admin(user)
+    principal = await get_current_principal(request, authorization)
+    require_permission(principal, PERMISSION_CLASSROOMS_MANAGE)
 
     try:
         return await classroom_client.patch_json(
@@ -298,10 +439,11 @@ async def admin_update_classroom(
 @app.post("/api/admin/devices")
 async def admin_create_device(
     payload: dict[str, Any],
+    request: Request,
     authorization: str | None = Header(default=None),
 ) -> Any:
-    user = await get_current_user(authorization)
-    require_admin(user)
+    principal = await get_current_principal(request, authorization)
+    require_permission(principal, PERMISSION_DEVICES_MANAGE)
 
     if payload.get("is_pinned") is True:
         raise HTTPException(
@@ -329,10 +471,11 @@ async def admin_create_device(
 async def admin_update_device(
     device_id: int,
     payload: dict[str, Any],
+    request: Request,
     authorization: str | None = Header(default=None),
 ) -> Any:
-    user = await get_current_user(authorization)
-    require_admin(user)
+    principal = await get_current_principal(request, authorization)
+    require_permission(principal, PERMISSION_DEVICES_MANAGE)
 
     allowed_payload = {
         key: value
@@ -356,10 +499,11 @@ async def admin_update_device(
 async def admin_pin_device(
     device_id: int,
     payload: dict[str, Any],
+    request: Request,
     authorization: str | None = Header(default=None),
 ) -> Any:
-    user = await get_current_user(authorization)
-    require_admin(user)
+    principal = await get_current_principal(request, authorization)
+    require_permission(principal, PERMISSION_DEVICES_MANAGE)
 
     try:
         return await classroom_client.post_json(
@@ -376,10 +520,11 @@ async def admin_pin_device(
 @app.post("/api/admin/devices/{device_id}/unpin")
 async def admin_unpin_device(
     device_id: int,
+    request: Request,
     authorization: str | None = Header(default=None),
 ) -> Any:
-    user = await get_current_user(authorization)
-    require_admin(user)
+    principal = await get_current_principal(request, authorization)
+    require_permission(principal, PERMISSION_DEVICES_MANAGE)
 
     try:
         return await classroom_client.post_json(
@@ -395,11 +540,12 @@ async def admin_unpin_device(
 @app.post("/api/admin/classrooms/{classroom_id}/devices/pin-observed")
 async def admin_pin_observed_device(
     classroom_id: int,
-    payload: PinObservedDeviceRequest,
+    payload: Any,
+    request: Request,
     authorization: str | None = Header(default=None),
 ) -> Any:
-    user = await get_current_user(authorization)
-    require_admin(user)
+    principal = await get_current_principal(request, authorization)
+    require_permission(principal, PERMISSION_DEVICES_MANAGE)
 
     mac_address = normalize_mac_address(payload.mac_address)
 
@@ -450,10 +596,7 @@ async def admin_pin_observed_device(
         or f"Device {mac_address}"
     )
 
-    hostname = payload.hostname
-
-    if hostname is None:
-        hostname = observed_device.get("hostname")
+    hostname = observed_device.get("hostname")
 
     create_payload = {
         "classroom_id": classroom_id,
@@ -478,27 +621,6 @@ async def admin_pin_observed_device(
             status_code=exc.response.status_code,
             detail=exc.response.text,
         ) from exc
-
-
-def ensure_observed_device_has_static_lease(
-    observed_device: dict[str, Any],
-) -> None:
-    dynamic = observed_device.get("dynamic")
-
-    if dynamic is not False:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "Device cannot be pinned because MikroTik DHCP lease is not static. "
-                "Create a static DHCP lease on MikroTik first."
-            ),
-        )
-
-    if not observed_device.get("active_ip"):
-        raise HTTPException(
-            status_code=409,
-            detail="Device cannot be pinned because static IP was not received from MikroTik.",
-        )
 
 
 def run() -> None:

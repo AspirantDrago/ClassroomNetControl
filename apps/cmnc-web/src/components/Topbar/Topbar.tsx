@@ -4,16 +4,24 @@ type TopbarProps = {
     onReload: () => void;
     reloadDisabled: boolean;
     onCreateClassroom: () => void;
+    principalName: string;
+    onLogout: () => void;
 };
 
 export function Topbar(props: TopbarProps) {
-    const {onReload, reloadDisabled, onCreateClassroom} = props;
+    const {
+        onReload,
+        reloadDisabled,
+        onCreateClassroom,
+        principalName,
+        onLogout,
+    } = props;
 
     return (
         <header className="topbar">
             <div className="topbar__main">
                 <div className="topbar__logo">
-                    <img src="/favicon.svg" alt="Описание картинки"/>
+                    <img src="/favicon.svg" alt="CMNC" />
                 </div>
                 <div>
                     <h1>Classroom MikroTik Net Control</h1>
@@ -22,6 +30,8 @@ export function Topbar(props: TopbarProps) {
             </div>
 
             <div className="topbar-actions">
+                <span className="topbar-user">{principalName}</span>
+
                 <button
                     className="secondary-button"
                     onClick={onCreateClassroom}
@@ -35,6 +45,13 @@ export function Topbar(props: TopbarProps) {
                     disabled={reloadDisabled}
                 >
                     Обновить
+                </button>
+
+                <button
+                    className="secondary-button"
+                    onClick={onLogout}
+                >
+                    Выйти
                 </button>
             </div>
         </header>

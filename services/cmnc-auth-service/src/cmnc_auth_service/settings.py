@@ -7,9 +7,15 @@ class Settings(BaseSettings):
     port: int = 8001
     reload: bool = False
 
-    stub_user_id: int = 1
-    stub_login: str = "admin"
-    stub_role: str = "admin"
+    database_url: str
+
+    jwt_secret: str
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 720
+
+    bootstrap_superadmin_username: str = "superadmin"
+    bootstrap_superadmin_password: str | None = None
+    bootstrap_superadmin_display_name: str = "Super Administrator"
 
     model_config = SettingsConfigDict(
         env_prefix="CMNC_AUTH_",

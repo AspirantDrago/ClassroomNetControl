@@ -2,13 +2,18 @@ import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
     allowDeviceWan,
     blockDeviceWan,
+    clearAccessToken,
+    extractErrorDetail,
     type Classroom,
     type ClassroomDashboard,
+    type CurrentPrincipal,
     type DashboardDevice,
     type DynamicDevice,
     createClassroom,
     getClassroomDashboard,
     getClassrooms,
+    getCurrentPrincipal,
+    login,
     pinObservedDevice,
     unpinDevice,
     updateClassroom,
@@ -35,12 +40,19 @@ import {
 import { parseOptionalInteger, parseRequiredString } from "./utils/forms";
 
 export function App() {
+    const [principal, setPrincipal] = useState<CurrentPrincipal | null>(null);
+    const [authChecked, setAuthChecked] = useState(false);
+    const [loginName, setLoginName] = useState("");
+    const [password, setPassword] = useState("");
+    const [authBusy, setAuthBusy] = useState(false);
+    const [authError, setAuthError] = useState<string | null>(null);
+
     const [classrooms, setClassrooms] = useState<Classroom[]>([]);
     const [selectedClassroomId, setSelectedClassroomId] = useState<number | null>(
         null,
     );
     const [dashboard, setDashboard] = useState<ClassroomDashboard | null>(null);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [busyDeviceId, setBusyDeviceId] = useState<number | null>(null);
     const [deviceForm, setDeviceForm] = useState<DeviceFormState | null>(null);
@@ -50,8 +62,128 @@ export function App() {
     );
     const [busyClassroomForm, setBusyClassroomForm] = useState(false);
 
+    useEffect(() => {
+        let cancelled = false;
+
+        async function restoreSession() {
+            try {
+                const currentPrincipal = await getCurrentPrincipal();
+
+                if (!cancelled) {
+                    setPrincipal(currentPrincipal);
+                }
+            } catch {
+                clearAccessToken();
+
+                if (!cancelled) {
+                    setPrincipal(null);
+                }
+            } finally {
+                if (!cancelled) {
+                    setAuthChecked(true);
+                }
+            }
+        }
+
+        void restoreSession();
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    useEffect(() => {
+        if (principal === null) {
+            setClassrooms([]);
+            setSelectedClassroomId(null);
+            setDashboard(null);
+            setLoading(false);
+            return;
+        }
+
+        let cancelled = false;
+
+        async function loadInitialClassrooms() {
+            setLoading(true);
+            setError(null);
+
+            try {
+                const data = await getClassrooms();
+
+                if (cancelled) {
+                    return;
+                }
+
+                setClassrooms(data);
+                setSelectedClassroomId(data[0]?.id ?? null);
+            } catch (err) {
+                if (!cancelled) {
+                    setError(extractErrorDetail(err));
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoading(false);
+                }
+            }
+        }
+
+        void loadInitialClassrooms();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [principal]);
+
+    useEffect(() => {
+        if (principal === null || selectedClassroomId === null) {
+            return;
+        }
+
+        let cancelled = false;
+
+        async function loadSelectedDashboard() {
+            setLoading(true);
+            setError(null);
+
+            try {
+                const data = await getClassroomDashboard(selectedClassroomId);
+
+                if (!cancelled) {
+                    setDashboard(data);
+                }
+            } catch (err) {
+                if (!cancelled) {
+                    setError(extractErrorDetail(err));
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoading(false);
+                }
+            }
+        }
+
+        void loadSelectedDashboard();
+
+        const timerId = window.setInterval(() => {
+            getClassroomDashboard(selectedClassroomId)
+                .then((data) => {
+                    if (!cancelled) {
+                        setDashboard(data);
+                    }
+                })
+                .catch(() => {
+                    // Ошибку polling не показываем поверх экрана.
+                });
+        }, 5000);
+
+        return () => {
+            cancelled = true;
+            window.clearInterval(timerId);
+        };
+    }, [principal, selectedClassroomId]);
+
     async function reload() {
-        if (selectedClassroomId === null) {
+        if (principal === null || selectedClassroomId === null) {
             return;
         }
 
@@ -61,7 +193,7 @@ export function App() {
             const data = await getClassroomDashboard(selectedClassroomId);
             setDashboard(data);
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Unknown error");
+            setError(extractErrorDetail(err));
         }
     }
 
@@ -92,6 +224,37 @@ export function App() {
         }
 
         setSelectedClassroomId(data[0].id);
+    }
+
+    async function handleLoginSubmit(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+
+        setAuthBusy(true);
+        setAuthError(null);
+
+        try {
+            await login(loginName, password);
+            const currentPrincipal = await getCurrentPrincipal();
+            setPrincipal(currentPrincipal);
+            setPassword("");
+        } catch (err) {
+            clearAccessToken();
+            setPrincipal(null);
+            setAuthError(extractErrorDetail(err));
+        } finally {
+            setAuthBusy(false);
+        }
+    }
+
+    function handleLogout() {
+        clearAccessToken();
+        setPrincipal(null);
+        setClassrooms([]);
+        setSelectedClassroomId(null);
+        setDashboard(null);
+        setError(null);
+        setDeviceForm(null);
+        setClassroomForm(null);
     }
 
     function openCreateClassroomForm() {
@@ -175,7 +338,7 @@ export function App() {
             await reloadClassrooms(updated.id);
             await reload();
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Unknown error");
+            setError(extractErrorDetail(err));
         } finally {
             setBusyClassroomForm(false);
         }
@@ -205,93 +368,11 @@ export function App() {
             setClassroomForm(null);
             await reloadClassrooms(null);
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Unknown error");
+            setError(extractErrorDetail(err));
         } finally {
             setBusyClassroomForm(false);
         }
     }
-
-    useEffect(() => {
-        let cancelled = false;
-
-        async function loadInitialClassrooms() {
-            setLoading(true);
-            setError(null);
-
-            try {
-                const data = await getClassrooms();
-
-                if (cancelled) {
-                    return;
-                }
-
-                setClassrooms(data);
-                setSelectedClassroomId(data[0]?.id ?? null);
-            } catch (err) {
-                if (!cancelled) {
-                    setError(err instanceof Error ? err.message : "Unknown error");
-                }
-            } finally {
-                if (!cancelled) {
-                    setLoading(false);
-                }
-            }
-        }
-
-        void loadInitialClassrooms();
-
-        return () => {
-            cancelled = true;
-        };
-    }, []);
-
-    useEffect(() => {
-        if (selectedClassroomId === null) {
-            return;
-        }
-
-        let cancelled = false;
-
-        async function loadSelectedDashboard() {
-            setLoading(true);
-            setError(null);
-
-            try {
-                const data = await getClassroomDashboard(selectedClassroomId);
-
-                if (!cancelled) {
-                    setDashboard(data);
-                }
-            } catch (err) {
-                if (!cancelled) {
-                    setError(err instanceof Error ? err.message : "Unknown error");
-                }
-            } finally {
-                if (!cancelled) {
-                    setLoading(false);
-                }
-            }
-        }
-
-        void loadSelectedDashboard();
-
-        const timerId = window.setInterval(() => {
-            getClassroomDashboard(selectedClassroomId)
-                .then((data) => {
-                    if (!cancelled) {
-                        setDashboard(data);
-                    }
-                })
-                .catch(() => {
-                    // Ошибку polling не показываем поверх экрана.
-                });
-        }, 5000);
-
-        return () => {
-            cancelled = true;
-            window.clearInterval(timerId);
-        };
-    }, [selectedClassroomId]);
 
     async function handleBlock(deviceId: number) {
         setBusyDeviceId(deviceId);
@@ -301,7 +382,7 @@ export function App() {
             await blockDeviceWan(deviceId);
             await reload();
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Unknown error");
+            setError(extractErrorDetail(err));
         } finally {
             setBusyDeviceId(null);
         }
@@ -315,7 +396,7 @@ export function App() {
             await allowDeviceWan(deviceId);
             await reload();
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Unknown error");
+            setError(extractErrorDetail(err));
         } finally {
             setBusyDeviceId(null);
         }
@@ -391,7 +472,7 @@ export function App() {
             setDeviceForm(null);
             await reload();
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Unknown error");
+            setError(extractErrorDetail(err));
         } finally {
             setBusyForm(false);
         }
@@ -410,7 +491,7 @@ export function App() {
             setDeviceForm(null);
             await reload();
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Unknown error");
+            setError(extractErrorDetail(err));
         } finally {
             setBusyForm(false);
         }
@@ -425,12 +506,64 @@ export function App() {
             ? deviceForm.device.mac_address
             : null;
 
+    if (!authChecked) {
+        return (
+            <div className="page auth-page">
+                <div className="loading">Проверка авторизации...</div>
+            </div>
+        );
+    }
+
+    if (principal === null) {
+        return (
+            <div className="page auth-page">
+                <form className="login-card" onSubmit={handleLoginSubmit}>
+                    <div>
+                        <h1>Classroom MikroTik Net Control</h1>
+                        <p className="muted">Войдите, чтобы управлять аудиториями.</p>
+                    </div>
+
+                    {authError && <pre className="error-box">{authError}</pre>}
+
+                    <label>
+                        Логин
+                        <input
+                            autoComplete="username"
+                            value={loginName}
+                            onChange={(event) => setLoginName(event.target.value)}
+                        />
+                    </label>
+
+                    <label>
+                        Пароль
+                        <input
+                            autoComplete="current-password"
+                            type="password"
+                            value={password}
+                            onChange={(event) => setPassword(event.target.value)}
+                        />
+                    </label>
+
+                    <button
+                        className="primary-button"
+                        type="submit"
+                        disabled={authBusy || loginName.trim() === ""}
+                    >
+                        {authBusy ? "Вход..." : "Войти"}
+                    </button>
+                </form>
+            </div>
+        );
+    }
+
     return (
         <div className="page">
             <Topbar
                 onReload={reload}
                 reloadDisabled={selectedClassroomId === null}
                 onCreateClassroom={openCreateClassroomForm}
+                principalName={getPrincipalName(principal)}
+                onLogout={handleLogout}
             />
 
             <main className="content">
@@ -508,5 +641,14 @@ export function App() {
                 />
             )}
         </div>
+    );
+}
+
+function getPrincipalName(principal: CurrentPrincipal): string {
+    return (
+        principal.display_name ||
+        principal.username ||
+        principal.login ||
+        String(principal.user_id ?? principal.id ?? "Пользователь")
     );
 }

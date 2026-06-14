@@ -1,4 +1,5 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
+const ACCESS_TOKEN_STORAGE_KEY = "cmnc_access_token";
 
 export type Classroom = {
     id: number;
@@ -47,22 +48,189 @@ export type ClassroomDashboard = {
     dynamic_devices: DynamicDevice[];
 };
 
+export type CurrentPrincipal = {
+    user_id?: number | string;
+    id?: number | string;
+    username?: string;
+    login?: string;
+    display_name?: string | null;
+    permissions: string[];
+    allowed_classroom_ids?: number[];
+};
+
+export type LoginResponse = {
+    access_token: string;
+    token_type: string;
+};
+
+export function getAccessToken(): string | null {
+    return window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
+}
+
+export function setAccessToken(token: string): void {
+    window.localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, token);
+}
+
+
+export function extractErrorDetail(error: unknown): string {
+    const fallback = "Unknown error";
+
+    if (error instanceof Error) {
+        return extractErrorDetail(error.message);
+    }
+
+    if (typeof error === "object" && error !== null) {
+        if ("detail" in error) {
+            return stringifyErrorDetail((error as { detail: unknown }).detail) || fallback;
+        }
+
+        if ("message" in error) {
+            return extractErrorDetail((error as { message: unknown }).message);
+        }
+    }
+
+    if (typeof error !== "string") {
+        return fallback;
+    }
+
+    const text = error.trim();
+
+    if (text === "") {
+        return fallback;
+    }
+
+    try {
+        const parsed = JSON.parse(text) as unknown;
+
+        if (typeof parsed === "object" && parsed !== null) {
+            if ("detail" in parsed) {
+                return stringifyErrorDetail((parsed as { detail: unknown }).detail) || text;
+            }
+
+            if ("message" in parsed) {
+                return extractErrorDetail((parsed as { message: unknown }).message);
+            }
+        }
+    } catch {
+        // Это обычная строка, не JSON.
+    }
+
+    return text;
+}
+
+function stringifyErrorDetail(detail: unknown): string {
+    if (typeof detail === "string") {
+        return detail;
+    }
+
+    if (Array.isArray(detail)) {
+        return detail
+            .map((item) => {
+                if (typeof item === "object" && item !== null && "msg" in item) {
+                    return String((item as { msg: unknown }).msg);
+                }
+
+                return extractErrorDetail(item);
+            })
+            .filter((item) => item.trim() !== "")
+            .join("; ");
+    }
+
+    if (detail === null || detail === undefined) {
+        return "";
+    }
+
+    return String(detail);
+}
+
+export function clearAccessToken(): void {
+    window.localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+    window.localStorage.removeItem("access_token");
+    window.localStorage.removeItem("token");
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-  });
+    const token = getAccessToken();
 
-  if (!response.ok) {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+        ...init,
+        headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...(init?.headers ?? {}),
+        },
+    });
+
+    if (response.status === 401) {
+        clearAccessToken();
+    }
+
+    if (!response.ok) {
+        const message = await readErrorMessage(response);
+        throw new Error(message || `HTTP ${response.status}`);
+    }
+
+    if (response.status === 204) {
+        return undefined as T;
+    }
+
+    const data: unknown = await response.json();
+    return data as T;
+}
+
+async function readErrorMessage(response: Response): Promise<string> {
     const text = await response.text();
-    throw new Error(text || `HTTP ${response.status}`);
-  }
+    return extractErrorDetail(text);
+}
 
-  const data: unknown = await response.json();
-  return data as T;
+async function postLoginJson(username: string, password: string): Promise<Response> {
+    return fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ username, password }),
+    });
+}
+
+async function postLoginForm(username: string, password: string): Promise<Response> {
+    const body = new URLSearchParams();
+    body.set("username", username);
+    body.set("password", password);
+
+    return fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body,
+    });
+}
+
+export async function login(username: string, password: string): Promise<LoginResponse> {
+    let response = await postLoginJson(username, password);
+
+    if (response.status === 400 || response.status === 415 || response.status === 422) {
+        response = await postLoginForm(username, password);
+    }
+
+    if (!response.ok) {
+        const message = await readErrorMessage(response);
+        throw new Error(message || `HTTP ${response.status}`);
+    }
+
+    const data = (await response.json()) as LoginResponse;
+
+    if (!data.access_token) {
+        throw new Error("Login response does not contain access_token");
+    }
+
+    setAccessToken(data.access_token);
+    return data;
+}
+
+export function getCurrentPrincipal(): Promise<CurrentPrincipal> {
+    return request<CurrentPrincipal>("/api/me");
 }
 
 export function getClassrooms(): Promise<Classroom[]> {
