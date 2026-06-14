@@ -8,15 +8,30 @@ type DeviceCardProps = {
     onBlock: (deviceId: number) => Promise<void>;
     onAllow: (deviceId: number) => Promise<void>;
     onEdit: (device: DashboardDevice) => void;
+    canControlWan: boolean;
+    canManageWorkstations: boolean;
 };
 
 export function DeviceCard(props: DeviceCardProps) {
-    const { device, busyDeviceId, onBlock, onAllow, onEdit } = props;
+    const {
+        device,
+        busyDeviceId,
+        onBlock,
+        onAllow,
+        onEdit,
+        canControlWan,
+        canManageWorkstations,
+    } = props;
     const busy = busyDeviceId === device.id;
 
     return (
-        <div className={`device-card ${device.online ? "device-online" : "device-offline"}`}
-             onDoubleClick={() => onEdit(device)}
+        <div
+            className={`device-card ${device.online ? "device-online" : "device-offline"}`}
+            onDoubleClick={() => {
+                if (canManageWorkstations) {
+                    onEdit(device);
+                }
+            }}
         >
             <div className="device-card-header">
                 <div className="device-title">{getDeviceTitle(device)}</div>
@@ -36,22 +51,20 @@ export function DeviceCard(props: DeviceCardProps) {
                 {device.wan_protected ? (
                     <span className="status-pill status-protected">Protected WAN</span>
                 ) : device.wan_allowed ? (
-                    <button
-                        disabled={busy}
-                        onClick={(event) => {
-                            event.stopPropagation();
-                            void onBlock(device.id);
-                        }}
-                    >
-                        <span
-                            className={`status-pill status-online ${
-                                device.sync_status === "pending" ? "status-pending" : ""
-                            }`}
+                    canControlWan ? (
+                        <button
+                            disabled={busy}
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                void onBlock(device.id);
+                            }}
                         >
-                            Internet
-                        </span>
-                    </button>
-                ) : (
+                            <InternetStatusPill device={device} />
+                        </button>
+                    ) : (
+                        <InternetStatusPill device={device} />
+                    )
+                ) : canControlWan ? (
                     <button
                         disabled={busy}
                         onClick={(event) => {
@@ -59,16 +72,40 @@ export function DeviceCard(props: DeviceCardProps) {
                             void onAllow(device.id);
                         }}
                     >
-                        <span
-                            className={`status-pill status-offline ${
-                                device.sync_status === "pending" ? "status-pending" : ""
-                            }`}
-                        >
-                            no Internet
-                        </span>
+                        <NoInternetStatusPill device={device} />
                     </button>
+                ) : (
+                    <NoInternetStatusPill device={device} />
                 )}
             </div>
         </div>
+    );
+}
+
+function InternetStatusPill(props: { device: DashboardDevice }) {
+    const { device } = props;
+
+    return (
+        <span
+            className={`status-pill status-online ${
+                device.sync_status === "pending" ? "status-pending" : ""
+            }`}
+        >
+            Internet
+        </span>
+    );
+}
+
+function NoInternetStatusPill(props: { device: DashboardDevice }) {
+    const { device } = props;
+
+    return (
+        <span
+            className={`status-pill status-offline ${
+                device.sync_status === "pending" ? "status-pending" : ""
+            }`}
+        >
+            no Internet
+        </span>
     );
 }

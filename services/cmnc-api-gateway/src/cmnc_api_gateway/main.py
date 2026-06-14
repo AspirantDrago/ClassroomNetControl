@@ -540,14 +540,40 @@ async def admin_unpin_device(
 @app.post("/api/admin/classrooms/{classroom_id}/devices/pin-observed")
 async def admin_pin_observed_device(
     classroom_id: int,
-    payload: Any,
+    payload: dict[str, Any],
     request: Request,
     authorization: str | None = Header(default=None),
 ) -> Any:
     principal = await get_current_principal(request, authorization)
     require_permission(principal, PERMISSION_DEVICES_MANAGE)
 
-    mac_address = normalize_mac_address(payload.mac_address)
+    raw_mac_address = payload.get("mac_address")
+    if not isinstance(raw_mac_address, str) or not raw_mac_address.strip():
+        raise HTTPException(status_code=422, detail="mac_address is required")
+
+    row_index = payload.get("row_index")
+    if not isinstance(row_index, int):
+        raise HTTPException(status_code=422, detail="row_index must be an integer")
+
+    column_index = payload.get("column_index")
+    if not isinstance(column_index, int):
+        raise HTTPException(status_code=422, detail="column_index must be an integer")
+
+    wan_protected = payload.get("wan_protected", True)
+    if not isinstance(wan_protected, bool):
+        raise HTTPException(status_code=422, detail="wan_protected must be a boolean")
+
+    raw_inventory_name = payload.get("inventory_name")
+    if raw_inventory_name is not None and not isinstance(raw_inventory_name, str):
+        raise HTTPException(status_code=422, detail="inventory_name must be a string")
+
+    inventory_name_from_request = (
+        raw_inventory_name.strip()
+        if isinstance(raw_inventory_name, str) and raw_inventory_name.strip()
+        else None
+    )
+
+    mac_address = normalize_mac_address(raw_mac_address)
 
     try:
         layout = await classroom_client.get_json(
@@ -591,7 +617,7 @@ async def admin_pin_observed_device(
     )
 
     inventory_name = (
-        payload.inventory_name
+        inventory_name_from_request
         or observed_device.get("hostname")
         or f"Device {mac_address}"
     )
@@ -604,10 +630,10 @@ async def admin_pin_observed_device(
         "inventory_name": inventory_name,
         "hostname": hostname,
         "static_ip": static_ip,
-        "row_index": payload.row_index,
-        "column_index": payload.column_index,
+        "row_index": row_index,
+        "column_index": column_index,
         "is_pinned": True,
-        "wan_protected": payload.wan_protected,
+        "wan_protected": wan_protected,
         "wan_allowed": True,
     }
 

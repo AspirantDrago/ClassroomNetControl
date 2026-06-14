@@ -4,6 +4,7 @@ type TopbarProps = {
     onReload: () => void;
     reloadDisabled: boolean;
     onCreateClassroom: () => void;
+    canCreateClassroom: boolean;
     principalName: string;
     onLogout: () => void;
 };
@@ -13,6 +14,7 @@ export function Topbar(props: TopbarProps) {
         onReload,
         reloadDisabled,
         onCreateClassroom,
+        canCreateClassroom,
         principalName,
         onLogout,
     } = props;
@@ -32,12 +34,14 @@ export function Topbar(props: TopbarProps) {
             <div className="topbar-actions">
                 <span className="topbar-user">{principalName}</span>
 
-                <button
-                    className="secondary-button"
-                    onClick={onCreateClassroom}
-                >
-                    Новая аудитория
-                </button>
+                {canCreateClassroom && (
+                    <button
+                        className="secondary-button"
+                        onClick={onCreateClassroom}
+                    >
+                        Новая аудитория
+                    </button>
+                )}
 
                 <button
                     className="secondary-button"

@@ -9,10 +9,20 @@ type DeviceGridProps = {
     onBlock: (deviceId: number) => Promise<void>;
     onAllow: (deviceId: number) => Promise<void>;
     onEdit: (device: DashboardDevice) => void;
+    canControlWan: boolean;
+    canManageWorkstations: boolean;
 };
 
 export function DeviceGrid(props: DeviceGridProps) {
-    const { deviceGrid, busyDeviceId, onBlock, onAllow, onEdit } = props;
+    const {
+        deviceGrid,
+        busyDeviceId,
+        onBlock,
+        onAllow,
+        onEdit,
+        canControlWan,
+        canManageWorkstations,
+    } = props;
 
     return (
         <>
@@ -36,6 +46,8 @@ export function DeviceGrid(props: DeviceGridProps) {
                                         onBlock={onBlock}
                                         onAllow={onAllow}
                                         onEdit={onEdit}
+                                        canControlWan={canControlWan}
+                                        canManageWorkstations={canManageWorkstations}
                                     />
                                 ) : (
                                     <div className="empty-device-cell">
@@ -61,6 +73,8 @@ export function DeviceGrid(props: DeviceGridProps) {
                     onBlock={onBlock}
                     onAllow={onAllow}
                     onEdit={onEdit}
+                    canControlWan={canControlWan}
+                    canManageWorkstations={canManageWorkstations}
                 />
             )}
         </>
@@ -73,8 +87,18 @@ function UnpositionedDevices(props: {
     onBlock: (deviceId: number) => Promise<void>;
     onAllow: (deviceId: number) => Promise<void>;
     onEdit: (device: DashboardDevice) => void;
+    canControlWan: boolean;
+    canManageWorkstations: boolean;
 }) {
-    const { devices, busyDeviceId, onBlock, onAllow, onEdit } = props;
+    const {
+        devices,
+        busyDeviceId,
+        onBlock,
+        onAllow,
+        onEdit,
+        canControlWan,
+        canManageWorkstations,
+    } = props;
 
     return (
         <section className="unpositioned-section">
@@ -89,6 +113,8 @@ function UnpositionedDevices(props: {
                         onBlock={onBlock}
                         onAllow={onAllow}
                         onEdit={onEdit}
+                        canControlWan={canControlWan}
+                        canManageWorkstations={canManageWorkstations}
                     />
                 ))}
             </div>

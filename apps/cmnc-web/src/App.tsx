@@ -34,6 +34,11 @@ import { DynamicDevicesTable } from "./components/DynamicDevicesTable/DynamicDev
 import { Topbar } from "./components/Topbar/Topbar";
 import { LoginPage } from "./pages/LoginPage/LoginPage";
 import {
+    canControlWanForClassroom,
+    canManageClassrooms,
+    canManageWorkstations,
+} from "./auth/permissions";
+import {
     buildDeviceGrid,
     emptyStringToNull,
     parseOptionalPositiveInteger,
@@ -254,6 +259,10 @@ export function App() {
     }
 
     function openCreateClassroomForm() {
+        if (!canManageClassrooms(principal)) {
+            return;
+        }
+
         setError(null);
 
         setClassroomForm({
@@ -267,6 +276,10 @@ export function App() {
     }
 
     function openEditClassroomForm(classroom: Classroom) {
+        if (!canManageClassrooms(principal)) {
+            return;
+        }
+
         setError(null);
 
         setClassroomForm({
@@ -286,7 +299,7 @@ export function App() {
     async function handleClassroomFormSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
 
-        if (classroomForm === null) {
+        if (classroomForm === null || !canManageClassrooms(principal)) {
             return;
         }
 
@@ -341,7 +354,11 @@ export function App() {
     }
 
     async function handleDeactivateClassroom() {
-        if (classroomForm === null || classroomForm.mode !== "edit") {
+        if (
+            classroomForm === null ||
+            classroomForm.mode !== "edit" ||
+            !canManageClassrooms(principal)
+        ) {
             return;
         }
 
@@ -371,6 +388,10 @@ export function App() {
     }
 
     async function handleBlock(deviceId: number) {
+        if (!canControlWanForClassroom(principal, selectedClassroomId)) {
+            return;
+        }
+
         setBusyDeviceId(deviceId);
         setError(null);
 
@@ -385,6 +406,10 @@ export function App() {
     }
 
     async function handleAllow(deviceId: number) {
+        if (!canControlWanForClassroom(principal, selectedClassroomId)) {
+            return;
+        }
+
         setBusyDeviceId(deviceId);
         setError(null);
 
@@ -399,6 +424,10 @@ export function App() {
     }
 
     function openPinObservedForm(device: DynamicDevice) {
+        if (!canManageWorkstations(principal)) {
+            return;
+        }
+
         setError(null);
 
         setDeviceForm({
@@ -412,6 +441,10 @@ export function App() {
     }
 
     function openEditDeviceForm(device: DashboardDevice) {
+        if (!canManageWorkstations(principal)) {
+            return;
+        }
+
         setError(null);
 
         setDeviceForm({
@@ -431,7 +464,11 @@ export function App() {
     async function handleDeviceFormSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
 
-        if (selectedClassroomId === null || deviceForm === null) {
+        if (
+            selectedClassroomId === null ||
+            deviceForm === null ||
+            !canManageWorkstations(principal)
+        ) {
             return;
         }
 
@@ -475,7 +512,11 @@ export function App() {
     }
 
     async function handleUnpinDevice() {
-        if (deviceForm === null || deviceForm.mode !== "edit-device") {
+        if (
+            deviceForm === null ||
+            deviceForm.mode !== "edit-device" ||
+            !canManageWorkstations(principal)
+        ) {
             return;
         }
 
@@ -502,6 +543,13 @@ export function App() {
             ? deviceForm.device.mac_address
             : null;
 
+    const userCanManageClassrooms = canManageClassrooms(principal);
+    const userCanManageWorkstations = canManageWorkstations(principal);
+    const userCanControlWan = canControlWanForClassroom(
+        principal,
+        selectedClassroomId,
+    );
+
     if (!authChecked) {
         return (
             <div className="page auth-page">
@@ -526,6 +574,7 @@ export function App() {
                 onReload={reload}
                 reloadDisabled={selectedClassroomId === null}
                 onCreateClassroom={openCreateClassroomForm}
+                canCreateClassroom={userCanManageClassrooms}
                 principalName={getPrincipalName(principal)}
                 onLogout={handleLogout}
             />
@@ -552,12 +601,14 @@ export function App() {
                                 </div>
                             </div>
 
-                            <button
-                                className="secondary-button"
-                                onClick={() => openEditClassroomForm(dashboard.classroom)}
-                            >
-                                Редактировать аудиторию
-                            </button>
+                            {userCanManageClassrooms && (
+                                <button
+                                    className="secondary-button"
+                                    onClick={() => openEditClassroomForm(dashboard.classroom)}
+                                >
+                                    Редактировать аудиторию
+                                </button>
+                            )}
                         </section>
 
                         <DeviceGrid
@@ -566,18 +617,21 @@ export function App() {
                             onBlock={handleBlock}
                             onAllow={handleAllow}
                             onEdit={openEditDeviceForm}
+                            canControlWan={userCanControlWan}
+                            canManageWorkstations={userCanManageWorkstations}
                         />
 
                         <DynamicDevicesTable
                             devices={dashboard.dynamic_devices}
                             busyPinMac={busyPinMac}
                             onOpenPinForm={openPinObservedForm}
+                            canManageWorkstations={userCanManageWorkstations}
                         />
                     </>
                 )}
             </main>
 
-            {deviceForm && (
+            {deviceForm && userCanManageWorkstations && (
                 <DeviceFormModal
                     form={deviceForm}
                     busy={busyForm}
@@ -590,7 +644,7 @@ export function App() {
                 />
             )}
 
-            {classroomForm && (
+            {classroomForm && userCanManageClassrooms && (
                 <ClassroomFormModal
                     form={classroomForm}
                     busy={busyClassroomForm}

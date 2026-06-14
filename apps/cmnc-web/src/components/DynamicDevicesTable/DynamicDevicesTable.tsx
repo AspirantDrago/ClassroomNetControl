@@ -9,10 +9,11 @@ type DynamicDevicesTableProps = {
     devices: DynamicDevice[];
     busyPinMac: string | null;
     onOpenPinForm: (device: DynamicDevice) => void;
+    canManageWorkstations: boolean;
 };
 
 export function DynamicDevicesTable(props: DynamicDevicesTableProps) {
-    const { devices, busyPinMac, onOpenPinForm } = props;
+    const { devices, busyPinMac, onOpenPinForm, canManageWorkstations } = props;
 
     const sortedDevices = [...devices].sort((left, right) => {
         return compareIpAddresses(left.active_ip, right.active_ip);
@@ -50,7 +51,9 @@ export function DynamicDevicesTable(props: DynamicDevicesTableProps) {
                                 <td>{device.active ? "yes" : "no"}</td>
                                 <td>{formatDate(device.last_seen_at)}</td>
                                 <td>
-                                    {canPinObservedDevice(device) ? (
+                                    {!canManageWorkstations ? (
+                                        <span className="muted">Нет прав</span>
+                                    ) : canPinObservedDevice(device) ? (
                                         <button
                                             className="secondary-button compact-button"
                                             disabled={busyPinMac === device.mac_address}

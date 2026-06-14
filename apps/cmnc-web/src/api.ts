@@ -54,7 +54,10 @@ export type CurrentPrincipal = {
     username?: string;
     login?: string;
     display_name?: string | null;
+    principal_type?: string;
+    role?: string;
     permissions: string[];
+    classroom_ids?: number[];
     allowed_classroom_ids?: number[];
 };
 
