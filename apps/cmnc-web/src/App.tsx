@@ -37,6 +37,7 @@ import {
     canControlWanForClassroom,
     canManageClassrooms,
     canManageWorkstations,
+    canViewDynamicDevices,
 } from "./auth/permissions";
 import {
     buildDeviceGrid,
@@ -545,6 +546,7 @@ export function App() {
 
     const userCanManageClassrooms = canManageClassrooms(principal);
     const userCanManageWorkstations = canManageWorkstations(principal);
+    const userCanViewDynamicDevices = canViewDynamicDevices(principal);
     const userCanControlWan = canControlWanForClassroom(
         principal,
         selectedClassroomId,
@@ -621,12 +623,14 @@ export function App() {
                             canManageWorkstations={userCanManageWorkstations}
                         />
 
-                        <DynamicDevicesTable
-                            devices={dashboard.dynamic_devices}
-                            busyPinMac={busyPinMac}
-                            onOpenPinForm={openPinObservedForm}
-                            canManageWorkstations={userCanManageWorkstations}
-                        />
+                        {userCanViewDynamicDevices && (
+                            <DynamicDevicesTable
+                                devices={dashboard.dynamic_devices}
+                                busyPinMac={busyPinMac}
+                                onOpenPinForm={openPinObservedForm}
+                                canManageWorkstations={userCanManageWorkstations}
+                            />
+                        )}
                     </>
                 )}
             </main>

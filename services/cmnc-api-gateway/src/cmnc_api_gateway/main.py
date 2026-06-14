@@ -19,6 +19,8 @@ from cmnc_api_gateway.schemas import (
 )
 from cmnc_api_gateway.settings import settings
 from cmnc_contracts.permissions import (
+    ROLE_ADMIN,
+    ROLE_SUPERADMIN,
     PERMISSION_CLASSROOMS_MANAGE,
     PERMISSION_CLASSROOMS_READ_ALL,
     PERMISSION_DEVICES_MANAGE,
@@ -106,6 +108,10 @@ def require_permission(principal: PrincipalResponse, permission: str) -> None:
 
 def can_access_all_classrooms(principal: PrincipalResponse) -> bool:
     return has_permission(principal, PERMISSION_CLASSROOMS_READ_ALL)
+
+
+def can_view_dynamic_devices(principal: PrincipalResponse) -> bool:
+    return principal.role in {ROLE_SUPERADMIN, ROLE_ADMIN}
 
 
 def ensure_classroom_access(
@@ -335,16 +341,17 @@ async def get_classroom_dashboard(
 
     dynamic_devices: list[DynamicDevice] = []
 
-    for item in observed_devices:
-        mac = item["mac_address"].upper()
+    if can_view_dynamic_devices(principal):
+        for item in observed_devices:
+            mac = item["mac_address"].upper()
 
-        if mac in pinned_macs:
-            continue
+            if mac in pinned_macs:
+                continue
 
-        if not ip_in_subnet(item["active_ip"], classroom["subnet_cidr"]):
-            continue
+            if not ip_in_subnet(item["active_ip"], classroom["subnet_cidr"]):
+                continue
 
-        dynamic_devices.append(DynamicDevice.model_validate(item))
+            dynamic_devices.append(DynamicDevice.model_validate(item))
 
     return ClassroomDashboardResponse(
         classroom=classroom,

@@ -63,6 +63,10 @@ export function canManageWorkstations(principal: CurrentPrincipal | null): boole
     ]);
 }
 
+export function canViewDynamicDevices(principal: CurrentPrincipal | null): boolean {
+    return principal?.role === ROLE_SUPERADMIN || principal?.role === ROLE_ADMIN;
+}
+
 export function canControlWanForClassroom(
     principal: CurrentPrincipal | null,
     classroomId: number | null,
