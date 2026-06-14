@@ -334,3 +334,137 @@ export function updateClassroom(
         body: JSON.stringify(payload),
     });
 }
+
+export type AdminRole = {
+    id: number;
+    name: string;
+};
+
+export type AdminUser = {
+    id: number;
+    username: string;
+    display_name: string;
+    role: string;
+    is_active: boolean;
+    classroom_ids: number[];
+    created_at: string;
+    updated_at: string;
+    last_login_at: string | null;
+};
+
+export type AdminUserCreateRequest = {
+    username: string;
+    password: string;
+    display_name: string;
+    role: string;
+    is_active: boolean;
+    classroom_ids: number[];
+};
+
+export type AdminUserUpdateRequest = {
+    username?: string;
+    password?: string;
+    display_name?: string;
+    role?: string;
+    is_active?: boolean;
+};
+
+export type AdminWorkstation = {
+    id: number;
+    name: string;
+    ip_address: string;
+    role: string;
+    is_active: boolean;
+    classroom_ids: number[];
+    created_at: string;
+    updated_at: string;
+    last_seen_at: string | null;
+};
+
+export type AdminWorkstationCreateRequest = {
+    name: string;
+    ip_address: string;
+    role: string;
+    is_active: boolean;
+    classroom_ids: number[];
+};
+
+export type AdminWorkstationUpdateRequest = {
+    name?: string;
+    ip_address?: string;
+    role?: string;
+    is_active?: boolean;
+};
+
+export function getAdminRoles(): Promise<AdminRole[]> {
+    return request<AdminRole[]>("/api/admin/roles");
+}
+
+export function getAdminUsers(): Promise<AdminUser[]> {
+    return request<AdminUser[]>("/api/admin/users");
+}
+
+export function createAdminUser(
+    payload: AdminUserCreateRequest,
+): Promise<AdminUser> {
+    return request<AdminUser>("/api/admin/users", {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}
+
+export function updateAdminUser(
+    userId: number,
+    payload: AdminUserUpdateRequest,
+): Promise<AdminUser> {
+    return request<AdminUser>(`/api/admin/users/${userId}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+    });
+}
+
+export function updateAdminUserClassrooms(
+    userId: number,
+    classroomIds: number[],
+): Promise<AdminUser> {
+    return request<AdminUser>(`/api/admin/users/${userId}/classrooms`, {
+        method: "POST",
+        body: JSON.stringify({ classroom_ids: classroomIds }),
+    });
+}
+
+export function getAdminWorkstations(): Promise<AdminWorkstation[]> {
+    return request<AdminWorkstation[]>("/api/admin/workstations");
+}
+
+export function createAdminWorkstation(
+    payload: AdminWorkstationCreateRequest,
+): Promise<AdminWorkstation> {
+    return request<AdminWorkstation>("/api/admin/workstations", {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}
+
+export function updateAdminWorkstation(
+    workstationId: number,
+    payload: AdminWorkstationUpdateRequest,
+): Promise<AdminWorkstation> {
+    return request<AdminWorkstation>(`/api/admin/workstations/${workstationId}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+    });
+}
+
+export function updateAdminWorkstationClassrooms(
+    workstationId: number,
+    classroomIds: number[],
+): Promise<AdminWorkstation> {
+    return request<AdminWorkstation>(
+        `/api/admin/workstations/${workstationId}/classrooms`,
+        {
+            method: "POST",
+            body: JSON.stringify({ classroom_ids: classroomIds }),
+        },
+    );
+}

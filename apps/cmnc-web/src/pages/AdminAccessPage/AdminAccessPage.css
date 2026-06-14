@@ -1,0 +1,151 @@
+.admin-access-page {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.admin-access-header,
+.admin-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.admin-access-header h2,
+.admin-card-header h3 {
+    margin: 0;
+}
+
+.admin-access-header p {
+    margin: 6px 0 0;
+}
+
+.admin-access-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.admin-card {
+    padding: 18px;
+    border: 1px solid #1f2937;
+    border-radius: 16px;
+    background: #111827;
+}
+
+.admin-form {
+    margin: 16px 0;
+    padding: 16px;
+    border: 1px solid #374151;
+    border-radius: 14px;
+    background: #0f172a;
+}
+
+.admin-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.admin-form label,
+.classroom-checklist label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    color: #d1d5db;
+    font-size: 14px;
+}
+
+.admin-form input,
+.admin-form select {
+    border: 1px solid #374151;
+    border-radius: 10px;
+    padding: 10px 12px;
+    color: #e5e7eb;
+    background: #020617;
+}
+
+.admin-checkbox-row {
+    flex-direction: row !important;
+    align-items: center;
+    justify-content: flex-start;
+    padding-top: 24px;
+}
+
+.admin-checkbox-row input,
+.classroom-checklist input {
+    width: auto;
+}
+
+.classroom-checklist {
+    margin-top: 16px;
+}
+
+.classroom-checklist-title {
+    margin-bottom: 10px;
+    font-weight: 600;
+}
+
+.classroom-checklist-grid {
+    display: grid;
+    gap: 8px 14px;
+}
+
+.classroom-checklist-grid label {
+    flex-direction: row;
+    align-items: center;
+}
+
+.classroom-checklist-grid  input[type="checkbox"] {
+    appearance: none;
+    width: 24px;
+    height: 24px;
+    border: 1px solid #0d6efd;
+    border-radius: 0.25rem;
+    background-color: #fff;
+    cursor: pointer;
+    transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+    margin: 0;
+}
+
+.classroom-checklist-grid  input[type="checkbox"]:checked {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='m6 10 3 3 6-6'/%3e%3c/svg%3e");
+}
+
+.admin-form-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.admin-table-wrapper {
+    overflow: auto;
+    margin-top: 14px;
+}
+
+.admin-table-wrapper table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 820px;
+}
+
+.admin-table-wrapper table tr.user-item__disabled {
+    background: #ffffff30;
+}
+
+.admin-table-wrapper th,
+.admin-table-wrapper td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #1f2937;
+    text-align: left;
+    vertical-align: middle;
+}
+
+.admin-table-wrapper th {
+    color: #9ca3af;
+    font-weight: 600;
+    background: #0f172a;
+}

@@ -33,10 +33,12 @@ import { DeviceGrid } from "./components/DeviceGrid/DeviceGrid";
 import { DynamicDevicesTable } from "./components/DynamicDevicesTable/DynamicDevicesTable";
 import { Topbar } from "./components/Topbar/Topbar";
 import { LoginPage } from "./pages/LoginPage/LoginPage";
+import { AdminAccessPage } from "./pages/AdminAccessPage/AdminAccessPage";
 import {
     canControlWanForClassroom,
     canManageClassrooms,
     canManageWorkstations,
+    canOpenAccessAdmin,
     canViewDynamicDevices,
 } from "./auth/permissions";
 import {
@@ -46,11 +48,14 @@ import {
 } from "./utils/devices";
 import { parseOptionalInteger, parseRequiredString } from "./utils/forms";
 
+type AppPage = "dashboard" | "access";
+
 export function App() {
     const [principal, setPrincipal] = useState<CurrentPrincipal | null>(null);
     const [authChecked, setAuthChecked] = useState(false);
     const [authBusy, setAuthBusy] = useState(false);
     const [authError, setAuthError] = useState<string | null>(null);
+    const [currentPage, setCurrentPage] = useState<AppPage>("dashboard");
 
     const [classrooms, setClassrooms] = useState<Classroom[]>([]);
     const [selectedClassroomId, setSelectedClassroomId] = useState<number | null>(
@@ -257,6 +262,7 @@ export function App() {
         setError(null);
         setDeviceForm(null);
         setClassroomForm(null);
+        setCurrentPage("dashboard");
     }
 
     function openCreateClassroomForm() {
@@ -546,11 +552,18 @@ export function App() {
 
     const userCanManageClassrooms = canManageClassrooms(principal);
     const userCanManageWorkstations = canManageWorkstations(principal);
+    const userCanOpenAccessAdmin = canOpenAccessAdmin(principal);
     const userCanViewDynamicDevices = canViewDynamicDevices(principal);
     const userCanControlWan = canControlWanForClassroom(
         principal,
         selectedClassroomId,
     );
+
+    useEffect(() => {
+        if (currentPage === "access" && !userCanOpenAccessAdmin) {
+            setCurrentPage("dashboard");
+        }
+    }, [currentPage, userCanOpenAccessAdmin]);
 
     if (!authChecked) {
         return (
@@ -573,63 +586,76 @@ export function App() {
     return (
         <div className="page">
             <Topbar
+                currentPage={currentPage}
                 onReload={reload}
                 reloadDisabled={selectedClassroomId === null}
                 onCreateClassroom={openCreateClassroomForm}
                 canCreateClassroom={userCanManageClassrooms}
+                canOpenAccessAdmin={userCanOpenAccessAdmin}
+                onOpenDashboard={() => setCurrentPage("dashboard")}
+                onOpenAccessAdmin={() => setCurrentPage("access")}
                 principalName={getPrincipalName(principal)}
                 onLogout={handleLogout}
             />
 
             <main className="content">
-                <ClassroomTabs
-                    classrooms={classrooms}
-                    selectedClassroomId={selectedClassroomId}
-                    onSelect={setSelectedClassroomId}
-                />
-
-                {error && <pre className="error-box">{error}</pre>}
-
-                {loading && <div className="loading">Загрузка...</div>}
-
-                {dashboard && (
+                {currentPage === "access" && userCanOpenAccessAdmin ? (
+                    <AdminAccessPage
+                        principal={principal}
+                        classrooms={classrooms}
+                    />
+                ) : (
                     <>
-                        <section className="classroom-header">
-                            <div>
-                                <h2>{dashboard.classroom.name}</h2>
-                                <div className="muted">
-                                    subnet: {dashboard.classroom.subnet_cidr}, VLAN:{" "}
-                                    {dashboard.classroom.vlan_id ?? "-"}
-                                </div>
-                            </div>
-
-                            {userCanManageClassrooms && (
-                                <button
-                                    className="secondary-button"
-                                    onClick={() => openEditClassroomForm(dashboard.classroom)}
-                                >
-                                    Редактировать аудиторию
-                                </button>
-                            )}
-                        </section>
-
-                        <DeviceGrid
-                            deviceGrid={deviceGrid}
-                            busyDeviceId={busyDeviceId}
-                            onBlock={handleBlock}
-                            onAllow={handleAllow}
-                            onEdit={openEditDeviceForm}
-                            canControlWan={userCanControlWan}
-                            canManageWorkstations={userCanManageWorkstations}
+                        <ClassroomTabs
+                            classrooms={classrooms}
+                            selectedClassroomId={selectedClassroomId}
+                            onSelect={setSelectedClassroomId}
                         />
 
-                        {userCanViewDynamicDevices && (
-                            <DynamicDevicesTable
-                                devices={dashboard.dynamic_devices}
-                                busyPinMac={busyPinMac}
-                                onOpenPinForm={openPinObservedForm}
-                                canManageWorkstations={userCanManageWorkstations}
-                            />
+                        {error && <pre className="error-box">{error}</pre>}
+
+                        {loading && <div className="loading">Загрузка...</div>}
+
+                        {dashboard && (
+                            <>
+                                <section className="classroom-header">
+                                    <div>
+                                        <h2>{dashboard.classroom.name}</h2>
+                                        <div className="muted">
+                                            subnet: {dashboard.classroom.subnet_cidr}, VLAN:{" "}
+                                            {dashboard.classroom.vlan_id ?? "-"}
+                                        </div>
+                                    </div>
+
+                                    {userCanManageClassrooms && (
+                                        <button
+                                            className="secondary-button"
+                                            onClick={() => openEditClassroomForm(dashboard.classroom)}
+                                        >
+                                            Редактировать аудиторию
+                                        </button>
+                                    )}
+                                </section>
+
+                                <DeviceGrid
+                                    deviceGrid={deviceGrid}
+                                    busyDeviceId={busyDeviceId}
+                                    onBlock={handleBlock}
+                                    onAllow={handleAllow}
+                                    onEdit={openEditDeviceForm}
+                                    canControlWan={userCanControlWan}
+                                    canManageWorkstations={userCanManageWorkstations}
+                                />
+
+                                {userCanViewDynamicDevices && (
+                                    <DynamicDevicesTable
+                                        devices={dashboard.dynamic_devices}
+                                        busyPinMac={busyPinMac}
+                                        onOpenPinForm={openPinObservedForm}
+                                        canManageWorkstations={userCanManageWorkstations}
+                                    />
+                                )}
+                            </>
                         )}
                     </>
                 )}

@@ -1,20 +1,30 @@
 import "./Topbar.css";
 
+type AppPage = "dashboard" | "access";
+
 type TopbarProps = {
+    currentPage: AppPage;
     onReload: () => void;
     reloadDisabled: boolean;
     onCreateClassroom: () => void;
     canCreateClassroom: boolean;
+    canOpenAccessAdmin: boolean;
+    onOpenDashboard: () => void;
+    onOpenAccessAdmin: () => void;
     principalName: string;
     onLogout: () => void;
 };
 
 export function Topbar(props: TopbarProps) {
     const {
+        currentPage,
         onReload,
         reloadDisabled,
         onCreateClassroom,
         canCreateClassroom,
+        canOpenAccessAdmin,
+        onOpenDashboard,
+        onOpenAccessAdmin,
         principalName,
         onLogout,
     } = props;
@@ -34,7 +44,31 @@ export function Topbar(props: TopbarProps) {
             <div className="topbar-actions">
                 <span className="topbar-user">{principalName}</span>
 
-                {canCreateClassroom && (
+                <button
+                    className={
+                        currentPage === "dashboard"
+                            ? "secondary-button topbar-active-button"
+                            : "secondary-button"
+                    }
+                    onClick={onOpenDashboard}
+                >
+                    Аудитории
+                </button>
+
+                {canOpenAccessAdmin && (
+                    <button
+                        className={
+                            currentPage === "access"
+                                ? "secondary-button topbar-active-button"
+                                : "secondary-button"
+                        }
+                        onClick={onOpenAccessAdmin}
+                    >
+                        Пользователи
+                    </button>
+                )}
+
+                {currentPage === "dashboard" && canCreateClassroom && (
                     <button
                         className="secondary-button"
                         onClick={onCreateClassroom}
@@ -43,13 +77,15 @@ export function Topbar(props: TopbarProps) {
                     </button>
                 )}
 
-                <button
-                    className="secondary-button"
-                    onClick={onReload}
-                    disabled={reloadDisabled}
-                >
-                    Обновить
-                </button>
+                {currentPage === "dashboard" && (
+                    <button
+                        className="secondary-button"
+                        onClick={onReload}
+                        disabled={reloadDisabled}
+                    >
+                        Обновить
+                    </button>
+                )}
 
                 <button
                     className="secondary-button"

@@ -20,12 +20,18 @@ from cmnc_api_gateway.schemas import (
 from cmnc_api_gateway.settings import settings
 from cmnc_contracts.permissions import (
     ROLE_ADMIN,
+    ROLE_MODERATOR,
     ROLE_SUPERADMIN,
+    ROLE_TEACHER,
+    ROLE_WORKSTATION,
     PERMISSION_CLASSROOMS_MANAGE,
     PERMISSION_CLASSROOMS_READ_ALL,
     PERMISSION_DEVICES_MANAGE,
+    PERMISSION_USERS_MANAGE_ADMIN,
+    PERMISSION_USERS_MANAGE_LOWER,
     PERMISSION_WAN_CONTROL_ALL,
     PERMISSION_WAN_CONTROL_ASSIGNED,
+    PERMISSION_WORKSTATIONS_MANAGE,
 )
 
 app = FastAPI(title=settings.service_name)
@@ -104,6 +110,65 @@ def has_permission(principal: PrincipalResponse, permission: str) -> bool:
 def require_permission(principal: PrincipalResponse, permission: str) -> None:
     if not has_permission(principal, permission):
         raise HTTPException(status_code=403, detail="Permission denied")
+
+
+def require_any_permission(principal: PrincipalResponse, permissions: set[str]) -> None:
+    if any(has_permission(principal, permission) for permission in permissions):
+        return
+
+    raise HTTPException(status_code=403, detail="Permission denied")
+
+
+def require_user_role_management(
+    principal: PrincipalResponse,
+    role: str,
+) -> None:
+    if role == ROLE_WORKSTATION:
+        raise HTTPException(
+            status_code=422,
+            detail="Workstation role must be managed through workstation endpoints",
+        )
+
+    if role in {ROLE_SUPERADMIN, ROLE_ADMIN}:
+        require_permission(principal, PERMISSION_USERS_MANAGE_ADMIN)
+        return
+
+    if role in {ROLE_MODERATOR, ROLE_TEACHER}:
+        require_permission(principal, PERMISSION_USERS_MANAGE_LOWER)
+        return
+
+    raise HTTPException(status_code=422, detail="Unknown role")
+
+
+def filter_manageable_users(
+    principal: PrincipalResponse,
+    users: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if has_permission(principal, PERMISSION_USERS_MANAGE_ADMIN):
+        return users
+
+    if has_permission(principal, PERMISSION_USERS_MANAGE_LOWER):
+        return [
+            user
+            for user in users
+            if user.get("role") in {ROLE_MODERATOR, ROLE_TEACHER}
+        ]
+
+    return []
+
+
+def require_workstation_management(principal: PrincipalResponse) -> None:
+    require_permission(principal, PERMISSION_WORKSTATIONS_MANAGE)
+
+
+def ensure_workstation_payload_role(payload: dict[str, Any]) -> None:
+    role = payload.get("role", ROLE_WORKSTATION)
+
+    if role != ROLE_WORKSTATION:
+        raise HTTPException(
+            status_code=422,
+            detail="Workstation endpoint accepts only workstation role",
+        )
 
 
 def can_access_all_classrooms(principal: PrincipalResponse) -> bool:
@@ -653,6 +718,296 @@ async def admin_pin_observed_device(
         raise HTTPException(
             status_code=exc.response.status_code,
             detail=exc.response.text,
+        ) from exc
+
+
+@app.get("/api/admin/roles")
+async def admin_list_roles(
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    require_any_permission(
+        principal,
+        {
+            PERMISSION_USERS_MANAGE_ADMIN,
+            PERMISSION_USERS_MANAGE_LOWER,
+            PERMISSION_WORKSTATIONS_MANAGE,
+        },
+    )
+
+    try:
+        return await auth_client.get_json("/internal/admin/roles")
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Auth service unavailable: {exc}",
+        ) from exc
+
+
+@app.get("/api/admin/users")
+async def admin_list_users(
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    require_any_permission(
+        principal,
+        {PERMISSION_USERS_MANAGE_ADMIN, PERMISSION_USERS_MANAGE_LOWER},
+    )
+
+    try:
+        users = await auth_client.get_json("/internal/admin/users")
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Auth service unavailable: {exc}",
+        ) from exc
+
+    if not isinstance(users, list):
+        raise HTTPException(status_code=502, detail="Invalid auth service response")
+
+    return filter_manageable_users(principal, users)
+
+
+@app.post("/api/admin/users")
+async def admin_create_user(
+    payload: dict[str, Any],
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    role = payload.get("role")
+
+    if not isinstance(role, str):
+        raise HTTPException(status_code=422, detail="role is required")
+
+    require_user_role_management(principal, role)
+
+    try:
+        return await auth_client.post_json(
+            "/internal/admin/users",
+            json=payload,
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Auth service unavailable: {exc}",
+        ) from exc
+
+
+@app.patch("/api/admin/users/{user_id}")
+async def admin_update_user(
+    user_id: int,
+    payload: dict[str, Any],
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+
+    try:
+        current_user = await auth_client.get_json(f"/internal/admin/users/{user_id}")
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Auth service unavailable: {exc}",
+        ) from exc
+
+    current_role = current_user.get("role") if isinstance(current_user, dict) else None
+    if not isinstance(current_role, str):
+        raise HTTPException(status_code=502, detail="Invalid auth service response")
+
+    require_user_role_management(principal, current_role)
+
+    new_role = payload.get("role")
+    if new_role is not None:
+        if not isinstance(new_role, str):
+            raise HTTPException(status_code=422, detail="role must be a string")
+        require_user_role_management(principal, new_role)
+
+    try:
+        return await auth_client.patch_json(
+            f"/internal/admin/users/{user_id}",
+            json=payload,
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Auth service unavailable: {exc}",
+        ) from exc
+
+
+@app.post("/api/admin/users/{user_id}/classrooms")
+async def admin_update_user_classrooms(
+    user_id: int,
+    payload: dict[str, Any],
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+
+    try:
+        current_user = await auth_client.get_json(f"/internal/admin/users/{user_id}")
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Auth service unavailable: {exc}",
+        ) from exc
+
+    current_role = current_user.get("role") if isinstance(current_user, dict) else None
+    if not isinstance(current_role, str):
+        raise HTTPException(status_code=502, detail="Invalid auth service response")
+
+    require_user_role_management(principal, current_role)
+
+    try:
+        return await auth_client.post_json(
+            f"/internal/admin/users/{user_id}/classrooms",
+            json=payload,
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Auth service unavailable: {exc}",
+        ) from exc
+
+
+@app.get("/api/admin/workstations")
+async def admin_list_workstations(
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    require_workstation_management(principal)
+
+    try:
+        return await auth_client.get_json("/internal/admin/workstations")
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Auth service unavailable: {exc}",
+        ) from exc
+
+
+@app.post("/api/admin/workstations")
+async def admin_create_workstation(
+    payload: dict[str, Any],
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    require_workstation_management(principal)
+    ensure_workstation_payload_role(payload)
+
+    try:
+        return await auth_client.post_json(
+            "/internal/admin/workstations",
+            json=payload,
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Auth service unavailable: {exc}",
+        ) from exc
+
+
+@app.patch("/api/admin/workstations/{workstation_id}")
+async def admin_update_workstation(
+    workstation_id: int,
+    payload: dict[str, Any],
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    require_workstation_management(principal)
+    ensure_workstation_payload_role(payload)
+
+    try:
+        return await auth_client.patch_json(
+            f"/internal/admin/workstations/{workstation_id}",
+            json=payload,
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Auth service unavailable: {exc}",
+        ) from exc
+
+
+@app.post("/api/admin/workstations/{workstation_id}/classrooms")
+async def admin_update_workstation_classrooms(
+    workstation_id: int,
+    payload: dict[str, Any],
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    require_workstation_management(principal)
+
+    try:
+        return await auth_client.post_json(
+            f"/internal/admin/workstations/{workstation_id}/classrooms",
+            json=payload,
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Auth service unavailable: {exc}",
         ) from exc
 
 

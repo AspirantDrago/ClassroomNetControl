@@ -92,3 +92,36 @@ function getAssignedClassroomIds(principal: CurrentPrincipal | null): number[] {
 
     return principal.classroom_ids ?? principal.allowed_classroom_ids ?? [];
 }
+
+export function canManageUsers(principal: CurrentPrincipal | null): boolean {
+    return hasAnyPermission(principal, [
+        PERMISSION_USERS_MANAGE_ADMIN,
+        PERMISSION_USERS_MANAGE_LOWER,
+    ]);
+}
+
+export function canManageAdminUsers(principal: CurrentPrincipal | null): boolean {
+    return hasPermission(principal, PERMISSION_USERS_MANAGE_ADMIN);
+}
+
+export function canManageLowerUsers(principal: CurrentPrincipal | null): boolean {
+    return hasPermission(principal, PERMISSION_USERS_MANAGE_LOWER);
+}
+
+export function canOpenAccessAdmin(principal: CurrentPrincipal | null): boolean {
+    return canManageUsers(principal) || hasPermission(principal, PERMISSION_WORKSTATIONS_MANAGE);
+}
+
+export function getManageableUserRoles(principal: CurrentPrincipal | null): string[] {
+    const roles: string[] = [];
+
+    if (canManageAdminUsers(principal)) {
+        roles.push(ROLE_ADMIN);
+    }
+
+    if (canManageLowerUsers(principal)) {
+        roles.push(ROLE_MODERATOR, ROLE_TEACHER);
+    }
+
+    return roles;
+}

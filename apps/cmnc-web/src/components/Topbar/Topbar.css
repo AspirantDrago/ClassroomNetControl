@@ -43,3 +43,7 @@
     margin-right: 20px;
     margin-bottom: -12px;
 }
+
+.topbar-active-button {
+    background: #2563eb;
+}
