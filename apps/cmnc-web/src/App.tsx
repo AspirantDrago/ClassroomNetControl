@@ -32,6 +32,7 @@ import {
 import { DeviceGrid } from "./components/DeviceGrid/DeviceGrid";
 import { DynamicDevicesTable } from "./components/DynamicDevicesTable/DynamicDevicesTable";
 import { Topbar } from "./components/Topbar/Topbar";
+import { LoginPage } from "./pages/LoginPage/LoginPage";
 import {
     buildDeviceGrid,
     emptyStringToNull,
@@ -42,8 +43,6 @@ import { parseOptionalInteger, parseRequiredString } from "./utils/forms";
 export function App() {
     const [principal, setPrincipal] = useState<CurrentPrincipal | null>(null);
     const [authChecked, setAuthChecked] = useState(false);
-    const [loginName, setLoginName] = useState("");
-    const [password, setPassword] = useState("");
     const [authBusy, setAuthBusy] = useState(false);
     const [authError, setAuthError] = useState<string | null>(null);
 
@@ -226,17 +225,14 @@ export function App() {
         setSelectedClassroomId(data[0].id);
     }
 
-    async function handleLoginSubmit(event: FormEvent<HTMLFormElement>) {
-        event.preventDefault();
-
+    async function handleLogin(username: string, password: string) {
         setAuthBusy(true);
         setAuthError(null);
 
         try {
-            await login(loginName, password);
+            await login(username, password);
             const currentPrincipal = await getCurrentPrincipal();
             setPrincipal(currentPrincipal);
-            setPassword("");
         } catch (err) {
             clearAccessToken();
             setPrincipal(null);
@@ -516,43 +512,11 @@ export function App() {
 
     if (principal === null) {
         return (
-            <div className="page auth-page">
-                <form className="login-card" onSubmit={handleLoginSubmit}>
-                    <div>
-                        <h1>Classroom MikroTik Net Control</h1>
-                        <p className="muted">Войдите, чтобы управлять аудиториями.</p>
-                    </div>
-
-                    {authError && <pre className="error-box">{authError}</pre>}
-
-                    <label>
-                        Логин
-                        <input
-                            autoComplete="username"
-                            value={loginName}
-                            onChange={(event) => setLoginName(event.target.value)}
-                        />
-                    </label>
-
-                    <label>
-                        Пароль
-                        <input
-                            autoComplete="current-password"
-                            type="password"
-                            value={password}
-                            onChange={(event) => setPassword(event.target.value)}
-                        />
-                    </label>
-
-                    <button
-                        className="primary-button"
-                        type="submit"
-                        disabled={authBusy || loginName.trim() === ""}
-                    >
-                        {authBusy ? "Вход..." : "Войти"}
-                    </button>
-                </form>
-            </div>
+            <LoginPage
+                busy={authBusy}
+                error={authError}
+                onLogin={handleLogin}
+            />
         );
     }
 
