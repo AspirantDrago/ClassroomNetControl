@@ -429,9 +429,49 @@ async def create_device(
 ) -> DeviceRead:
     await ensure_classroom_exists(session, payload.classroom_id)
 
+    normalized_mac = normalize_mac_address(payload.mac_address)
+
+    existing_result = await session.execute(
+        select(Device).where(Device.mac_address == normalized_mac)
+    )
+    existing_device = existing_result.scalar_one_or_none()
+
+    if existing_device is not None:
+        if existing_device.is_pinned:
+            raise HTTPException(
+                status_code=409,
+                detail="Device with the same MAC already exists",
+            )
+
+        if not payload.is_pinned:
+            raise HTTPException(
+                status_code=409,
+                detail="Device with the same MAC already exists",
+            )
+
+        existing_device.classroom_id = payload.classroom_id
+        existing_device.inventory_name = payload.inventory_name
+        existing_device.hostname = payload.hostname
+        existing_device.static_ip = payload.static_ip
+        existing_device.row_index = payload.row_index
+        existing_device.column_index = payload.column_index
+        existing_device.is_pinned = True
+        existing_device.wan_allowed = True if payload.wan_protected else payload.wan_allowed
+        existing_device.wan_protected = payload.wan_protected
+        existing_device.sync_status = "applied"
+        existing_device.sync_error = None
+
+        await commit_or_409(
+            session,
+            detail="Device with the same grid position already exists",
+        )
+        await session.refresh(existing_device)
+
+        return DeviceRead.model_validate(existing_device)
+
     device = Device(
         classroom_id=payload.classroom_id,
-        mac_address=normalize_mac_address(payload.mac_address),
+        mac_address=normalized_mac,
         inventory_name=payload.inventory_name,
         hostname=payload.hostname,
         static_ip=payload.static_ip,

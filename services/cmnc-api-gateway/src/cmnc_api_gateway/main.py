@@ -942,12 +942,14 @@ async def admin_pin_observed_device(
         raise HTTPException(status_code=422, detail="mac_address is required")
 
     row_index = payload.get("row_index")
-    if not isinstance(row_index, int):
-        raise HTTPException(status_code=422, detail="row_index must be an integer")
+    if row_index is not None and not isinstance(row_index, int):
+        raise HTTPException(status_code=422,
+                            detail="row_index must be an integer or null")
 
     column_index = payload.get("column_index")
-    if not isinstance(column_index, int):
-        raise HTTPException(status_code=422, detail="column_index must be an integer")
+    if column_index is not None and not isinstance(column_index, int):
+        raise HTTPException(status_code=422,
+                            detail="column_index must be an integer or null")
 
     wan_protected = payload.get("wan_protected", True)
     if not isinstance(wan_protected, bool):
