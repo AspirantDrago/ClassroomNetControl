@@ -1,6 +1,8 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
+    allowClassroomWan,
     allowDeviceWan,
+    blockClassroomWan,
     blockDeviceWan,
     clearAccessToken,
     extractErrorDetail,
@@ -66,6 +68,9 @@ export function App() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [busyDeviceId, setBusyDeviceId] = useState<number | null>(null);
+    const [busyClassroomWanAction, setBusyClassroomWanAction] = useState<
+        "block" | "allow" | null
+    >(null);
     const [deviceForm, setDeviceForm] = useState<DeviceFormState | null>(null);
     const [busyForm, setBusyForm] = useState(false);
     const [classroomForm, setClassroomForm] = useState<ClassroomFormState | null>(
@@ -261,6 +266,7 @@ export function App() {
         setSelectedClassroomId(null);
         setDashboard(null);
         setError(null);
+        setBusyClassroomWanAction(null);
         setDeviceForm(null);
         setClassroomForm(null);
         setCurrentPage("dashboard");
@@ -428,6 +434,48 @@ export function App() {
             setError(extractErrorDetail(err));
         } finally {
             setBusyDeviceId(null);
+        }
+    }
+
+    async function handleBlockClassroomWan() {
+        if (
+            selectedClassroomId === null ||
+            !canControlWanForClassroom(principal, selectedClassroomId)
+        ) {
+            return;
+        }
+
+        setBusyClassroomWanAction("block");
+        setError(null);
+
+        try {
+            await blockClassroomWan(selectedClassroomId);
+            await reload();
+        } catch (err) {
+            setError(extractErrorDetail(err));
+        } finally {
+            setBusyClassroomWanAction(null);
+        }
+    }
+
+    async function handleAllowClassroomWan() {
+        if (
+            selectedClassroomId === null ||
+            !canControlWanForClassroom(principal, selectedClassroomId)
+        ) {
+            return;
+        }
+
+        setBusyClassroomWanAction("allow");
+        setError(null);
+
+        try {
+            await allowClassroomWan(selectedClassroomId);
+            await reload();
+        } catch (err) {
+            setError(extractErrorDetail(err));
+        } finally {
+            setBusyClassroomWanAction(null);
         }
     }
 
@@ -634,14 +682,40 @@ export function App() {
                                         </div>
                                     </div>
 
-                                    {userCanManageClassrooms && (
-                                        <button
-                                            className="secondary-button"
-                                            onClick={() => openEditClassroomForm(dashboard.classroom)}
-                                        >
-                                            Редактировать аудиторию
-                                        </button>
-                                    )}
+                                    <div className="classroom-actions">
+                                        {userCanControlWan && (
+                                            <>
+                                                <button
+                                                    className="danger-button"
+                                                    disabled={busyClassroomWanAction !== null}
+                                                    onClick={() => void handleBlockClassroomWan()}
+                                                >
+                                                    {busyClassroomWanAction === "block"
+                                                        ? "Блокировка..."
+                                                        : "Блокировать всё"}
+                                                </button>
+
+                                                <button
+                                                    className="secondary-button"
+                                                    disabled={busyClassroomWanAction !== null}
+                                                    onClick={() => void handleAllowClassroomWan()}
+                                                >
+                                                    {busyClassroomWanAction === "allow"
+                                                        ? "Разблокировка..."
+                                                        : "Разблокировать всё"}
+                                                </button>
+                                            </>
+                                        )}
+
+                                        {userCanManageClassrooms && (
+                                            <button
+                                                className="secondary-button"
+                                                onClick={() => openEditClassroomForm(dashboard.classroom)}
+                                            >
+                                                Редактировать аудиторию
+                                            </button>
+                                        )}
+                                    </div>
                                 </section>
 
                                 <DeviceGrid

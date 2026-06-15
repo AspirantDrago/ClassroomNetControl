@@ -32,3 +32,24 @@
     color: #9ca3af;
 }
 
+.classroom-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.danger-button {
+    border: 1px solid #7f1d1d;
+    background: #991b1b;
+    color: #fee2e2;
+}
+
+.danger-button:hover:not(:disabled) {
+    background: #b91c1c;
+}
+
+.danger-button:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+}

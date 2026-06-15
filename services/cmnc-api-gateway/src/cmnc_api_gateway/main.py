@@ -289,6 +289,14 @@ async def ensure_wan_device_access(
     ensure_classroom_access(principal, classroom_id)
 
 
+async def ensure_wan_classroom_access(
+    principal: PrincipalResponse,
+    classroom_id: int,
+) -> None:
+    require_wan_control_permission(principal)
+    ensure_classroom_access(principal, classroom_id)
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     return HealthResponse(
@@ -476,6 +484,46 @@ async def get_classroom_dashboard(
         devices=dashboard_devices,
         dynamic_devices=dynamic_devices,
     )
+
+
+@app.post("/api/classrooms/{classroom_id}/wan/block-all")
+async def block_classroom_wan(
+    classroom_id: int,
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    await ensure_wan_classroom_access(principal, classroom_id)
+
+    try:
+        return await classroom_client.post_json(
+            f"/internal/classrooms/{classroom_id}/wan/block-all"
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+
+
+@app.post("/api/classrooms/{classroom_id}/wan/allow-all")
+async def allow_classroom_wan(
+    classroom_id: int,
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    await ensure_wan_classroom_access(principal, classroom_id)
+
+    try:
+        return await classroom_client.post_json(
+            f"/internal/classrooms/{classroom_id}/wan/allow-all"
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
 
 
 @app.post("/api/devices/{device_id}/wan/block")

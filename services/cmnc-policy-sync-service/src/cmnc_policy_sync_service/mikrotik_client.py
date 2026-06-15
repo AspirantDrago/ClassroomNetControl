@@ -139,44 +139,80 @@ class MikroTikClient:
             self,
             src_ip: str,
     ) -> int:
-        connections = await self._request_json(
-            method="GET",
-            path="/ip/firewall/connection",
-        )
-
-        if not isinstance(connections, list):
-            raise TypeError("MikroTik connections response is not a list")
-
+        connections = await self.get_connections_by_src_ip(src_ip)
         removed = 0
 
         for connection in connections:
-            if not isinstance(connection, dict):
+            routeros_id = connection.get(".id")
+
+            if not routeros_id:
                 continue
 
-            routeros_id = connection.get(".id")
-            src_address = connection.get("src-address")
+            try:
+                await self._request(
+                    method="DELETE",
+                    path=f"/ip/firewall/connection/{routeros_id}",
+                )
+                removed += 1
+            except httpx.HTTPStatusError as exc:
+                logger.warning(
+                    "Failed to delete connection %s for %s: %s",
+                    routeros_id,
+                    src_ip,
+                    exc,
+                )
+
+        return removed
+
+    async def get_connections_by_src_ip(
+            self,
+            src_ip: str,
+    ) -> list[dict[str, Any]]:
+        # RouterOS stores connection src-address as either the plain IP or as
+        # IP:port, for example 192.168.119.105:54231. REST GET query parameters
+        # only do exact matching, so use the print command with a query stack:
+        # src-address == ip OR (src-address > "ip:" AND src-address < "ip;").
+        # The ";" upper bound works because it is the next ASCII character
+        # after ":", so it matches all strings that start with "ip:".
+        data = await self._request_json(
+            method="POST",
+            path="/ip/firewall/connection/print",
+            json={
+                ".proplist": [".id", "src-address"],
+                ".query": [
+                    f"src-address={src_ip}",
+                    f">src-address={src_ip}:",
+                    f"<src-address={src_ip};",
+                    "#&",
+                    "#|",
+                ],
+            },
+        )
+
+        if not isinstance(data, list):
+            raise TypeError("MikroTik connections response is not a list")
+
+        connections: list[dict[str, Any]] = []
+
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+
+            routeros_id = item.get(".id")
+            src_address = item.get("src-address")
 
             if not routeros_id or not src_address:
                 continue
 
             src_address_str = str(src_address)
 
+            # Keep a local guard because this query relies on RouterOS string
+            # range comparison. The guard prevents deleting a wrong connection
+            # if a RouterOS version behaves differently.
             if src_address_str == src_ip or src_address_str.startswith(f"{src_ip}:"):
-                try:
-                    await self._request(
-                        method="DELETE",
-                        path=f"/ip/firewall/connection/{routeros_id}",
-                    )
-                    removed += 1
-                except httpx.HTTPStatusError as exc:
-                    logger.warning(
-                        "Failed to delete connection %s for %s: %s",
-                        routeros_id,
-                        src_ip,
-                        exc,
-                    )
+                connections.append(item)
 
-        return removed
+        return connections
 
     async def apply_desired_blocklist(
             self,
@@ -254,9 +290,13 @@ class MikroTikClient:
                 except Exception as exc:
                     logger.warning(
                         "Failed to remove active connections for %s after blocking. "
-                        "The address-list entry is already applied, so policy sync is not failed: %r",
+                        "The address-list entry is already applied, so policy sync is not failed: %s",
                         ip,
-                        exc,
+                        exc.__class__.__name__,
+                    )
+                    logger.debug(
+                        "Connection cleanup traceback for %s",
+                        ip,
                         exc_info=True,
                     )
 

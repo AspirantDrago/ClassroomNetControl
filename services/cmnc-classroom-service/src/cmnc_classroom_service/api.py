@@ -10,6 +10,7 @@ from cmnc_classroom_service.db import get_session
 from cmnc_classroom_service.messaging import RabbitMqClient
 from cmnc_classroom_service.models import Classroom, Device
 from cmnc_classroom_service.schemas import (
+    BulkWanPolicyChangeResponse,
     ClassroomCreate,
     ClassroomLayoutResponse,
     ClassroomRead,
@@ -180,6 +181,110 @@ async def set_device_wan_state(
         wan_allowed=device.wan_allowed,
         policy_generation=device.policy_generation,
         sync_status=device.sync_status,
+    )
+
+
+@router.post(
+    "/internal/classrooms/{classroom_id}/wan/block-all",
+    response_model=BulkWanPolicyChangeResponse,
+)
+async def block_classroom_wan(
+    classroom_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> BulkWanPolicyChangeResponse:
+    return await set_classroom_wan_state(
+        session=session,
+        rabbitmq_client=get_rabbitmq_client(request),
+        classroom_id=classroom_id,
+        wan_allowed=False,
+    )
+
+
+@router.post(
+    "/internal/classrooms/{classroom_id}/wan/allow-all",
+    response_model=BulkWanPolicyChangeResponse,
+)
+async def allow_classroom_wan(
+    classroom_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> BulkWanPolicyChangeResponse:
+    return await set_classroom_wan_state(
+        session=session,
+        rabbitmq_client=get_rabbitmq_client(request),
+        classroom_id=classroom_id,
+        wan_allowed=True,
+    )
+
+
+async def set_classroom_wan_state(
+    session: AsyncSession,
+    rabbitmq_client: RabbitMqClient,
+    classroom_id: int,
+    wan_allowed: bool,
+) -> BulkWanPolicyChangeResponse:
+    await ensure_classroom_exists(session, classroom_id)
+
+    result = await session.execute(
+        select(Device)
+        .where(Device.classroom_id == classroom_id)
+        .where(Device.is_pinned.is_(True))
+        .where(Device.wan_protected.is_(False))
+        .order_by(Device.id)
+    )
+    devices = list(result.scalars().all())
+
+    changed_count = 0
+    queued_devices: list[Device] = []
+
+    for device in devices:
+        if device.wan_allowed != wan_allowed:
+            device.wan_allowed = wan_allowed
+            device.policy_generation += 1
+            changed_count += 1
+            device.sync_status = "pending"
+            device.sync_error = None
+            queued_devices.append(device)
+            continue
+
+        if device.sync_status != "applied":
+            device.sync_status = "pending"
+            device.sync_error = None
+            queued_devices.append(device)
+
+    policy_generation = max(
+        (device.policy_generation for device in devices),
+        default=0,
+    )
+
+    await session.commit()
+
+    if queued_devices:
+        event_device = queued_devices[0]
+        event = WanPolicyChangedEvent(
+            router_id=settings.default_router_id,
+            classroom_id=classroom_id,
+            device_id=event_device.id,
+            policy_generation=policy_generation,
+            wan_allowed=wan_allowed,
+            changed_by_user_id=None,
+        )
+
+        await rabbitmq_client.publish_event(
+            event=event,
+            routing_key=CLASSROOM_DEVICE_WAN_POLICY_CHANGED,
+        )
+
+    return BulkWanPolicyChangeResponse(
+        classroom_id=classroom_id,
+        wan_allowed=wan_allowed,
+        affected_count=len(devices),
+        changed_count=changed_count,
+        queued_count=len(queued_devices),
+        device_ids=[device.id for device in devices],
+        policy_generation=policy_generation,
+        sync_status="pending" if queued_devices else "applied",
     )
 
 

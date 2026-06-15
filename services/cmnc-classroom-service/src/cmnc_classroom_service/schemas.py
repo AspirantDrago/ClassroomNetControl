@@ -50,6 +50,17 @@ class WanPolicyChangeResponse(BaseModel):
     sync_status: str
 
 
+class BulkWanPolicyChangeResponse(BaseModel):
+    classroom_id: int
+    wan_allowed: bool
+    affected_count: int
+    changed_count: int
+    queued_count: int
+    device_ids: list[int]
+    policy_generation: int
+    sync_status: str
+
+
 class DesiredBlocklistItem(BaseModel):
     device_id: int
     mac_address: str

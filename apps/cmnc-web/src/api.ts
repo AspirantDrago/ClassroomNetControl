@@ -270,6 +270,18 @@ export function allowDeviceWan(deviceId: number): Promise<unknown> {
     });
 }
 
+export function blockClassroomWan(classroomId: number): Promise<unknown> {
+    return request(`/api/classrooms/${classroomId}/wan/block-all`, {
+        method: "POST",
+    });
+}
+
+export function allowClassroomWan(classroomId: number): Promise<unknown> {
+    return request(`/api/classrooms/${classroomId}/wan/allow-all`, {
+        method: "POST",
+    });
+}
+
 export type PinObservedDeviceRequest = {
     mac_address: string;
     inventory_name?: string | null;
