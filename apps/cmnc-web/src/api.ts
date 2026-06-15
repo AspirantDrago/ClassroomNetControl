@@ -32,6 +32,7 @@ export type DashboardDevice = {
 };
 
 export type DynamicDevice = {
+    id: number;
     router_id: number;
     mac_address: string;
     active_ip: string | null;
@@ -289,6 +290,35 @@ export type PinObservedDeviceRequest = {
     column_index?: number | null;
     wan_protected?: boolean;
 };
+
+export type DeleteObservedDevicesResponse = {
+    deleted_ids: number[];
+    deleted_count: number;
+};
+
+export function deleteObservedDevice(
+    classroomId: number,
+    observedDeviceId: number,
+): Promise<DeleteObservedDevicesResponse> {
+    return request<DeleteObservedDevicesResponse>(
+        `/api/admin/classrooms/${classroomId}/observed-devices/${observedDeviceId}/delete`,
+        {
+            method: "POST",
+        },
+    );
+}
+
+export function cleanupStaleObservedDevices(
+    classroomId: number,
+): Promise<DeleteObservedDevicesResponse> {
+    return request<DeleteObservedDevicesResponse>(
+        `/api/admin/classrooms/${classroomId}/observed-devices/cleanup-stale`,
+        {
+            method: "POST",
+        },
+    );
+}
+
 
 export function pinObservedDevice(
     classroomId: number,

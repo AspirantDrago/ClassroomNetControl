@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class HealthResponse(BaseModel):
@@ -26,3 +26,12 @@ class ObservedDeviceRead(BaseModel):
 
 class ObservedDevicesResponse(BaseModel):
     devices: list[ObservedDeviceRead]
+
+
+class DeleteObservedDevicesRequest(BaseModel):
+    ids: list[int] = Field(default_factory=list)
+
+
+class DeleteObservedDevicesResponse(BaseModel):
+    deleted_ids: list[int]
+    deleted_count: int

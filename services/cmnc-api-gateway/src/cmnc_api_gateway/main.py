@@ -1,4 +1,5 @@
 import ipaddress
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -297,6 +298,98 @@ async def ensure_wan_classroom_access(
     ensure_classroom_access(principal, classroom_id)
 
 
+def parse_datetime(value: Any) -> datetime | None:
+    if value is None:
+        return None
+
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+
+    if not isinstance(value, str):
+        return None
+
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+
+    return parsed
+
+
+def get_pinned_macs(devices: list[dict[str, Any]]) -> set[str]:
+    return {
+        device["mac_address"].upper()
+        for device in devices
+        if isinstance(device.get("mac_address"), str)
+    }
+
+
+def find_observed_device_by_id(
+    observed_devices: list[dict[str, Any]],
+    observed_device_id: int,
+) -> dict[str, Any] | None:
+    for item in observed_devices:
+        if item.get("id") == observed_device_id:
+            return item
+
+    return None
+
+
+def ensure_observed_device_is_unpinned_in_classroom(
+    observed_device: dict[str, Any],
+    pinned_macs: set[str],
+    subnet_cidr: str,
+) -> None:
+    mac_address = observed_device.get("mac_address")
+
+    if not isinstance(mac_address, str):
+        raise HTTPException(status_code=502, detail="Invalid inventory service response")
+
+    if mac_address.upper() in pinned_macs:
+        raise HTTPException(
+            status_code=409,
+            detail="Observed device is already pinned and cannot be deleted from inventory",
+        )
+
+    if not ip_in_subnet(observed_device.get("active_ip"), subnet_cidr):
+        raise HTTPException(
+            status_code=404,
+            detail="Observed device does not belong to this classroom subnet",
+        )
+
+
+async def get_classroom_layout_and_observed_devices(
+    classroom_id: int,
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+    layout = await classroom_client.get_json(
+        f"/internal/classrooms/{classroom_id}/layout"
+    )
+    observed = await inventory_client.get_json(
+        f"/internal/routers/{settings.default_router_id}/observed-devices"
+    )
+
+    if not isinstance(layout, dict) or not isinstance(observed, dict):
+        raise HTTPException(status_code=502, detail="Invalid service response")
+
+    classroom = layout.get("classroom")
+    devices = layout.get("devices")
+    observed_devices = observed.get("devices")
+
+    if (
+        not isinstance(classroom, dict)
+        or not isinstance(devices, list)
+        or not isinstance(observed_devices, list)
+    ):
+        raise HTTPException(status_code=502, detail="Invalid service response")
+
+    return classroom, devices, observed_devices
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     return HealthResponse(
@@ -484,6 +577,130 @@ async def get_classroom_dashboard(
         devices=dashboard_devices,
         dynamic_devices=dynamic_devices,
     )
+
+
+@app.post("/api/admin/classrooms/{classroom_id}/observed-devices/{observed_device_id}/delete")
+async def admin_delete_observed_device(
+    classroom_id: int,
+    observed_device_id: int,
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    require_permission(principal, PERMISSION_DEVICES_MANAGE)
+
+    try:
+        classroom, devices, observed_devices = await get_classroom_layout_and_observed_devices(
+            classroom_id
+        )
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Classroom not found") from exc
+        raise HTTPException(status_code=502, detail=exc.response.text) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    observed_device = find_observed_device_by_id(
+        observed_devices,
+        observed_device_id,
+    )
+
+    if observed_device is None:
+        raise HTTPException(status_code=404, detail="Observed device not found")
+
+    ensure_observed_device_is_unpinned_in_classroom(
+        observed_device=observed_device,
+        pinned_macs=get_pinned_macs(devices),
+        subnet_cidr=classroom["subnet_cidr"],
+    )
+
+    if observed_device.get("active") is not False:
+        raise HTTPException(
+            status_code=409,
+            detail="Only inactive observed devices can be deleted manually",
+        )
+
+    try:
+        return await inventory_client.post_json(
+            f"/internal/routers/{settings.default_router_id}/observed-devices/delete",
+            json={"ids": [observed_device_id]},
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Inventory service unavailable: {exc}",
+        ) from exc
+
+
+@app.post("/api/admin/classrooms/{classroom_id}/observed-devices/cleanup-stale")
+async def admin_cleanup_stale_observed_devices(
+    classroom_id: int,
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    require_permission(principal, PERMISSION_DEVICES_MANAGE)
+
+    try:
+        classroom, devices, observed_devices = await get_classroom_layout_and_observed_devices(
+            classroom_id
+        )
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Classroom not found") from exc
+        raise HTTPException(status_code=502, detail=exc.response.text) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    pinned_macs = get_pinned_macs(devices)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+    ids_to_delete: list[int] = []
+
+    for observed_device in observed_devices:
+        observed_device_id = observed_device.get("id")
+        if not isinstance(observed_device_id, int):
+            continue
+
+        mac_address = observed_device.get("mac_address")
+        if not isinstance(mac_address, str) or mac_address.upper() in pinned_macs:
+            continue
+
+        if not ip_in_subnet(observed_device.get("active_ip"), classroom["subnet_cidr"]):
+            continue
+
+        last_seen_at = parse_datetime(observed_device.get("last_seen_at"))
+        if last_seen_at is None:
+            continue
+
+        if last_seen_at < cutoff:
+            ids_to_delete.append(observed_device_id)
+
+    if not ids_to_delete:
+        return {
+            "deleted_ids": [],
+            "deleted_count": 0,
+        }
+
+    try:
+        return await inventory_client.post_json(
+            f"/internal/routers/{settings.default_router_id}/observed-devices/delete",
+            json={"ids": ids_to_delete},
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Inventory service unavailable: {exc}",
+        ) from exc
 
 
 @app.post("/api/classrooms/{classroom_id}/wan/block-all")

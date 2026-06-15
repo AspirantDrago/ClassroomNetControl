@@ -8,12 +8,25 @@ import "./DynamicDevicesTable.css";
 type DynamicDevicesTableProps = {
     devices: DynamicDevice[];
     busyPinMac: string | null;
+    busyDeleteObservedDeviceId: number | null;
+    busyCleanupStale: boolean;
     onOpenPinForm: (device: DynamicDevice) => void;
+    onDeleteInactive: (device: DynamicDevice) => void;
+    onCleanupStale: () => void;
     canManageWorkstations: boolean;
 };
 
 export function DynamicDevicesTable(props: DynamicDevicesTableProps) {
-    const { devices, busyPinMac, onOpenPinForm, canManageWorkstations } = props;
+    const {
+        devices,
+        busyPinMac,
+        busyDeleteObservedDeviceId,
+        busyCleanupStale,
+        onOpenPinForm,
+        onDeleteInactive,
+        onCleanupStale,
+        canManageWorkstations,
+    } = props;
 
     const sortedDevices = [...devices].sort((left, right) => {
         return compareIpAddresses(left.active_ip, right.active_ip);
@@ -21,7 +34,24 @@ export function DynamicDevicesTable(props: DynamicDevicesTableProps) {
 
     return (
         <section className="dynamic-section">
-            <h3>Незакреплённые устройства</h3>
+            <div className="dynamic-section-header">
+                <div>
+                    <h3>Незакреплённые устройства</h3>
+                    <div className="muted">
+                        Неактивные устройства можно удалить из базы данных.
+                    </div>
+                </div>
+
+                {canManageWorkstations && (
+                    <button
+                        className="secondary-button compact-button"
+                        disabled={busyCleanupStale}
+                        onClick={onCleanupStale}
+                    >
+                        {busyCleanupStale ? "Очистка..." : "Очистить старые"}
+                    </button>
+                )}
+            </div>
 
             {devices.length === 0 ? (
                 <div className="muted">
@@ -43,7 +73,10 @@ export function DynamicDevicesTable(props: DynamicDevicesTableProps) {
                         </thead>
                         <tbody>
                         {sortedDevices.map((device) => (
-                            <tr key={device.mac_address}>
+                            <tr
+                                key={device.id}
+                                className={device.active ? undefined : "dynamic-row-inactive"}
+                            >
                                 <td>{device.mac_address}</td>
                                 <td>{device.active_ip ?? "-"}</td>
                                 <td>{device.hostname ?? "-"}</td>
@@ -53,6 +86,16 @@ export function DynamicDevicesTable(props: DynamicDevicesTableProps) {
                                 <td>
                                     {!canManageWorkstations ? (
                                         <span className="muted">Нет прав</span>
+                                    ) : !device.active ? (
+                                        <button
+                                            className="icon-danger-button"
+                                            title="Удалить неактивное устройство из базы данных"
+                                            aria-label="Удалить неактивное устройство из базы данных"
+                                            disabled={busyDeleteObservedDeviceId === device.id}
+                                            onClick={() => onDeleteInactive(device)}
+                                        >
+                                            {busyDeleteObservedDeviceId === device.id ? "..." : "×"}
+                                        </button>
                                     ) : canPinObservedDevice(device) ? (
                                         <button
                                             className="secondary-button compact-button"

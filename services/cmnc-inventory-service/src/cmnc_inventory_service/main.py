@@ -14,6 +14,8 @@ from cmnc_inventory_service.dhcp_handlers import handle_dhcp_leases_observed
 from cmnc_inventory_service.messaging import RabbitMqClient
 from cmnc_inventory_service.models import ObservedDevice
 from cmnc_inventory_service.schemas import (
+    DeleteObservedDevicesRequest,
+    DeleteObservedDevicesResponse,
     HealthResponse,
     ObservedDeviceRead,
     ObservedDevicesResponse,
@@ -95,6 +97,43 @@ async def get_observed_devices_by_router(
 
     return ObservedDevicesResponse(
         devices=[ObservedDeviceRead.model_validate(device) for device in devices],
+    )
+
+
+@app.post(
+    "/internal/routers/{router_id}/observed-devices/delete",
+    response_model=DeleteObservedDevicesResponse,
+)
+async def delete_observed_devices_by_router(
+        router_id: int,
+        payload: DeleteObservedDevicesRequest,
+        session: AsyncSession = Depends(get_session),
+) -> DeleteObservedDevicesResponse:
+    ids = sorted(set(payload.ids))
+
+    if not ids:
+        return DeleteObservedDevicesResponse(
+            deleted_ids=[],
+            deleted_count=0,
+        )
+
+    result = await session.execute(
+        select(ObservedDevice)
+        .where(ObservedDevice.router_id == router_id)
+        .where(ObservedDevice.id.in_(ids))
+    )
+    devices = list(result.scalars().all())
+
+    deleted_ids = sorted(device.id for device in devices)
+
+    for device in devices:
+        await session.delete(device)
+
+    await session.commit()
+
+    return DeleteObservedDevicesResponse(
+        deleted_ids=deleted_ids,
+        deleted_count=len(deleted_ids),
     )
 
 

@@ -21,6 +21,16 @@ async def handle_dhcp_leases_observed(message: IncomingMessage) -> None:
             len(event.leases),
         )
 
+        seen_macs = {
+            lease.mac
+            for lease in event.leases
+            if lease.mac
+        }
+
+        created = 0
+        updated = 0
+        marked_inactive = 0
+
         async with async_session_maker() as session:
             for lease in event.leases:
                 result = await session.execute(
@@ -42,14 +52,38 @@ async def handle_dhcp_leases_observed(message: IncomingMessage) -> None:
                         last_seen_at=event.occurred_at,
                     )
                     session.add(observed_device)
-                else:
-                    observed_device.active_ip = lease.active_ip
-                    observed_device.hostname = lease.hostname
-                    observed_device.dynamic = lease.dynamic
-                    observed_device.active = lease.active
-                    observed_device.raw = lease.raw
+                    created += 1
+                    continue
+
+                observed_device.active_ip = lease.active_ip
+                observed_device.hostname = lease.hostname
+                observed_device.dynamic = lease.dynamic
+                observed_device.active = lease.active
+                observed_device.raw = lease.raw
+
+                if lease.active:
                     observed_device.last_seen_at = event.occurred_at
+
+                updated += 1
+
+            if seen_macs:
+                result = await session.execute(
+                    select(ObservedDevice)
+                    .where(ObservedDevice.router_id == event.router_id)
+                    .where(ObservedDevice.mac_address.not_in(seen_macs))
+                    .where(ObservedDevice.active.is_(True))
+                )
+                missing_devices = list(result.scalars().all())
+
+                for observed_device in missing_devices:
+                    observed_device.active = False
+                    marked_inactive += 1
 
             await session.commit()
 
-        logger.info("DHCP leases saved")
+        logger.info(
+            "DHCP leases saved: created=%s, updated=%s, marked_inactive=%s",
+            created,
+            updated,
+            marked_inactive,
+        )

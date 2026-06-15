@@ -4,7 +4,9 @@ import {
     allowDeviceWan,
     blockClassroomWan,
     blockDeviceWan,
+    cleanupStaleObservedDevices,
     clearAccessToken,
+    deleteObservedDevice,
     extractErrorDetail,
     type Classroom,
     type ClassroomDashboard,
@@ -71,6 +73,11 @@ export function App() {
     const [busyClassroomWanAction, setBusyClassroomWanAction] = useState<
         "block" | "allow" | null
     >(null);
+    const [busyDeleteObservedDeviceId, setBusyDeleteObservedDeviceId] = useState<
+        number | null
+    >(null);
+    const [busyCleanupStaleObservedDevices, setBusyCleanupStaleObservedDevices] =
+        useState(false);
     const [deviceForm, setDeviceForm] = useState<DeviceFormState | null>(null);
     const [busyForm, setBusyForm] = useState(false);
     const [classroomForm, setClassroomForm] = useState<ClassroomFormState | null>(
@@ -267,6 +274,8 @@ export function App() {
         setDashboard(null);
         setError(null);
         setBusyClassroomWanAction(null);
+        setBusyDeleteObservedDeviceId(null);
+        setBusyCleanupStaleObservedDevices(false);
         setDeviceForm(null);
         setClassroomForm(null);
         setCurrentPage("dashboard");
@@ -476,6 +485,70 @@ export function App() {
             setError(extractErrorDetail(err));
         } finally {
             setBusyClassroomWanAction(null);
+        }
+    }
+
+
+    async function handleDeleteInactiveObservedDevice(device: DynamicDevice) {
+        if (
+            selectedClassroomId === null ||
+            !canManageWorkstations(principal) ||
+            device.active
+        ) {
+            return;
+        }
+
+        const confirmed = window.confirm(
+            `Удалить неактивное устройство ${device.mac_address} из базы данных?`,
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        setBusyDeleteObservedDeviceId(device.id);
+        setError(null);
+
+        try {
+            await deleteObservedDevice(selectedClassroomId, device.id);
+            await reload();
+        } catch (err) {
+            setError(extractErrorDetail(err));
+        } finally {
+            setBusyDeleteObservedDeviceId(null);
+        }
+    }
+
+    async function handleCleanupStaleObservedDevices() {
+        if (
+            selectedClassroomId === null ||
+            !canManageWorkstations(principal)
+        ) {
+            return;
+        }
+
+        const confirmed = window.confirm(
+            "Удалить из базы данных незакреплённые устройства, которые не появлялись больше 30 дней?",
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        setBusyCleanupStaleObservedDevices(true);
+        setError(null);
+
+        try {
+            const result = await cleanupStaleObservedDevices(selectedClassroomId);
+            await reload();
+
+            if (result.deleted_count === 0) {
+                setError("Нет незакреплённых устройств старше 30 дней.");
+            }
+        } catch (err) {
+            setError(extractErrorDetail(err));
+        } finally {
+            setBusyCleanupStaleObservedDevices(false);
         }
     }
 
@@ -732,7 +805,11 @@ export function App() {
                                     <DynamicDevicesTable
                                         devices={dashboard.dynamic_devices}
                                         busyPinMac={busyPinMac}
+                                        busyDeleteObservedDeviceId={busyDeleteObservedDeviceId}
+                                        busyCleanupStale={busyCleanupStaleObservedDevices}
                                         onOpenPinForm={openPinObservedForm}
+                                        onDeleteInactive={handleDeleteInactiveObservedDevice}
+                                        onCleanupStale={handleCleanupStaleObservedDevices}
                                         canManageWorkstations={userCanManageWorkstations}
                                     />
                                 )}

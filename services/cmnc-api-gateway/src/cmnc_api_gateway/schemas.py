@@ -31,6 +31,7 @@ class DashboardDevice(BaseModel):
 
 
 class DynamicDevice(BaseModel):
+    id: int
     router_id: int
     mac_address: str
     active_ip: str | None
