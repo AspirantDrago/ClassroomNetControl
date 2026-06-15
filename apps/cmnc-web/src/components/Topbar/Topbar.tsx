@@ -71,7 +71,7 @@ export function Topbar(props: TopbarProps) {
 
     return (
         <header className="topbar">
-            <div className="topbar__main">
+            <div className="topbar__main" onClick={() => runMenuAction(onOpenDashboard)}>
                 <div className="topbar__logo">
                     <img src="/favicon.svg" alt="CMNC" />
                 </div>
