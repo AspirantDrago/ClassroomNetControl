@@ -326,6 +326,59 @@ async def me(
     return await get_current_principal(request, authorization)
 
 
+@app.patch("/api/me", response_model=PrincipalResponse)
+async def update_me(
+    payload: dict[str, Any],
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> PrincipalResponse:
+    principal = await get_current_principal(request, authorization)
+
+    if principal.principal_type != "user":
+        raise HTTPException(
+            status_code=403,
+            detail="Only user accounts can be updated",
+        )
+
+    display_name = payload.get("display_name")
+
+    if not isinstance(display_name, str) or not display_name.strip():
+        raise HTTPException(status_code=422, detail="display_name is required")
+
+    account_payload: dict[str, Any] = {
+        "display_name": display_name.strip(),
+    }
+
+    password = payload.get("password")
+
+    if password is not None:
+        if not isinstance(password, str) or not password.strip():
+            raise HTTPException(
+                status_code=422,
+                detail="password must be a non-empty string",
+            )
+
+        account_payload["password"] = password
+
+    try:
+        data = await auth_client.patch_json(
+            f"/internal/auth/users/{principal.id}/account",
+            json=account_payload,
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Auth service unavailable: {exc}",
+        ) from exc
+
+    return PrincipalResponse.model_validate(data)
+
+
 @app.get("/api/classrooms")
 async def get_classrooms(
     request: Request,

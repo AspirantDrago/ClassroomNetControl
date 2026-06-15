@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import "./Topbar.css";
 
-type AppPage = "dashboard" | "access";
+type AppPage = "dashboard" | "account" | "access";
 
 type TopbarProps = {
     currentPage: AppPage;
@@ -11,6 +11,7 @@ type TopbarProps = {
     canCreateClassroom: boolean;
     canOpenAccessAdmin: boolean;
     onOpenDashboard: () => void;
+    onOpenAccount: () => void;
     onOpenAccessAdmin: () => void;
     principalName: string;
     onLogout: () => void;
@@ -25,6 +26,7 @@ export function Topbar(props: TopbarProps) {
         canCreateClassroom,
         canOpenAccessAdmin,
         onOpenDashboard,
+        onOpenAccount,
         onOpenAccessAdmin,
         principalName,
         onLogout,
@@ -97,6 +99,18 @@ export function Topbar(props: TopbarProps) {
                         <div className="topbar-dropdown__user">
                             {principalName}
                         </div>
+
+                        <button
+                            className={
+                                currentPage === "account"
+                                    ? "topbar-menu-item topbar-menu-item--active"
+                                    : "topbar-menu-item"
+                            }
+                            type="button"
+                            onClick={() => runMenuAction(onOpenAccount)}
+                        >
+                            Учётная запись
+                        </button>
 
                         {canOpenAccessAdmin && (
                             <button

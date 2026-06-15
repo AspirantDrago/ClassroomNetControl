@@ -34,6 +34,7 @@ import { DynamicDevicesTable } from "./components/DynamicDevicesTable/DynamicDev
 import { Topbar } from "./components/Topbar/Topbar";
 import { LoginPage } from "./pages/LoginPage/LoginPage";
 import { AdminAccessPage } from "./pages/AdminAccessPage/AdminAccessPage";
+import { AccountPage } from "./pages/AccountPage/AccountPage";
 import {
     canControlWanForClassroom,
     canManageClassrooms,
@@ -48,7 +49,7 @@ import {
 } from "./utils/devices";
 import { parseOptionalInteger, parseRequiredString } from "./utils/forms";
 
-type AppPage = "dashboard" | "access";
+type AppPage = "dashboard" | "account" | "access";
 
 export function App() {
     const [principal, setPrincipal] = useState<CurrentPrincipal | null>(null);
@@ -593,13 +594,19 @@ export function App() {
                 canCreateClassroom={userCanManageClassrooms}
                 canOpenAccessAdmin={userCanOpenAccessAdmin}
                 onOpenDashboard={() => setCurrentPage("dashboard")}
+                onOpenAccount={() => setCurrentPage("account")}
                 onOpenAccessAdmin={() => setCurrentPage("access")}
                 principalName={getPrincipalName(principal)}
                 onLogout={handleLogout}
             />
 
             <main className="content">
-                {currentPage === "access" && userCanOpenAccessAdmin ? (
+                {currentPage === "account" ? (
+                    <AccountPage
+                        principal={principal}
+                        onPrincipalChanged={setPrincipal}
+                    />
+                ) : currentPage === "access" && userCanOpenAccessAdmin ? (
                     <AdminAccessPage
                         principal={principal}
                         classrooms={classrooms}

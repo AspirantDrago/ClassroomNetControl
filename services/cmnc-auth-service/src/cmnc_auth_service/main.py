@@ -20,6 +20,7 @@ from cmnc_auth_service.schemas import (
     PrincipalResponse,
     ResolvePrincipalRequest,
     ResolvePrincipalResponse,
+    AccountUpdateRequest,
     RoleResponse,
     TokenResponse,
     UserCreateRequest,
@@ -131,6 +132,42 @@ async def resolve_principal(
     return ResolvePrincipalResponse(
         authenticated=False,
         principal=None,
+    )
+
+
+@app.patch("/internal/auth/users/{user_id}/account", response_model=PrincipalResponse)
+async def update_user_account(
+    user_id: int,
+    payload: AccountUpdateRequest,
+    session: AsyncSession = Depends(get_session),
+) -> PrincipalResponse:
+    user = await load_user_or_404(user_id, session)
+
+    if not user.is_active:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.display_name = payload.display_name
+
+    if payload.password is not None:
+        user.password_hash = hash_password(payload.password)
+
+    await session.commit()
+
+    user = await load_user_or_404(user_id, session)
+
+    classroom_ids = await get_user_classroom_ids(
+        user_id=user.id,
+        role=user.role,
+        session=session,
+    )
+
+    return PrincipalResponse(
+        principal_type="user",
+        id=user.id,
+        role=user.role.name,
+        display_name=user.display_name,
+        classroom_ids=classroom_ids,
+        permissions=get_permissions_for_role(user.role.name),
     )
 
 

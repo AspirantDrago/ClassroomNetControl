@@ -236,6 +236,20 @@ export function getCurrentPrincipal(): Promise<CurrentPrincipal> {
     return request<CurrentPrincipal>("/api/me");
 }
 
+export type CurrentAccountUpdateRequest = {
+    display_name: string;
+    password?: string;
+};
+
+export function updateCurrentAccount(
+    payload: CurrentAccountUpdateRequest,
+): Promise<CurrentPrincipal> {
+    return request<CurrentPrincipal>("/api/me", {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+    });
+}
+
 export function getClassrooms(): Promise<Classroom[]> {
     return request<Classroom[]>("/api/classrooms");
 }
