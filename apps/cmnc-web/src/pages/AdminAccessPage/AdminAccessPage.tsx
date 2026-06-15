@@ -346,11 +346,7 @@ export function AdminAccessPage(props: AdminAccessPageProps) {
                         />
                     )}
 
-                    <UsersTable
-                        users={users}
-                        classrooms={classrooms}
-                        onEdit={openEditUserForm}
-                    />
+                    <UsersTable users={users} onEdit={openEditUserForm} />
                 </div>
             )}
 
@@ -380,7 +376,6 @@ export function AdminAccessPage(props: AdminAccessPageProps) {
 
                     <WorkstationsTable
                         workstations={workstations}
-                        classrooms={classrooms}
                         onEdit={openEditWorkstationForm}
                     />
                 </div>
@@ -626,12 +621,11 @@ function ClassroomChecklist(props: ClassroomChecklistProps) {
 
 type UsersTableProps = {
     users: AdminUser[];
-    classrooms: Classroom[];
     onEdit: (user: AdminUser) => void;
 };
 
 function UsersTable(props: UsersTableProps) {
-    const { users, classrooms, onEdit } = props;
+    const { users, onEdit } = props;
 
     if (users.length === 0) {
         return <div className="muted">Пользователи не найдены.</div>;
@@ -658,7 +652,7 @@ function UsersTable(props: UsersTableProps) {
                         <td>{user.display_name}</td>
                         <td>{formatRole(user.role)}</td>
                         <td>{user.is_active ? "да" : "нет"}</td>
-                        <td>{formatUserClassrooms(user, classrooms)}</td>
+                        <td>{formatUserClassroomIds(user)}</td>
                         <td>{formatDate(user.last_login_at)}</td>
                         <td>
                             <button
@@ -678,12 +672,11 @@ function UsersTable(props: UsersTableProps) {
 
 type WorkstationsTableProps = {
     workstations: AdminWorkstation[];
-    classrooms: Classroom[];
     onEdit: (workstation: AdminWorkstation) => void;
 };
 
 function WorkstationsTable(props: WorkstationsTableProps) {
-    const { workstations, classrooms, onEdit } = props;
+    const { workstations, onEdit } = props;
 
     if (workstations.length === 0) {
         return <div className="muted">Рабочие станции не найдены.</div>;
@@ -708,7 +701,7 @@ function WorkstationsTable(props: WorkstationsTableProps) {
                         <td>{workstation.name}</td>
                         <td>{workstation.ip_address}</td>
                         <td>{workstation.is_active ? "да" : "нет"}</td>
-                        <td>{formatClassrooms(workstation.classroom_ids, classrooms)}</td>
+                        <td>{formatClassroomIds(workstation.classroom_ids)}</td>
                         <td>{formatDate(workstation.last_seen_at)}</td>
                         <td>
                             <button
@@ -726,26 +719,16 @@ function WorkstationsTable(props: WorkstationsTableProps) {
     );
 }
 
-function formatUserClassrooms(user: AdminUser, classrooms: Classroom[]): string {
+function formatUserClassroomIds(user: AdminUser): string {
     if (user.role !== ROLE_TEACHER) {
         return "-";
     }
 
-    return formatClassrooms(user.classroom_ids, classrooms);
+    return formatClassroomIds(user.classroom_ids);
 }
 
-function formatClassrooms(classroomIds: number[], classrooms: Classroom[]): string {
-    if (classroomIds.length === 0) {
-        return "-";
-    }
-
-    const classroomNamesById = new Map(
-        classrooms.map((classroom) => [classroom.id, classroom.name]),
-    );
-
-    return classroomIds
-        .map((classroomId) => classroomNamesById.get(classroomId) ?? `#${classroomId}`)
-        .join(", ");
+function formatClassroomIds(classroomIds: number[]): string {
+    return classroomIds.length === 0 ? "-" : classroomIds.join(", ");
 }
 
 function formatDate(value: string | null): string {
