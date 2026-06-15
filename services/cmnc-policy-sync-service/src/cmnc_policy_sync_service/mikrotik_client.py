@@ -101,6 +101,18 @@ class MikroTikClient:
             },
         )
 
+    async def address_list_entry_exists(
+            self,
+            address_list_name: str,
+            address: str,
+    ) -> bool:
+        entries = await self.get_address_list_entries(address_list_name)
+
+        return any(
+            entry.address == address
+            for entry in entries
+        )
+
     async def update_address_list_comment(
             self,
             routeros_id: str,
@@ -208,21 +220,45 @@ class MikroTikClient:
         for ip in ips_to_add:
             item = desired_by_ip[ip]
 
+            entry_added = False
+
             try:
                 await self.add_address_list_entry(
                     address_list_name=desired.address_list_name,
                     address=ip,
                     comment=item.comment,
                 )
+                entry_added = True
                 added += 1
 
-                if kill_connections_on_block:
-                    connections_killed += await self.remove_connections_by_src_ip(ip)
-
             except Exception as exc:
-                error = f"failed to add {ip}: {exc}"
-                logger.exception(error)
-                errors.append(error)
+                if await self.address_list_entry_exists(
+                    address_list_name=desired.address_list_name,
+                    address=ip,
+                ):
+                    entry_added = True
+                    added += 1
+                    logger.warning(
+                        "MikroTik add request for %s failed after the entry was applied: %r",
+                        ip,
+                        exc,
+                    )
+                else:
+                    error = f"failed to add {ip}: {exc}"
+                    logger.exception(error)
+                    errors.append(error)
+
+            if entry_added and kill_connections_on_block:
+                try:
+                    connections_killed += await self.remove_connections_by_src_ip(ip)
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to remove active connections for %s after blocking. "
+                        "The address-list entry is already applied, so policy sync is not failed: %r",
+                        ip,
+                        exc,
+                        exc_info=True,
+                    )
 
         for ip in ips_to_keep:
             item = desired_by_ip[ip]
