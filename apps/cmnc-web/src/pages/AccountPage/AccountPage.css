@@ -1,0 +1,63 @@
+.account-page {
+    display: flex;
+    justify-content: center;
+}
+
+.account-card {
+    width: min(100%, 560px);
+    padding: 20px;
+    border: 1px solid #1f2937;
+    border-radius: 16px;
+    background: #111827;
+}
+
+.account-card__header h2 {
+    margin: 0;
+}
+
+.account-card__header p {
+    margin: 6px 0 0;
+}
+
+.account-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: 18px;
+}
+
+.account-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    color: #d1d5db;
+    font-size: 14px;
+}
+
+.account-form input {
+    border: 1px solid #374151;
+    border-radius: 10px;
+    padding: 10px 12px;
+    color: #e5e7eb;
+    background: #020617;
+}
+
+.account-form input:focus {
+    border-color: #2563eb;
+    outline: none;
+}
+
+.account-form__actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 4px;
+}
+
+.account-success {
+    margin-top: 16px;
+    padding: 12px 14px;
+    border: 1px solid #166534;
+    border-radius: 12px;
+    background: #052e16;
+    color: #bbf7d0;
+}
