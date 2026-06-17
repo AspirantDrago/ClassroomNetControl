@@ -1,12 +1,12 @@
 server {
-    listen 80;
+    listen ${CMNC_WEB_PORT};
     server_name _;
 
     root /usr/share/nginx/html;
     index index.html;
 
     location /api/ {
-        proxy_pass http://cmnc-api-gateway:8000/api/;
+        proxy_pass http://127.0.0.1:${CMNC_API_GATEWAY_PORT}/api/;
         proxy_http_version 1.1;
 
         proxy_set_header Host $host;
@@ -16,7 +16,7 @@ server {
     }
 
     location /health {
-        proxy_pass http://cmnc-api-gateway:8000/health;
+        proxy_pass http://127.0.0.1:${CMNC_API_GATEWAY_PORT}/health;
     }
 
     location / {

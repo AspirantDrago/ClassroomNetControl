@@ -5,3 +5,4 @@ backups/
 uv.lock
 *.dump
 pg_dumpall.sql
+/scripts/publish.ps1

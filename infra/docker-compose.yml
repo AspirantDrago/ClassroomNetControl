@@ -187,7 +187,7 @@ services:
       CMNC_API_GATEWAY_INVENTORY_SERVICE_URL: http://cmnc-inventory-service:8003
       CMNC_API_GATEWAY_DEFAULT_ROUTER_ID: 1
     ports:
-      - "${CMNC_API_GATEWAY_PORT:-8000}:8000"
+      - "127.0.0.1:${CMNC_API_GATEWAY_PORT:-8000}:8000"
     depends_on:
       cmnc-auth-service:
         condition: service_healthy
@@ -211,13 +211,13 @@ services:
         VITE_API_BASE_URL: ${CMNC_WEB_API_BASE_URL:-}
     container_name: cmnc-web
     restart: unless-stopped
-    ports:
-      - "${CMNC_WEB_PORT:-8080}:80"
+    network_mode: host
+    environment:
+      CMNC_WEB_PORT: ${CMNC_WEB_PORT:-8080}
+      CMNC_API_GATEWAY_PORT: ${CMNC_API_GATEWAY_PORT:-8000}
     depends_on:
       cmnc-api-gateway:
         condition: service_healthy
-    networks:
-      - cmnc-network
 
 volumes:
   cmnc_postgres_data:
