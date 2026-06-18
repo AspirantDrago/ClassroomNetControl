@@ -524,3 +524,26 @@ export function updateAdminWorkstationClassrooms(
         },
     );
 }
+
+export type MaintenanceContainerStatus = {
+    id: string;
+    name: string;
+    image: string;
+    state: string;
+    state_label: string;
+    health: string | null;
+    docker_status: string;
+    cpu_percent: number | null;
+    memory_usage_bytes: number | null;
+    memory_limit_bytes: number | null;
+    memory_percent: number | null;
+    started_at: string | null;
+};
+
+export type MaintenanceContainersResponse = {
+    containers: MaintenanceContainerStatus[];
+};
+
+export function getMaintenanceContainers(): Promise<MaintenanceContainersResponse> {
+    return request<MaintenanceContainersResponse>("/api/admin/maintenance/containers");
+}

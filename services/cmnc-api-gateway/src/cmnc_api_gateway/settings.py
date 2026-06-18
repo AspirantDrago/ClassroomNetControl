@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     auth_service_url: str = "http://localhost:8001"
     classroom_service_url: str = "http://localhost:8002"
     inventory_service_url: str = "http://localhost:8003"
+    maintenance_service_url: str = "http://localhost:8004"
 
     default_router_id: int = 1
 

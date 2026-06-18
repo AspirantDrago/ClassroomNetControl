@@ -173,6 +173,30 @@ services:
     networks:
       - cmnc-network
 
+  cmnc-maintenance-service:
+    build:
+      context: ..
+      dockerfile: services/cmnc-maintenance-service/Dockerfile
+    container_name: cmnc-maintenance-service
+    restart: unless-stopped
+    environment:
+      CMNC_MAINTENANCE_HOST: 0.0.0.0
+      CMNC_MAINTENANCE_PORT: 8004
+      CMNC_MAINTENANCE_DOCKER_SOCKET_PATH: /var/run/docker.sock
+      CMNC_MAINTENANCE_CONTAINER_NAME_PREFIX: ${CMNC_MAINTENANCE_CONTAINER_NAME_PREFIX:-cmnc-}
+      CMNC_MAINTENANCE_DOCKER_REQUEST_TIMEOUT_SECONDS: ${CMNC_MAINTENANCE_DOCKER_REQUEST_TIMEOUT_SECONDS:-5}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    expose:
+      - "8004"
+    networks:
+      - cmnc-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8004/health').read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
   cmnc-api-gateway:
     build:
       context: ..
@@ -185,6 +209,7 @@ services:
       CMNC_API_GATEWAY_AUTH_SERVICE_URL: http://cmnc-auth-service:8001
       CMNC_API_GATEWAY_CLASSROOM_SERVICE_URL: http://cmnc-classroom-service:8002
       CMNC_API_GATEWAY_INVENTORY_SERVICE_URL: http://cmnc-inventory-service:8003
+      CMNC_API_GATEWAY_MAINTENANCE_SERVICE_URL: http://cmnc-maintenance-service:8004
       CMNC_API_GATEWAY_DEFAULT_ROUTER_ID: 1
     ports:
       - "127.0.0.1:${CMNC_API_GATEWAY_PORT:-8000}:8000"
@@ -194,6 +219,8 @@ services:
       cmnc-classroom-service:
         condition: service_healthy
       cmnc-inventory-service:
+        condition: service_healthy
+      cmnc-maintenance-service:
         condition: service_healthy
     networks:
       - cmnc-network

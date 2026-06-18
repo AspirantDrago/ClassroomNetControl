@@ -39,11 +39,13 @@ import { Topbar } from "./components/Topbar/Topbar";
 import { LoginPage } from "./pages/LoginPage/LoginPage";
 import { AdminAccessPage } from "./pages/AdminAccessPage/AdminAccessPage";
 import { AccountPage } from "./pages/AccountPage/AccountPage";
+import { MaintenancePage } from "./pages/MaintenancePage/MaintenancePage";
 import {
     canControlWanForClassroom,
     canManageClassrooms,
     canManageWorkstations,
     canOpenAccessAdmin,
+    canOpenMaintenance,
     canViewDynamicDevices,
 } from "./auth/permissions";
 import {
@@ -53,7 +55,7 @@ import {
 } from "./utils/devices";
 import { parseOptionalInteger, parseRequiredString } from "./utils/forms";
 
-type AppPage = "dashboard" | "account" | "access";
+type AppPage = "dashboard" | "account" | "access" | "maintenance";
 
 export function App() {
     const [principal, setPrincipal] = useState<CurrentPrincipal | null>(null);
@@ -675,6 +677,7 @@ export function App() {
     const userCanManageClassrooms = canManageClassrooms(principal);
     const userCanManageWorkstations = canManageWorkstations(principal);
     const userCanOpenAccessAdmin = canOpenAccessAdmin(principal);
+    const userCanOpenMaintenance = canOpenMaintenance(principal);
     const userCanViewDynamicDevices = canViewDynamicDevices(principal);
     const userCanControlWan = canControlWanForClassroom(
         principal,
@@ -685,7 +688,11 @@ export function App() {
         if (currentPage === "access" && !userCanOpenAccessAdmin) {
             setCurrentPage("dashboard");
         }
-    }, [currentPage, userCanOpenAccessAdmin]);
+
+        if (currentPage === "maintenance" && !userCanOpenMaintenance) {
+            setCurrentPage("dashboard");
+        }
+    }, [currentPage, userCanOpenAccessAdmin, userCanOpenMaintenance]);
 
     if (!authChecked) {
         return (
@@ -714,9 +721,11 @@ export function App() {
                 onCreateClassroom={openCreateClassroomForm}
                 canCreateClassroom={userCanManageClassrooms}
                 canOpenAccessAdmin={userCanOpenAccessAdmin}
+                canOpenMaintenance={userCanOpenMaintenance}
                 onOpenDashboard={() => setCurrentPage("dashboard")}
                 onOpenAccount={() => setCurrentPage("account")}
                 onOpenAccessAdmin={() => setCurrentPage("access")}
+                onOpenMaintenance={() => setCurrentPage("maintenance")}
                 principalName={getPrincipalName(principal)}
                 onLogout={handleLogout}
             />
@@ -732,6 +741,8 @@ export function App() {
                         principal={principal}
                         classrooms={classrooms}
                     />
+                ) : currentPage === "maintenance" && userCanOpenMaintenance ? (
+                    <MaintenancePage />
                 ) : (
                     <>
                         <ClassroomTabs

@@ -67,6 +67,10 @@ export function canViewDynamicDevices(principal: CurrentPrincipal | null): boole
     return principal?.role === ROLE_SUPERADMIN || principal?.role === ROLE_ADMIN;
 }
 
+export function canOpenMaintenance(principal: CurrentPrincipal | null): boolean {
+    return principal?.role === ROLE_SUPERADMIN || principal?.role === ROLE_ADMIN;
+}
+
 export function canControlWanForClassroom(
     principal: CurrentPrincipal | null,
     classroomId: number | null,

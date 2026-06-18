@@ -1,0 +1,138 @@
+.maintenance-page {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.maintenance-page__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+}
+
+.maintenance-page__header h2 {
+    margin: 0;
+}
+
+.maintenance-page__header p {
+    margin: 6px 0 0;
+    color: #9ca3af;
+}
+
+.maintenance-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.maintenance-summary__item {
+    border: 1px solid #1f2937;
+    border-radius: 14px;
+    padding: 14px 16px;
+    background: #111827;
+}
+
+.maintenance-summary__item span {
+    display: block;
+    color: #9ca3af;
+    font-size: 13px;
+}
+
+.maintenance-summary__item strong {
+    display: block;
+    margin-top: 6px;
+    font-size: 24px;
+}
+
+.maintenance-table-wrap {
+    overflow-x: auto;
+    border: 1px solid #1f2937;
+    border-radius: 14px;
+    background: #111827;
+}
+
+.maintenance-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 980px;
+}
+
+.maintenance-table th,
+.maintenance-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid #1f2937;
+    text-align: left;
+    vertical-align: top;
+}
+
+.maintenance-table th {
+    color: #9ca3af;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.maintenance-table tr:last-child td {
+    border-bottom: 0;
+}
+
+.maintenance-container-name {
+    font-weight: 600;
+    color: #f9fafb;
+}
+
+.maintenance-status {
+    display: inline-flex;
+    border-radius: 999px;
+    padding: 4px 9px;
+    background: #374151;
+    color: #e5e7eb;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.maintenance-status--running {
+    background: #064e3b;
+    color: #a7f3d0;
+}
+
+.maintenance-status--starting {
+    background: #78350f;
+    color: #fde68a;
+}
+
+.maintenance-status--stopped {
+    background: #7f1d1d;
+    color: #fecaca;
+}
+
+.maintenance-muted,
+.maintenance-image {
+    color: #9ca3af;
+    font-size: 13px;
+}
+
+.maintenance-image {
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.maintenance-empty {
+    color: #9ca3af;
+    text-align: center;
+}
+
+@media (max-width: 800px) {
+    .maintenance-page__header {
+        flex-direction: column;
+    }
+
+    .maintenance-summary {
+        grid-template-columns: 1fr;
+    }
+}

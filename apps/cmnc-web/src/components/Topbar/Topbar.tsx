@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import "./Topbar.css";
 
-type AppPage = "dashboard" | "account" | "access";
+type AppPage = "dashboard" | "account" | "access" | "maintenance";
 
 type TopbarProps = {
     currentPage: AppPage;
@@ -10,9 +10,11 @@ type TopbarProps = {
     onCreateClassroom: () => void;
     canCreateClassroom: boolean;
     canOpenAccessAdmin: boolean;
+    canOpenMaintenance: boolean;
     onOpenDashboard: () => void;
     onOpenAccount: () => void;
     onOpenAccessAdmin: () => void;
+    onOpenMaintenance: () => void;
     principalName: string;
     onLogout: () => void;
 };
@@ -25,9 +27,11 @@ export function Topbar(props: TopbarProps) {
         onCreateClassroom,
         canCreateClassroom,
         canOpenAccessAdmin,
+        canOpenMaintenance,
         onOpenDashboard,
         onOpenAccount,
         onOpenAccessAdmin,
+        onOpenMaintenance,
         principalName,
         onLogout,
     } = props;
@@ -123,6 +127,20 @@ export function Topbar(props: TopbarProps) {
                                 onClick={() => runMenuAction(onOpenAccessAdmin)}
                             >
                                 Пользователи
+                            </button>
+                        )}
+
+                        {canOpenMaintenance && (
+                            <button
+                                className={
+                                    currentPage === "maintenance"
+                                        ? "topbar-menu-item topbar-menu-item--active"
+                                        : "topbar-menu-item"
+                                }
+                                type="button"
+                                onClick={() => runMenuAction(onOpenMaintenance)}
+                            >
+                                Обслуживание
                             </button>
                         )}
 

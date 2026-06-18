@@ -48,6 +48,7 @@ app.add_middleware(
 auth_client = ServiceClient(settings.auth_service_url)
 classroom_client = ServiceClient(settings.classroom_service_url)
 inventory_client = ServiceClient(settings.inventory_service_url)
+maintenance_client = ServiceClient(settings.maintenance_service_url)
 
 
 def extract_bearer_token(authorization: str | None) -> str | None:
@@ -159,6 +160,13 @@ def filter_manageable_users(
 
 def require_workstation_management(principal: PrincipalResponse) -> None:
     require_permission(principal, PERMISSION_WORKSTATIONS_MANAGE)
+
+
+def require_maintenance_access(principal: PrincipalResponse) -> None:
+    if principal.role in {ROLE_SUPERADMIN, ROLE_ADMIN}:
+        return
+
+    raise HTTPException(status_code=403, detail="Permission denied")
 
 
 def ensure_workstation_payload_role(payload: dict[str, Any]) -> None:
@@ -1327,6 +1335,28 @@ async def admin_update_workstation_classrooms(
         raise HTTPException(
             status_code=502,
             detail=f"Auth service unavailable: {exc}",
+        ) from exc
+
+
+@app.get("/api/admin/maintenance/containers")
+async def admin_get_maintenance_containers(
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    require_maintenance_access(principal)
+
+    try:
+        return await maintenance_client.get_json("/internal/maintenance/containers")
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Maintenance service unavailable: {exc}",
         ) from exc
 
 
