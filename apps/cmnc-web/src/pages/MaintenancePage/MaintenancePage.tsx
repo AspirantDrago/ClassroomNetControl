@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
+    downloadMaintenanceDatabaseBackup,
     extractErrorDetail,
     getMaintenanceContainerLogs,
     getMaintenanceContainers,
+    uploadMaintenanceDatabaseBackup,
     type MaintenanceContainerStatus,
 } from "../../api";
 import "./MaintenancePage.css";
@@ -22,7 +24,12 @@ export function MaintenancePage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [logsDialog, setLogsDialog] = useState<LogsDialogState | null>(null);
+    const [backupFile, setBackupFile] = useState<File | null>(null);
+    const [backupLoading, setBackupLoading] = useState(false);
+    const [backupMessage, setBackupMessage] = useState<string | null>(null);
+    const [backupError, setBackupError] = useState<string | null>(null);
     const logsContentRef = useRef<HTMLPreElement | null>(null);
+    const backupInputRef = useRef<HTMLInputElement | null>(null);
 
     async function loadContainers() {
         setLoading(true);
@@ -89,6 +96,77 @@ export function MaintenancePage() {
         }
 
         void openLogs(logsDialog.container, tail);
+    }
+
+    function handleBackupFileChange(event: ChangeEvent<HTMLInputElement>) {
+        const file = event.target.files?.[0] ?? null;
+        setBackupFile(file);
+        setBackupMessage(null);
+        setBackupError(null);
+    }
+
+    async function handleDownloadBackup() {
+        setBackupLoading(true);
+        setBackupMessage(null);
+        setBackupError(null);
+
+        try {
+            const data = await downloadMaintenanceDatabaseBackup();
+            const filename = data.filename ?? buildFallbackBackupFilename();
+            const url = window.URL.createObjectURL(data.blob);
+            const link = document.createElement("a");
+
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+
+            setBackupMessage(`Резервная копия сохранена: ${filename}`);
+        } catch (err) {
+            setBackupError(extractErrorDetail(err));
+        } finally {
+            setBackupLoading(false);
+        }
+    }
+
+    async function handleUploadBackup() {
+        if (!backupFile) {
+            return;
+        }
+
+        const confirmed = window.confirm(
+            "Загрузить резервную копию? Текущие данные баз PostgreSQL будут заменены данными из выбранного архива.",
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        setBackupLoading(true);
+        setBackupMessage(null);
+        setBackupError(null);
+
+        try {
+            const data = await uploadMaintenanceDatabaseBackup(backupFile);
+            const databasesText = data.databases.length > 0
+                ? ` Базы: ${data.databases.join(", ")}.`
+                : "";
+
+            setBackupMessage(
+                `Резервная копия загружена: ${data.filename} (${formatBytes(data.size_bytes)}).${databasesText}`,
+            );
+            setBackupFile(null);
+
+            if (backupInputRef.current) {
+                backupInputRef.current.value = "";
+            }
+        } catch (err) {
+            setBackupError(extractErrorDetail(err));
+        } finally {
+            setBackupLoading(false);
+        }
     }
 
     useEffect(() => {
@@ -211,7 +289,7 @@ export function MaintenancePage() {
             <div className="maintenance-page__header">
                 <div>
                     <h2>Обслуживание</h2>
-                    <p>Состояние контейнеров CMNC, потребление CPU и памяти.</p>
+                    <p>Резервное сохранение и восстановление, состояние контейнеров CMNC, потребление CPU и памяти</p>
                 </div>
 
                 <button
@@ -222,6 +300,53 @@ export function MaintenancePage() {
                 >
                     {loading ? "Обновление..." : "Обновить"}
                 </button>
+            </div>
+
+            <div className="maintenance-backup-panel">
+                <div className="maintenance-backup-panel__info">
+                    <h3>Резервные копии</h3>
+                    <p>Сохранение и загрузка архива с резервными копиями баз PostgreSQL.</p>
+                </div>
+
+                <div className="maintenance-backup-panel__actions">
+                    <label className="secondary-button maintenance-file-button">
+                        Выбрать файл
+                        <input
+                            ref={backupInputRef}
+                            type="file"
+                            accept=".tar,application/x-tar,application/octet-stream"
+                            onChange={handleBackupFileChange}
+                            disabled={backupLoading}
+                        />
+                    </label>
+
+                    <span className="maintenance-backup-panel__filename">
+                        {backupFile ? backupFile.name : "Файл не выбран"}
+                    </span>
+
+                    <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => void handleUploadBackup()}
+                        disabled={!backupFile || backupLoading}
+                    >
+                        {backupLoading ? "Загрузка..." : "Загрузить резервную копию"}
+                    </button>
+                </div>
+
+                <div className="maintenance-backup-panel__actions">
+                    <button
+                        className="primary-button"
+                        type="button"
+                        onClick={() => void handleDownloadBackup()}
+                        disabled={backupLoading}
+                    >
+                        {backupLoading ? "Выполнение..." : "Сохранить резервную копию"}
+                    </button>
+                </div>
+
+                {backupMessage && <div className="maintenance-backup-panel__message">{backupMessage}</div>}
+                {backupError && <pre className="error-box">{backupError}</pre>}
             </div>
 
             <div className="maintenance-summary">
@@ -450,4 +575,26 @@ function formatBytes(bytes: number): string {
     }
 
     return `${value.toFixed(1)} ${units[unitIndex]}`;
+}
+
+
+function buildFallbackBackupFilename(): string {
+    const now = new Date();
+    const pad = (value: number) => value.toString().padStart(2, "0");
+
+    return [
+        "cmnc_databases_",
+        now.getFullYear(),
+        "-",
+        pad(now.getMonth() + 1),
+        "-",
+        pad(now.getDate()),
+        "_",
+        pad(now.getHours()),
+        "-",
+        pad(now.getMinutes()),
+        "-",
+        pad(now.getSeconds()),
+        ".tar",
+    ].join("");
 }

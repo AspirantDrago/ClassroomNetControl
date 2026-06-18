@@ -1,12 +1,15 @@
 import re
+from datetime import datetime, timezone
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import Response
 
 from cmnc_maintenance_service.docker_client import DockerClient
 from cmnc_maintenance_service.schemas import (
     ContainerLogsResponse,
     ContainersStatusResponse,
+    DatabaseRestoreResponse,
     HealthResponse,
 )
 from cmnc_maintenance_service.settings import settings
@@ -75,6 +78,69 @@ async def get_container_logs(
         container_name=container_name,
         tail=tail,
         logs=logs,
+    )
+
+
+@app.get("/internal/maintenance/backups/database")
+async def download_database_backup() -> Response:
+    databases = settings.postgres_database_names
+
+    try:
+        backup = await docker_client.export_postgres_databases_backup(
+            container_name=settings.postgres_container_name,
+            databases=databases,
+            user=settings.postgres_user,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Database backup failed: {exc}",
+        ) from exc
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"cmnc_databases_{timestamp}.tar"
+
+    return Response(
+        content=backup,
+        media_type="application/x-tar",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+    )
+
+
+@app.post(
+    "/internal/maintenance/backups/database",
+    response_model=DatabaseRestoreResponse,
+)
+async def upload_database_backup(
+    file: UploadFile = File(...),
+) -> DatabaseRestoreResponse:
+    filename = file.filename or "backup.tar"
+    backup = await file.read()
+
+    if not backup:
+        raise HTTPException(status_code=422, detail="Backup file is empty")
+
+    try:
+        restored_databases = await docker_client.restore_postgres_databases_backup(
+            container_name=settings.postgres_container_name,
+            databases=settings.postgres_database_names,
+            user=settings.postgres_user,
+            restore_dir=settings.postgres_restore_dir,
+            backup_archive_bytes=backup,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Database restore failed: {exc}",
+        ) from exc
+
+    return DatabaseRestoreResponse(
+        restored=True,
+        filename=filename,
+        size_bytes=len(backup),
+        databases=restored_databases,
     )
 
 

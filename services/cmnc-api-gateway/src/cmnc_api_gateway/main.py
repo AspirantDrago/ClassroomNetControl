@@ -6,7 +6,8 @@ from typing import Any
 
 import httpx
 import uvicorn
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
+from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from cmnc_api_gateway.clients import ServiceClient
@@ -1378,6 +1379,75 @@ async def admin_get_maintenance_container_logs(
     try:
         return await maintenance_client.get_json(
             f"/internal/maintenance/containers/{container_id}/logs?tail={tail}"
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Maintenance service unavailable: {exc}",
+        ) from exc
+
+
+@app.get("/api/admin/maintenance/backups/database")
+async def admin_download_database_backup(
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Response:
+    principal = await get_current_principal(request, authorization)
+    require_maintenance_access(principal)
+
+    try:
+        content, content_type, content_disposition = await maintenance_client.get_bytes(
+            "/internal/maintenance/backups/database"
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Maintenance service unavailable: {exc}",
+        ) from exc
+
+    headers: dict[str, str] = {}
+    if content_disposition:
+        headers["Content-Disposition"] = content_disposition
+
+    return Response(
+        content=content,
+        media_type=content_type or "application/octet-stream",
+        headers=headers,
+    )
+
+
+@app.post("/api/admin/maintenance/backups/database")
+async def admin_upload_database_backup(
+    request: Request,
+    file: UploadFile = File(...),
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    require_maintenance_access(principal)
+
+    filename = file.filename or "backup.backup"
+    content = await file.read()
+
+    if not content:
+        raise HTTPException(status_code=422, detail="Backup file is empty")
+
+    try:
+        return await maintenance_client.post_file(
+            path="/internal/maintenance/backups/database",
+            field_name="file",
+            filename=filename,
+            content=content,
+            content_type=file.content_type or "application/octet-stream",
         )
     except httpx.HTTPStatusError as exc:
         raise HTTPException(

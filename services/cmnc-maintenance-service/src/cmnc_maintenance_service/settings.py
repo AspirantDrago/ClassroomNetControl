@@ -10,6 +10,19 @@ class Settings(BaseSettings):
     container_name_prefix: str = "cmnc-"
     docker_request_timeout_seconds: float = 5.0
 
+    postgres_container_name: str = "cmnc-postgres"
+    postgres_databases: str = "cmnc_auth,cmnc_classroom,cmnc_inventory,cmnc_policy_sync"
+    postgres_user: str = "cmnc"
+    postgres_restore_dir: str = "/tmp"
+
+    @property
+    def postgres_database_names(self) -> list[str]:
+        return [
+            name.strip()
+            for name in self.postgres_databases.split(",")
+            if name.strip()
+        ]
+
     model_config = SettingsConfigDict(
         env_prefix="CMNC_MAINTENANCE_",
         env_file=".env",

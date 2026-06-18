@@ -32,3 +32,10 @@ class ContainerLogsResponse(BaseModel):
     container_name: str | None = None
     tail: int
     logs: str
+
+
+class DatabaseRestoreResponse(BaseModel):
+    restored: bool
+    filename: str
+    size_bytes: int
+    databases: list[str]

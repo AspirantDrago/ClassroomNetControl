@@ -20,6 +20,62 @@
     color: #9ca3af;
 }
 
+
+.maintenance-backup-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    border: 1px solid #1f2937;
+    border-radius: 14px;
+    padding: 16px;
+    background: #111827;
+}
+
+.maintenance-backup-panel__info h3 {
+    margin: 0;
+    font-size: 18px;
+}
+
+.maintenance-backup-panel__info p {
+    margin: 6px 0 0;
+    color: #9ca3af;
+}
+
+.maintenance-backup-panel__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.maintenance-file-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.maintenance-file-button input {
+    display: none;
+}
+
+.maintenance-backup-panel__filename {
+    max-width: 320px;
+    overflow: hidden;
+    color: #d1d5db;
+    font-size: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.maintenance-backup-panel__message {
+    border: 1px solid #065f46;
+    border-radius: 10px;
+    padding: 10px 12px;
+    background: #064e3b;
+    color: #a7f3d0;
+    font-size: 14px;
+}
+
 .maintenance-summary {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -248,7 +304,63 @@
         flex-direction: column;
     }
 
-    .maintenance-summary {
+    
+.maintenance-backup-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    border: 1px solid #1f2937;
+    border-radius: 14px;
+    padding: 16px;
+    background: #111827;
+}
+
+.maintenance-backup-panel__info h3 {
+    margin: 0;
+    font-size: 18px;
+}
+
+.maintenance-backup-panel__info p {
+    margin: 6px 0 0;
+    color: #9ca3af;
+}
+
+.maintenance-backup-panel__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.maintenance-file-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.maintenance-file-button input {
+    display: none;
+}
+
+.maintenance-backup-panel__filename {
+    max-width: 320px;
+    overflow: hidden;
+    color: #d1d5db;
+    font-size: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.maintenance-backup-panel__message {
+    border: 1px solid #065f46;
+    border-radius: 10px;
+    padding: 10px 12px;
+    background: #064e3b;
+    color: #a7f3d0;
+    font-size: 14px;
+}
+
+.maintenance-summary {
         grid-template-columns: 1fr;
     }
 

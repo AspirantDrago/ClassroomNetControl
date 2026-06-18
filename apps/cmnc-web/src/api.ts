@@ -575,3 +575,87 @@ export function getMaintenanceContainerLogs(
         `/api/admin/maintenance/containers/${encodeURIComponent(containerId)}/logs?tail=${tail}`,
     );
 }
+
+
+export type MaintenanceDatabaseRestoreResponse = {
+    restored: boolean;
+    filename: string;
+    size_bytes: number;
+    databases: string[];
+};
+
+export async function downloadMaintenanceDatabaseBackup(): Promise<{ blob: Blob; filename: string | null }> {
+    const token = getAccessToken();
+
+    const response = await fetch(`${API_BASE_URL}/api/admin/maintenance/backups/database`, {
+        method: "GET",
+        headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+    });
+
+    if (response.status === 401) {
+        clearAccessToken();
+    }
+
+    if (!response.ok) {
+        const message = await readErrorMessage(response);
+        throw new Error(message || `HTTP ${response.status}`);
+    }
+
+    return {
+        blob: await response.blob(),
+        filename: extractFilenameFromContentDisposition(response.headers.get("Content-Disposition")),
+    };
+}
+
+export async function uploadMaintenanceDatabaseBackup(
+    file: File,
+): Promise<MaintenanceDatabaseRestoreResponse> {
+    const token = getAccessToken();
+    const body = new FormData();
+    body.append("file", file);
+
+    const response = await fetch(`${API_BASE_URL}/api/admin/maintenance/backups/database`, {
+        method: "POST",
+        headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body,
+    });
+
+    if (response.status === 401) {
+        clearAccessToken();
+    }
+
+    if (!response.ok) {
+        const message = await readErrorMessage(response);
+        throw new Error(message || `HTTP ${response.status}`);
+    }
+
+    const data: unknown = await response.json();
+    return data as MaintenanceDatabaseRestoreResponse;
+}
+
+function extractFilenameFromContentDisposition(value: string | null): string | null {
+    if (!value) {
+        return null;
+    }
+
+    const encodedMatch = value.match(/filename\*=UTF-8''([^;]+)/i);
+    if (encodedMatch?.[1]) {
+        try {
+            return decodeURIComponent(encodedMatch[1].trim());
+        } catch {
+            return encodedMatch[1].trim();
+        }
+    }
+
+    const quotedMatch = value.match(/filename="([^"]+)"/i);
+    if (quotedMatch?.[1]) {
+        return quotedMatch[1].trim();
+    }
+
+    const plainMatch = value.match(/filename=([^;]+)/i);
+    return plainMatch?.[1]?.trim() || null;
+}
