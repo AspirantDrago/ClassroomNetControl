@@ -213,6 +213,8 @@ services:
       CMNC_API_GATEWAY_DEFAULT_ROUTER_ID: 1
     ports:
       - "127.0.0.1:${CMNC_API_GATEWAY_PORT:-8000}:8000"
+    volumes:
+      - ../.build-info.json:/app/.build-info.json:ro
     depends_on:
       cmnc-auth-service:
         condition: service_healthy
