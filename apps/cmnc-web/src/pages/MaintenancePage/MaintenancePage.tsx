@@ -181,7 +181,29 @@ export function MaintenancePage() {
             ["created", "restarting"].includes(container.state) || container.health === "starting",
         ).length;
 
-        return { runningCount, stoppedCount, startingCount };
+        const totalCpuPercent = containers.reduce((sum, container) => {
+            return sum + (container.cpu_percent ?? 0);
+        }, 0);
+
+        const totalMemoryUsageBytes = containers.reduce((sum, container) => {
+            return sum + (container.memory_usage_bytes ?? 0);
+        }, 0);
+
+        const memoryLimitBytes =
+            containers.find((container) => container.memory_limit_bytes != null)?.memory_limit_bytes ?? 0;
+
+        const totalMemoryPercent = (memoryLimitBytes != 0) ?
+            (100 * totalMemoryUsageBytes / memoryLimitBytes) : 0;
+
+        return {
+            runningCount,
+            stoppedCount,
+            startingCount,
+            totalCpuPercent,
+            totalMemoryUsageBytes,
+            totalMemoryPercent,
+            memoryLimitBytes,
+        };
     }, [containers]);
 
     return (
@@ -214,6 +236,19 @@ export function MaintenancePage() {
                 <div className="maintenance-summary__item">
                     <span>Остановлено</span>
                     <strong>{totals.stoppedCount}</strong>
+                </div>
+                <div className="maintenance-summary__item">
+                    <span>Потребление CPU</span>
+                    <strong>{formatPercent(totals.totalCpuPercent)}</strong>
+                </div>
+                <div className="maintenance-summary__item">
+                    <span>Потребление памяти</span>
+                    <strong>{formatBytes(totals.totalMemoryUsageBytes)}</strong>
+                    <strong>({formatPercent(totals.totalMemoryPercent)})</strong>
+                </div>
+                <div className="maintenance-summary__item">
+                    <span>Всего памяти</span>
+                    <strong>{formatBytes(totals.memoryLimitBytes)}</strong>
                 </div>
             </div>
 
