@@ -85,6 +85,22 @@ async def get_classroom_layout(
     )
 
 
+@router.get(
+    "/internal/devices/{device_id}",
+    response_model=DeviceRead,
+)
+async def get_device(
+    device_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> DeviceRead:
+    device = await session.get(Device, device_id)
+
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    return DeviceRead.model_validate(device)
+
+
 @router.post(
     "/internal/devices/{device_id}/wan/block",
     response_model=WanPolicyChangeResponse,
