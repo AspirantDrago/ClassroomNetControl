@@ -547,3 +547,20 @@ export type MaintenanceContainersResponse = {
 export function getMaintenanceContainers(): Promise<MaintenanceContainersResponse> {
     return request<MaintenanceContainersResponse>("/api/admin/maintenance/containers");
 }
+
+export type MaintenanceContainerLogsResponse = {
+    container_id: string;
+    container_name: string | null;
+    tail: number;
+    logs: string;
+};
+
+
+export function getMaintenanceContainerLogs(
+    containerId: string,
+    tail: 100 | 1000 | 10000,
+): Promise<MaintenanceContainerLogsResponse> {
+    return request<MaintenanceContainerLogsResponse>(
+        `/api/admin/maintenance/containers/${encodeURIComponent(containerId)}/logs?tail=${tail}`,
+    );
+}

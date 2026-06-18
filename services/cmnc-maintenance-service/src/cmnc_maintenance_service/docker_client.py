@@ -297,6 +297,74 @@ class DockerClient:
 
         return None
 
+
+    async def get_container_logs(
+        self,
+        container_id: str,
+        tail: int,
+    ) -> tuple[str | None, str]:
+        async with httpx.AsyncClient(
+            base_url="http://docker",
+            transport=httpx.AsyncHTTPTransport(uds=self._socket_path),
+            timeout=self._timeout_seconds,
+        ) as client:
+            inspect_data = await self._safe_inspect_container(client, container_id)
+            container_name = None
+
+            if inspect_data is not None:
+                raw_name = inspect_data.get("Name")
+                if isinstance(raw_name, str):
+                    container_name = raw_name.lstrip("/")
+
+            logs_bytes = await self._request_bytes(
+                client=client,
+                method="GET",
+                path=f"/containers/{container_id}/logs",
+                params={
+                    "stdout": "true",
+                    "stderr": "true",
+                    "timestamps": "true",
+                    "tail": str(tail),
+                },
+            )
+
+        return container_name, self._decode_docker_logs(logs_bytes)
+
+    def _decode_docker_logs(self, data: bytes) -> str:
+        if not data:
+            return ""
+
+        frames: list[bytes] = []
+        offset = 0
+        parsed_any_frame = False
+
+        while offset + 8 <= len(data):
+            stream_type = data[offset]
+            header_padding = data[offset + 1:offset + 4]
+            frame_size = int.from_bytes(data[offset + 4:offset + 8], byteorder="big")
+
+            if stream_type not in {0, 1, 2} or header_padding != b"\x00\x00\x00":
+                break
+
+            frame_start = offset + 8
+            frame_end = frame_start + frame_size
+
+            if frame_end > len(data):
+                break
+
+            frames.append(data[frame_start:frame_end])
+            parsed_any_frame = True
+            offset = frame_end
+
+        if parsed_any_frame and offset == len(data):
+            return b"".join(frames).decode("utf-8", errors="replace")
+
+        # TTY-enabled containers return raw logs without Docker's 8-byte stream headers.
+        return data.decode("utf-8", errors="replace")
+
+    def _normalize_log_text(self, text: str) -> str:
+        return text.replace("\r\n", "\n").replace("\r", "\n")
+
     async def _request_json(
         self,
         client: httpx.AsyncClient,
@@ -315,3 +383,20 @@ class DockerClient:
             return response.json()
 
         return None
+
+
+    async def _request_bytes(
+        self,
+        client: httpx.AsyncClient,
+        method: str,
+        path: str,
+        params: dict[str, Any] | None = None,
+    ) -> bytes:
+        response = await client.request(
+            method=method,
+            url=path,
+            params=params,
+        )
+
+        response.raise_for_status()
+        return response.content

@@ -78,6 +78,28 @@
     border-bottom: 0;
 }
 
+.maintenance-container-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.maintenance-logs-button {
+    width: 26px;
+    height: 26px;
+    border: 1px solid #374151;
+    border-radius: 8px;
+    background: #1f2937;
+    color: #e5e7eb;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.maintenance-logs-button:hover {
+    border-color: #4b5563;
+    background: #374151;
+}
+
 .maintenance-container-name {
     font-weight: 600;
     color: #f9fafb;
@@ -127,6 +149,100 @@
     text-align: center;
 }
 
+.maintenance-logs-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(0, 0, 0, 0.72);
+}
+
+.maintenance-logs-dialog {
+    width: min(1100px, 100%);
+    max-height: min(820px, 92vh);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    border: 1px solid #374151;
+    border-radius: 16px;
+    background: #0f172a;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+    padding: 18px;
+}
+
+.maintenance-logs-dialog__header {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: flex-start;
+}
+
+.maintenance-logs-dialog__header h3 {
+    margin: 0;
+}
+
+.maintenance-logs-dialog__header p {
+    margin: 6px 0 0;
+    color: #9ca3af;
+}
+
+.maintenance-logs-dialog__close {
+    width: 34px;
+    height: 34px;
+    border: 1px solid #374151;
+    border-radius: 10px;
+    background: #111827;
+    color: #e5e7eb;
+    font-size: 22px;
+    cursor: pointer;
+}
+
+.maintenance-logs-dialog__close:hover {
+    background: #1f2937;
+}
+
+.maintenance-logs-dialog__toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+.maintenance-logs-dialog__toolbar label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #d1d5db;
+    font-size: 14px;
+}
+
+.maintenance-logs-dialog__toolbar select {
+    border: 1px solid #374151;
+    border-radius: 8px;
+    background: #111827;
+    color: #f9fafb;
+    padding: 7px 10px;
+}
+
+.maintenance-logs-content {
+    min-height: 420px;
+    max-height: 58vh;
+    overflow: auto;
+    margin: 0;
+    border: 1px solid #1f2937;
+    border-radius: 12px;
+    background: #020617;
+    color: #d1d5db;
+    padding: 14px;
+    font-size: 12px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
 @media (max-width: 800px) {
     .maintenance-page__header {
         flex-direction: column;
@@ -134,5 +250,10 @@
 
     .maintenance-summary {
         grid-template-columns: 1fr;
+    }
+
+    .maintenance-logs-dialog__toolbar {
+        align-items: stretch;
+        flex-direction: column;
     }
 }

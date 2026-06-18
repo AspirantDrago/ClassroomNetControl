@@ -25,3 +25,10 @@ class ContainerStatus(BaseModel):
 
 class ContainersStatusResponse(BaseModel):
     containers: list[ContainerStatus]
+
+
+class ContainerLogsResponse(BaseModel):
+    container_id: str
+    container_name: str | None = None
+    tail: int
+    logs: str

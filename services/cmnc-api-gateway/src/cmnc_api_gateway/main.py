@@ -1360,6 +1360,35 @@ async def admin_get_maintenance_containers(
         ) from exc
 
 
+@app.get("/api/admin/maintenance/containers/{container_id}/logs")
+async def admin_get_maintenance_container_logs(
+    container_id: str,
+    request: Request,
+    tail: int = 100,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    require_maintenance_access(principal)
+
+    if tail not in {100, 1000, 10000}:
+        raise HTTPException(status_code=422, detail="tail must be one of: 100, 1000, 10000")
+
+    try:
+        return await maintenance_client.get_json(
+            f"/internal/maintenance/containers/{container_id}/logs?tail={tail}"
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Maintenance service unavailable: {exc}",
+        ) from exc
+
+
 def run() -> None:
     uvicorn.run(
         "cmnc_api_gateway.main:app",

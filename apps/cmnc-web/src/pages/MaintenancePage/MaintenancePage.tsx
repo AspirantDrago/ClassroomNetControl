@@ -1,15 +1,28 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
     extractErrorDetail,
+    getMaintenanceContainerLogs,
     getMaintenanceContainers,
     type MaintenanceContainerStatus,
 } from "../../api";
 import "./MaintenancePage.css";
 
+type LogsTail = 100 | 1000 | 10000;
+
+type LogsDialogState = {
+    container: MaintenanceContainerStatus;
+    tail: LogsTail;
+    logs: string;
+    loading: boolean;
+    error: string | null;
+};
+
 export function MaintenancePage() {
     const [containers, setContainers] = useState<MaintenanceContainerStatus[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [logsDialog, setLogsDialog] = useState<LogsDialogState | null>(null);
+    const logsContentRef = useRef<HTMLPreElement | null>(null);
 
     async function loadContainers() {
         setLoading(true);
@@ -23,6 +36,59 @@ export function MaintenancePage() {
         } finally {
             setLoading(false);
         }
+    }
+
+    async function openLogs(container: MaintenanceContainerStatus, tail: LogsTail = 100) {
+        setLogsDialog({
+            container,
+            tail,
+            logs: "",
+            loading: true,
+            error: null,
+        });
+
+        try {
+            const data = await getMaintenanceContainerLogs(container.id, tail);
+
+            setLogsDialog((current) => {
+                if (current?.container.id !== container.id) {
+                    return current;
+                }
+
+                return {
+                    ...current,
+                    tail,
+                    logs: data.logs,
+                    loading: false,
+                    error: null,
+                };
+            });
+        } catch (err) {
+            setLogsDialog((current) => {
+                if (current?.container.id !== container.id) {
+                    return current;
+                }
+
+                return {
+                    ...current,
+                    tail,
+                    loading: false,
+                    error: extractErrorDetail(err),
+                };
+            });
+        }
+    }
+
+    function closeLogs() {
+        setLogsDialog(null);
+    }
+
+    function handleLogsTailChange(tail: LogsTail) {
+        if (!logsDialog) {
+            return;
+        }
+
+        void openLogs(logsDialog.container, tail);
     }
 
     useEffect(() => {
@@ -68,6 +134,43 @@ export function MaintenancePage() {
             window.clearInterval(timerId);
         };
     }, []);
+
+    useEffect(() => {
+        if (!logsDialog) {
+            return;
+        }
+
+        function handleKeyDown(event: KeyboardEvent) {
+            if (event.key === "Escape") {
+                closeLogs();
+            }
+        }
+
+        window.addEventListener("keydown", handleKeyDown);
+
+        return () => {
+            window.removeEventListener("keydown", handleKeyDown);
+        };
+    }, [logsDialog !== null]);
+
+    useEffect(() => {
+        if (!logsDialog || !logsContentRef.current) {
+            return;
+        }
+
+        requestAnimationFrame(() => {
+            if (!logsContentRef.current) {
+                return;
+            }
+
+            logsContentRef.current.scrollTop = logsContentRef.current.scrollHeight;
+        });
+    }, [
+        logsDialog?.container.id,
+        logsDialog?.tail,
+        logsDialog?.logs,
+        logsDialog?.loading,
+    ]);
 
     const totals = useMemo(() => {
         const runningCount = containers.filter((container) => container.state === "running").length;
@@ -133,8 +236,19 @@ export function MaintenancePage() {
                         {containers.map((container) => (
                             <tr key={container.id}>
                                 <td>
-                                    <div className="maintenance-container-name">
-                                        {container.name}
+                                    <div className="maintenance-container-cell">
+                                        <button
+                                            className="maintenance-logs-button"
+                                            type="button"
+                                            title="Показать логи"
+                                            aria-label={`Показать логи ${container.name}`}
+                                            onClick={() => void openLogs(container)}
+                                        >
+                                            ▼
+                                        </button>
+                                        <div className="maintenance-container-name">
+                                            {container.name}
+                                        </div>
                                     </div>
                                 </td>
                                 <td>
@@ -162,6 +276,68 @@ export function MaintenancePage() {
                     </tbody>
                 </table>
             </div>
+
+            {logsDialog && (
+                <div className="maintenance-logs-backdrop" onClick={closeLogs}>
+                    <div
+                        className="maintenance-logs-dialog"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label={`Логи контейнера ${logsDialog.container.name}`}
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <div className="maintenance-logs-dialog__header">
+                            <div>
+                                <h3>Логи контейнера</h3>
+                                <p>{logsDialog.container.name}</p>
+                            </div>
+                            <button
+                                className="maintenance-logs-dialog__close"
+                                type="button"
+                                onClick={closeLogs}
+                                aria-label="Закрыть"
+                            >
+                                ×
+                            </button>
+                        </div>
+
+                        <div className="maintenance-logs-dialog__toolbar">
+                            <label>
+                                Последние строки
+                                <select
+                                    value={logsDialog.tail}
+                                    onChange={(event) => handleLogsTailChange(Number(event.target.value) as LogsTail)}
+                                    disabled={logsDialog.loading}
+                                >
+                                    <option value={100}>100</option>
+                                    <option value={1000}>1000</option>
+                                    <option value={10000}>10000</option>
+                                </select>
+                            </label>
+
+                            <button
+                                className="secondary-button"
+                                type="button"
+                                onClick={() => void openLogs(logsDialog.container, logsDialog.tail)}
+                                disabled={logsDialog.loading}
+                            >
+                                {logsDialog.loading ? "Загрузка..." : "Обновить логи"}
+                            </button>
+                        </div>
+
+                        {logsDialog.error && <pre className="error-box">{logsDialog.error}</pre>}
+
+                        <pre
+                            ref={logsContentRef}
+                            className="maintenance-logs-content"
+                        >
+                            {logsDialog.loading && !logsDialog.logs
+                                ? "Загрузка логов..."
+                                : logsDialog.logs || "Логи пустые."}
+                        </pre>
+                    </div>
+                </div>
+            )}
         </section>
     );
 }
