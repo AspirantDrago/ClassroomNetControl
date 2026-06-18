@@ -18,6 +18,22 @@
     color: #9ca3af;
 }
 
+.topbar__build-info {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    color: #6b7280;
+    font-size: 12px;
+    line-height: 1.2;
+}
+
+.topbar__build-info span + span::before {
+    content: "•";
+    margin-right: 8px;
+    color: #4b5563;
+}
+
 .topbar__main {
     display: flex;
     align-items: center;

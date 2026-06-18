@@ -8,6 +8,7 @@ import {
     clearAccessToken,
     deleteObservedDevice,
     extractErrorDetail,
+    type BuildInfo,
     type Classroom,
     type ClassroomDashboard,
     type CurrentPrincipal,
@@ -16,6 +17,7 @@ import {
     createClassroom,
     getClassroomDashboard,
     getClassrooms,
+    getBuildInfo,
     getCurrentPrincipal,
     login,
     pinObservedDevice,
@@ -63,6 +65,7 @@ export function App() {
     const [authBusy, setAuthBusy] = useState(false);
     const [authError, setAuthError] = useState<string | null>(null);
     const [currentPage, setCurrentPage] = useState<AppPage>("dashboard");
+    const [buildInfo, setBuildInfo] = useState<BuildInfo | null>(null);
 
     const [classrooms, setClassrooms] = useState<Classroom[]>([]);
     const [selectedClassroomId, setSelectedClassroomId] = useState<number | null>(
@@ -111,6 +114,30 @@ export function App() {
         }
 
         void restoreSession();
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function loadBuildInfo() {
+            try {
+                const data = await getBuildInfo();
+
+                if (!cancelled) {
+                    setBuildInfo(data);
+                }
+            } catch {
+                if (!cancelled) {
+                    setBuildInfo(null);
+                }
+            }
+        }
+
+        void loadBuildInfo();
 
         return () => {
             cancelled = true;
@@ -716,6 +743,7 @@ export function App() {
         <div className="page">
             <Topbar
                 currentPage={currentPage}
+                buildInfo={buildInfo}
                 onReload={reload}
                 reloadDisabled={selectedClassroomId === null}
                 onCreateClassroom={openCreateClassroomForm}

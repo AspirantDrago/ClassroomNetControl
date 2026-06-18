@@ -1,5 +1,7 @@
 import ipaddress
+import json
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -1387,6 +1389,22 @@ async def admin_get_maintenance_container_logs(
             status_code=502,
             detail=f"Maintenance service unavailable: {exc}",
         ) from exc
+
+
+@app.get("/api/build-info")
+async def build_info() -> dict[str, Any]:
+    path = Path("/app/.build-info.json")
+
+    if not path.exists():
+        return {
+            "git_commit_count": 0,
+            "compose_build_number": 0,
+            "version": "v 0.0",
+            "built_at": None,
+        }
+
+    with path.open("r", encoding="utf-8") as file:
+        return json.load(file)
 
 
 def run() -> None:

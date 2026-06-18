@@ -67,6 +67,13 @@ export type LoginResponse = {
     token_type: string;
 };
 
+export type BuildInfo = {
+    git_commit_count: number;
+    compose_build_number: number;
+    version: string;
+    built_at: string | null;
+};
+
 export function getAccessToken(): string | null {
     return window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
 }
@@ -235,6 +242,10 @@ export async function login(username: string, password: string): Promise<LoginRe
 
 export function getCurrentPrincipal(): Promise<CurrentPrincipal> {
     return request<CurrentPrincipal>("/api/me");
+}
+
+export function getBuildInfo(): Promise<BuildInfo> {
+    return request<BuildInfo>("/api/build-info");
 }
 
 export type CurrentAccountUpdateRequest = {

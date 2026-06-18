@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import type { BuildInfo } from "../../api";
 import "./Topbar.css";
 
 type AppPage = "dashboard" | "account" | "access" | "maintenance";
 
 type TopbarProps = {
     currentPage: AppPage;
+    buildInfo: BuildInfo | null;
     onReload: () => void;
     reloadDisabled: boolean;
     onCreateClassroom: () => void;
@@ -22,6 +24,7 @@ type TopbarProps = {
 export function Topbar(props: TopbarProps) {
     const {
         currentPage,
+        buildInfo,
         onReload,
         reloadDisabled,
         onCreateClassroom,
@@ -82,6 +85,17 @@ export function Topbar(props: TopbarProps) {
                 <div>
                     <h1>Classroom MikroTik Net Control</h1>
                     <p>Управление доступом ученических ПК в WAN</p>
+                    {buildInfo && (
+                        <div
+                            className="topbar__build-info"
+                            title={formatBuildInfoTitle(buildInfo)}
+                        >
+                            <span>{formatBuildVersion(buildInfo)}</span>
+                            {buildInfo.built_at && (
+                                <span>{formatBuildDate(buildInfo.built_at)}</span>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -195,4 +209,43 @@ export function Topbar(props: TopbarProps) {
             </div>
         </header>
     );
+}
+
+
+function formatBuildVersion(buildInfo: BuildInfo): string {
+    if (buildInfo.version.trim() !== "") {
+        return buildInfo.version;
+    }
+
+    return `v ${buildInfo.git_commit_count}.${buildInfo.compose_build_number}`;
+}
+
+function formatBuildDate(value: string): string {
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+
+    return date.toLocaleString("ru-RU", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+    });
+}
+
+function formatBuildInfoTitle(buildInfo: BuildInfo): string {
+    const parts = [
+        `Версия: ${formatBuildVersion(buildInfo)}`,
+        `Коммитов: ${buildInfo.git_commit_count}`,
+        `Сборка compose: ${buildInfo.compose_build_number}`,
+    ];
+
+    if (buildInfo.built_at) {
+        parts.push(`Дата сборки: ${formatBuildDate(buildInfo.built_at)}`);
+    }
+
+    return parts.join("\n");
 }
