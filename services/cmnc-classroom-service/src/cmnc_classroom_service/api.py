@@ -58,6 +58,19 @@ async def get_classrooms(
     return list(result.scalars().all())
 
 
+@router.get("/internal/classrooms/{classroom_id}", response_model=ClassroomRead)
+async def get_classroom(
+    classroom_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> ClassroomRead:
+    classroom = await session.get(Classroom, classroom_id)
+
+    if classroom is None or not classroom.is_active:
+        raise HTTPException(status_code=404, detail="Classroom not found")
+
+    return ClassroomRead.model_validate(classroom)
+
+
 @router.get(
     "/internal/classrooms/{classroom_id}/layout",
     response_model=ClassroomLayoutResponse,
@@ -393,6 +406,7 @@ async def create_classroom(
         vlan_id=payload.vlan_id,
         display_order=payload.display_order,
         is_active=payload.is_active,
+        is_service=payload.is_service,
     )
 
     session.add(classroom)

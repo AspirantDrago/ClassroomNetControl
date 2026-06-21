@@ -8,6 +8,7 @@ export type Classroom = {
     vlan_id: number | null;
     display_order: number;
     is_active: boolean;
+    is_service: boolean;
 };
 
 export type DashboardDevice = {
@@ -373,6 +374,7 @@ export type ClassroomCreateRequest = {
     vlan_id?: number | null;
     display_order?: number;
     is_active?: boolean;
+    is_service?: boolean;
 };
 
 export type ClassroomUpdateRequest = {
@@ -381,6 +383,7 @@ export type ClassroomUpdateRequest = {
     vlan_id?: number | null;
     display_order?: number;
     is_active?: boolean;
+    is_service?: boolean;
 };
 
 export function createClassroom(

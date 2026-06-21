@@ -324,6 +324,7 @@ export function App() {
             subnetCidr: "",
             vlanId: "",
             displayOrder: "",
+            isService: false,
         });
     }
 
@@ -341,6 +342,7 @@ export function App() {
             subnetCidr: classroom.subnet_cidr,
             vlanId: classroom.vlan_id?.toString() ?? "",
             displayOrder: classroom.display_order.toString(),
+            isService: classroom.is_service,
         });
     }
 
@@ -380,6 +382,7 @@ export function App() {
                     vlan_id: vlanId,
                     display_order: displayOrder,
                     is_active: true,
+                    is_service: classroomForm.isService,
                 });
 
                 setClassroomForm(null);
@@ -393,6 +396,7 @@ export function App() {
                 vlan_id: vlanId,
                 display_order: displayOrder,
                 is_active: true,
+                is_service: classroomForm.isService,
             });
 
             setClassroomForm(null);

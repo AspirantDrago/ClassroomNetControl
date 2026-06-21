@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import {type FormEvent, useEffect, useMemo, useState} from "react";
 import {
     type AdminRole,
     type AdminUser,
@@ -53,7 +53,7 @@ type WorkstationFormState = {
 };
 
 export function AdminAccessPage(props: AdminAccessPageProps) {
-    const { principal, classrooms } = props;
+    const {principal, classrooms} = props;
 
     const userManagementAllowed = canManageUsers(principal);
     const workstationManagementAllowed = canManageWorkstations(principal);
@@ -208,7 +208,7 @@ export function AdminAccessPage(props: AdminAccessPageProps) {
                     display_name: displayName,
                     role,
                     is_active: userForm.isActive,
-                    ...(password ? { password } : {}),
+                    ...(password ? {password} : {}),
                 };
 
                 await updateAdminUser(userForm.user.id, payload);
@@ -346,7 +346,7 @@ export function AdminAccessPage(props: AdminAccessPageProps) {
                         />
                     )}
 
-                    <UsersTable users={users} onEdit={openEditUserForm} />
+                    <UsersTable users={users} onEdit={openEditUserForm}/>
                 </div>
             )}
 
@@ -395,7 +395,7 @@ type UserFormProps = {
 };
 
 function UserForm(props: UserFormProps) {
-    const { form, roles, classrooms, busy, onChange, onCancel, onSubmit } = props;
+    const {form, roles, classrooms, busy, onChange, onCancel, onSubmit} = props;
 
     return (
         <form className="admin-form" onSubmit={onSubmit}>
@@ -405,7 +405,7 @@ function UserForm(props: UserFormProps) {
                     <input
                         value={form.username}
                         onChange={(event) =>
-                            onChange({ ...form, username: event.target.value })
+                            onChange({...form, username: event.target.value})
                         }
                         placeholder="user"
                     />
@@ -413,13 +413,14 @@ function UserForm(props: UserFormProps) {
 
                 <label>
                     <div>
-                        Пароль {form.mode === "edit" && <span className="muted">(не менять - оставить пустым)</span>}
+                        Пароль {form.mode === "edit" &&
+                        <span className="muted">(не менять - оставить пустым)</span>}
                     </div>
                     <input
                         type="password"
                         value={form.password}
                         onChange={(event) =>
-                            onChange({ ...form, password: event.target.value })
+                            onChange({...form, password: event.target.value})
                         }
                         placeholder="пароль"
                     />
@@ -430,7 +431,7 @@ function UserForm(props: UserFormProps) {
                     <input
                         value={form.displayName}
                         onChange={(event) =>
-                            onChange({ ...form, displayName: event.target.value })
+                            onChange({...form, displayName: event.target.value})
                         }
                         placeholder="Имя Фамилия"
                     />
@@ -465,7 +466,7 @@ function UserForm(props: UserFormProps) {
                         type="checkbox"
                         checked={form.isActive}
                         onChange={(event) =>
-                            onChange({ ...form, isActive: event.target.checked })
+                            onChange({...form, isActive: event.target.checked})
                         }
                     />
                     Активен
@@ -476,7 +477,7 @@ function UserForm(props: UserFormProps) {
                 <ClassroomChecklist
                     classrooms={classrooms}
                     selectedIds={form.classroomIds}
-                    onChange={(classroomIds) => onChange({ ...form, classroomIds })}
+                    onChange={(classroomIds) => onChange({...form, classroomIds})}
                 />
             )}
 
@@ -507,7 +508,7 @@ type WorkstationFormProps = {
 };
 
 function WorkstationForm(props: WorkstationFormProps) {
-    const { form, classrooms, busy, onChange, onCancel, onSubmit } = props;
+    const {form, classrooms, busy, onChange, onCancel, onSubmit} = props;
 
     return (
         <form className="admin-form" onSubmit={onSubmit}>
@@ -517,7 +518,7 @@ function WorkstationForm(props: WorkstationFormProps) {
                     <input
                         value={form.name}
                         onChange={(event) =>
-                            onChange({ ...form, name: event.target.value })
+                            onChange({...form, name: event.target.value})
                         }
                         placeholder="Workstation name"
                     />
@@ -528,7 +529,7 @@ function WorkstationForm(props: WorkstationFormProps) {
                     <input
                         value={form.ipAddress}
                         onChange={(event) =>
-                            onChange({ ...form, ipAddress: event.target.value })
+                            onChange({...form, ipAddress: event.target.value})
                         }
                         placeholder="192.168.0.1"
                     />
@@ -541,7 +542,7 @@ function WorkstationForm(props: WorkstationFormProps) {
                         type="checkbox"
                         checked={form.isActive}
                         onChange={(event) =>
-                            onChange({ ...form, isActive: event.target.checked })
+                            onChange({...form, isActive: event.target.checked})
                         }
                     />
                     Активна
@@ -551,7 +552,7 @@ function WorkstationForm(props: WorkstationFormProps) {
             <ClassroomChecklist
                 classrooms={classrooms}
                 selectedIds={form.classroomIds}
-                onChange={(classroomIds) => onChange({ ...form, classroomIds })}
+                onChange={(classroomIds) => onChange({...form, classroomIds})}
             />
 
             <div className="admin-form-actions">
@@ -578,7 +579,7 @@ type ClassroomChecklistProps = {
 };
 
 function ClassroomChecklist(props: ClassroomChecklistProps) {
-    const { classrooms, selectedIds, onChange } = props;
+    const {classrooms, selectedIds, onChange} = props;
     const selectedSet = new Set(selectedIds);
 
     function toggle(classroomId: number, checked: boolean) {
@@ -601,18 +602,26 @@ function ClassroomChecklist(props: ClassroomChecklistProps) {
                 <div className="muted">Нет доступных аудиторий.</div>
             ) : (
                 <div className="classroom-checklist-grid">
-                    {classrooms.map((classroom) => (
-                        <label key={classroom.id}>
-                            <input
-                                type="checkbox"
-                                checked={selectedSet.has(classroom.id)}
-                                onChange={(event) =>
-                                    toggle(classroom.id, event.target.checked)
-                                }
-                            />
-                            {classroom.name}
-                        </label>
-                    ))}
+                    {classrooms
+                        .filter((classroom) => !classroom.is_service)
+                        .map((classroom) => (
+                            <label
+                                key={classroom.id}
+                                className={classroom.is_service ? "classroom-checklist-service" : undefined}
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={selectedSet.has(classroom.id)}
+                                    onChange={(event) =>
+                                        toggle(classroom.id, event.target.checked)
+                                    }
+                                />
+                                <span>
+                                    {classroom.name}
+                                </span>
+                            </label>
+                            )
+                        )}
                 </div>
             )}
         </div>
@@ -625,7 +634,7 @@ type UsersTableProps = {
 };
 
 function UsersTable(props: UsersTableProps) {
-    const { users, onEdit } = props;
+    const {users, onEdit} = props;
 
     if (users.length === 0) {
         return <div className="muted">Пользователи не найдены.</div>;
@@ -647,7 +656,8 @@ function UsersTable(props: UsersTableProps) {
                 </thead>
                 <tbody>
                 {users.map((user) => (
-                    <tr key={user.id} className={user.is_active ? "user-item__active" : "user-item__disabled"}>
+                    <tr key={user.id}
+                        className={user.is_active ? "user-item__active" : "user-item__disabled"}>
                         <td>{user.username}</td>
                         <td>{user.display_name}</td>
                         <td>{formatRole(user.role)}</td>
@@ -676,7 +686,7 @@ type WorkstationsTableProps = {
 };
 
 function WorkstationsTable(props: WorkstationsTableProps) {
-    const { workstations, onEdit } = props;
+    const {workstations, onEdit} = props;
 
     if (workstations.length === 0) {
         return <div className="muted">Рабочие станции не найдены.</div>;
@@ -697,7 +707,8 @@ function WorkstationsTable(props: WorkstationsTableProps) {
                 </thead>
                 <tbody>
                 {workstations.map((workstation) => (
-                    <tr key={workstation.id} className={workstation.is_active ? "user-item__active" : "user-item__disabled"}>
+                    <tr key={workstation.id}
+                        className={workstation.is_active ? "user-item__active" : "user-item__disabled"}>
                         <td>{workstation.name}</td>
                         <td>{workstation.ip_address}</td>
                         <td>{workstation.is_active ? "да" : "нет"}</td>

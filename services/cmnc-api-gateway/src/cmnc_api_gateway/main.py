@@ -186,14 +186,54 @@ def can_access_all_classrooms(principal: PrincipalResponse) -> bool:
     return has_permission(principal, PERMISSION_CLASSROOMS_READ_ALL)
 
 
+def can_access_service_classrooms(principal: PrincipalResponse) -> bool:
+    return principal.role in {ROLE_SUPERADMIN, ROLE_ADMIN}
+
+
 def can_view_dynamic_devices(principal: PrincipalResponse) -> bool:
     return principal.role in {ROLE_SUPERADMIN, ROLE_ADMIN}
 
 
-def ensure_classroom_access(
+async def get_classroom_or_404(classroom_id: int) -> dict[str, Any]:
+    try:
+        data = await classroom_client.get_json(f"/internal/classrooms/{classroom_id}")
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Classroom not found") from exc
+
+        raise HTTPException(status_code=502, detail=exc.response.text) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Classroom service unavailable: {exc}",
+        ) from exc
+
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=502, detail="Invalid classroom service response")
+
+    return data
+
+
+def ensure_service_classroom_access(
+    principal: PrincipalResponse,
+    classroom: dict[str, Any],
+) -> None:
+    if classroom.get("is_service") is not True:
+        return
+
+    if can_access_service_classrooms(principal):
+        return
+
+    raise HTTPException(status_code=404, detail="Classroom not found")
+
+
+async def ensure_classroom_access(
     principal: PrincipalResponse,
     classroom_id: int,
 ) -> None:
+    classroom = await get_classroom_or_404(classroom_id)
+    ensure_service_classroom_access(principal, classroom)
+
     if can_access_all_classrooms(principal):
         return
 
@@ -289,15 +329,12 @@ async def ensure_wan_device_access(
 ) -> None:
     require_wan_control_permission(principal)
 
-    if has_permission(principal, PERMISSION_WAN_CONTROL_ALL):
-        return
-
     classroom_id = await get_device_classroom_id(device_id)
 
     if classroom_id is None:
         raise HTTPException(status_code=404, detail="Device not found")
 
-    ensure_classroom_access(principal, classroom_id)
+    await ensure_classroom_access(principal, classroom_id)
 
 
 async def ensure_wan_classroom_access(
@@ -305,7 +342,7 @@ async def ensure_wan_classroom_access(
     classroom_id: int,
 ) -> None:
     require_wan_control_permission(principal)
-    ensure_classroom_access(principal, classroom_id)
+    await ensure_classroom_access(principal, classroom_id)
 
 
 def parse_datetime(value: Any) -> datetime | None:
@@ -502,12 +539,22 @@ async def get_classrooms(
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"Classroom service unavailable: {exc}") from exc
 
+    if not isinstance(classrooms, list):
+        raise HTTPException(status_code=502, detail="Invalid classroom service response")
+
+    visible_classrooms = [
+        classroom
+        for classroom in classrooms
+        if isinstance(classroom, dict)
+        and (classroom.get("is_service") is not True or can_access_service_classrooms(principal))
+    ]
+
     if can_access_all_classrooms(principal):
-        return classrooms
+        return visible_classrooms
 
     return [
         classroom
-        for classroom in classrooms
+        for classroom in visible_classrooms
         if classroom["id"] in principal.classroom_ids
     ]
 
@@ -522,7 +569,7 @@ async def get_classroom_dashboard(
     authorization: str | None = Header(default=None),
 ) -> ClassroomDashboardResponse:
     principal = await get_current_principal(request, authorization)
-    ensure_classroom_access(principal, classroom_id)
+    await ensure_classroom_access(principal, classroom_id)
 
     try:
         layout = await classroom_client.get_json(

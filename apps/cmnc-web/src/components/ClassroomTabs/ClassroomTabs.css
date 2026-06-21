@@ -18,3 +18,15 @@
     background: #1d4ed8;
     border-color: #2563eb;
 }
+
+.service-tab {
+    border-color: #4b5563;
+    background: #1f2937;
+    color: #9ca3af;
+}
+
+.service-tab.active-tab {
+    border-color: #6b7280;
+    background: #374151;
+    color: #e5e7eb;
+}

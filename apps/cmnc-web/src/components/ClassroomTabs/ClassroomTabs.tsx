@@ -12,15 +12,25 @@ export function ClassroomTabs(props: ClassroomTabsProps) {
 
     return (
         <section className="classroom-tabs">
-            {classrooms.map((classroom) => (
-                <button
-                    key={classroom.id}
-                    className={classroom.id === selectedClassroomId ? "tab active-tab" : "tab"}
-                    onClick={() => onSelect(classroom.id)}
-                >
-                    {classroom.name}
-                </button>
-            ))}
+            {classrooms.map((classroom) => {
+                const className = [
+                    "tab",
+                    classroom.id === selectedClassroomId ? "active-tab" : "",
+                    classroom.is_service ? "service-tab" : "",
+                ]
+                    .filter(Boolean)
+                    .join(" ");
+
+                return (
+                    <button
+                        key={classroom.id}
+                        className={className}
+                        onClick={() => onSelect(classroom.id)}
+                    >
+                        {classroom.name}
+                    </button>
+                );
+            })}
         </section>
     );
 }

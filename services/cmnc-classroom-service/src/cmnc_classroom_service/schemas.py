@@ -17,6 +17,7 @@ class ClassroomRead(BaseModel):
     vlan_id: int | None
     display_order: int
     is_active: bool
+    is_service: bool
 
 
 class DeviceRead(BaseModel):
@@ -85,6 +86,7 @@ class ClassroomCreate(BaseModel):
     vlan_id: int | None = None
     display_order: int = 0
     is_active: bool = True
+    is_service: bool = False
 
 
 class ClassroomUpdate(BaseModel):
@@ -93,6 +95,7 @@ class ClassroomUpdate(BaseModel):
     vlan_id: int | None = None
     display_order: int | None = None
     is_active: bool | None = None
+    is_service: bool | None = None
 
 
 class DeviceCreate(BaseModel):

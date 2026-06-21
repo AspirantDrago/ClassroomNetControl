@@ -10,6 +10,7 @@ export type ClassroomFormState =
     subnetCidr: string;
     vlanId: string;
     displayOrder: string;
+    isService: boolean;
 }
     | {
     mode: "edit";
@@ -18,6 +19,7 @@ export type ClassroomFormState =
     subnetCidr: string;
     vlanId: string;
     displayOrder: string;
+    isService: boolean;
 };
 
 type ClassroomFormModalProps = {
@@ -49,7 +51,7 @@ export function ClassroomFormModal(props: ClassroomFormModalProps) {
                         <div className="muted">
                             {form.mode === "create"
                                 ? "Аудитория появится в списке вкладок."
-                                : "Можно изменить название, подсеть, VLAN и порядок отображения."}
+                                : "Можно изменить название, подсеть, VLAN, порядок отображения и служебный статус."}
                         </div>
                     </div>
 
@@ -124,6 +126,20 @@ export function ClassroomFormModal(props: ClassroomFormModalProps) {
                         />
                     </label>
                 </div>
+
+                <label className="classroom-service-checkbox">
+                    <input
+                        type="checkbox"
+                        checked={form.isService}
+                        onChange={(event) =>
+                            onChange({
+                                ...form,
+                                isService: event.target.checked,
+                            })
+                        }
+                    />
+                    <span>Служебная аудитория</span>
+                </label>
 
                 <div className="modal-actions classroom-modal-actions">
                     {form.mode === "edit" && onDeactivate && (
