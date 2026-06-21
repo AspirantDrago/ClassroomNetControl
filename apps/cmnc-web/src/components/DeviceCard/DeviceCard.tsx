@@ -25,16 +25,24 @@ export function DeviceCard(props: DeviceCardProps) {
     const busy = busyDeviceId === device.id;
 
     return (
-        <div
-            className={`device-card ${device.online ? "device-online" : "device-offline"}`}
-            onDoubleClick={() => {
-                if (canManageWorkstations) {
-                    onEdit(device);
-                }
-            }}
-        >
+        <div className={`device-card ${device.online ? "device-online" : "device-offline"}`}>
             <div className="device-card-header">
                 <div className="device-title">{getDeviceTitle(device)}</div>
+
+                {canManageWorkstations && (
+                    <button
+                        type="button"
+                        className="device-edit-button"
+                        title="Редактировать устройство"
+                        aria-label={`Редактировать устройство ${getDeviceTitle(device)}`}
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            onEdit(device);
+                        }}
+                    >
+                        ✎
+                    </button>
+                )}
             </div>
 
             <div className="device-info">

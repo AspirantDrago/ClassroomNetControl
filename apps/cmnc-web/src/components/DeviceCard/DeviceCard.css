@@ -3,6 +3,7 @@
     border-radius: 10px;
     padding: 5px;
     background: #111827;
+    touch-action: manipulation;
 }
 
 .device-card.device-offline {
@@ -11,13 +12,36 @@
 
 .device-card-header {
     display: flex;
+    align-items: flex-start;
     justify-content: space-between;
+    gap: 6px;
     margin-bottom: 5px;
 }
 
 .device-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-weight: 700;
     font-size: 18px;
+}
+
+.device-edit-button {
+    flex-shrink: 0;
+    border: 1px solid #475569;
+    border-radius: 6px;
+    padding: 2px 6px;
+    background: #00000000;
+    color: #e5e7eb;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1.2;
+    touch-action: manipulation;
+}
+
+.device-edit-button:hover {
+    background: #374151;
 }
 
 .device-subtitle {
