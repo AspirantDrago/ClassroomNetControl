@@ -214,6 +214,100 @@ class MikroTikClient:
 
         return connections
 
+
+    async def healthcheck(
+            self,
+            address_list_name: str,
+            check_connections: bool,
+            connection_src_ip: str,
+            write_probe_enabled: bool,
+            healthcheck_address_list_name: str,
+            healthcheck_address: str,
+    ) -> None:
+        # Read access to the managed address-list is required for every policy sync.
+        await self.get_address_list_entries(address_list_name)
+
+        # Connection cleanup uses /ip/firewall/connection/print. The probe is
+        # read-only and does not delete anything.
+        if check_connections:
+            await self.get_connections_by_src_ip(connection_src_ip)
+
+        # RouterOS REST API has no dry-run mode for write permissions. To verify
+        # that policy sync can really change firewall address-list entries, create
+        # a disabled probe entry in a dedicated unused list and remove it again.
+        if write_probe_enabled:
+            await self.verify_address_list_write_access(
+                address_list_name=healthcheck_address_list_name,
+                address=healthcheck_address,
+            )
+
+    async def verify_address_list_write_access(
+            self,
+            address_list_name: str,
+            address: str,
+    ) -> None:
+        comment = f"{self._managed_comment_prefix}healthcheck=true;"
+
+        await self.delete_healthcheck_entries(
+            address_list_name=address_list_name,
+            address=address,
+            comment=comment,
+        )
+
+        try:
+            await self.add_healthcheck_address_list_entry(
+                address_list_name=address_list_name,
+                address=address,
+                comment=comment,
+            )
+
+            entries = await self.get_address_list_entries(address_list_name)
+            exists = any(
+                entry.address == address and entry.comment == comment
+                for entry in entries
+            )
+
+            if not exists:
+                raise RuntimeError("MikroTik healthcheck address-list entry was not created")
+
+        finally:
+            await self.delete_healthcheck_entries(
+                address_list_name=address_list_name,
+                address=address,
+                comment=comment,
+            )
+
+    async def add_healthcheck_address_list_entry(
+            self,
+            address_list_name: str,
+            address: str,
+            comment: str,
+    ) -> None:
+        await self._request_json(
+            method="PUT",
+            path="/ip/firewall/address-list",
+            json={
+                "list": address_list_name,
+                "address": address,
+                "comment": comment,
+                "disabled": "true",
+            },
+        )
+
+    async def delete_healthcheck_entries(
+            self,
+            address_list_name: str,
+            address: str,
+            comment: str,
+    ) -> None:
+        entries = await self.get_address_list_entries(address_list_name)
+
+        for entry in entries:
+            if entry.address != address or entry.comment != comment:
+                continue
+
+            await self.delete_address_list_entry(entry.routeros_id)
+
     async def apply_desired_blocklist(
             self,
             desired: DesiredBlocklistResponse,

@@ -172,7 +172,7 @@
     white-space: nowrap;
 }
 
-.maintenance-status--running {
+.maintenance-status--running, .maintenance-status--health {
     background: #064e3b;
     color: #a7f3d0;
 }
@@ -182,7 +182,7 @@
     color: #fde68a;
 }
 
-.maintenance-status--stopped {
+.maintenance-status--stopped, .maintenance-status--error {
     background: #7f1d1d;
     color: #fecaca;
 }

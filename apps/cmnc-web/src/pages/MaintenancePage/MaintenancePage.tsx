@@ -416,7 +416,11 @@ export function MaintenancePage() {
                                         {container.state_label}
                                     </span>
                                 </td>
-                                <td>{formatHealth(container.health)}</td>
+                                <td>
+                                    <span className={getHealthClassName(container.health)}>
+                                        {formatHealth(container.health)}
+                                    </span>
+                                </td>
                                 <td>{formatPercent(container.cpu_percent)}</td>
                                 <td>{formatMemory(container)}</td>
                                 <td className="maintenance-muted">{container.docker_status || "-"}</td>
@@ -518,24 +522,32 @@ function getStateBadgeClassName(container: MaintenanceContainerStatus): string {
     return "maintenance-status";
 }
 
+function getHealthClassName(health: string | null): string {
+    switch (health) {
+        case "starting":
+            return "maintenance-status maintenance-status--starting";
+        case "healthy":
+            return "maintenance-status maintenance-status--health";
+        case "unhealthy":
+            return "maintenance-status maintenance-status--error";
+        default:
+            return "";
+    }
+}
+
 function formatHealth(health: string | null): string {
-    if (health === null) {
-        return "-";
+    switch (health) {
+        case "starting":
+            return "запускается";
+        case "healthy":
+            return "здоров";
+        case "unhealthy":
+            return "ошибка";
+        case null:
+            return "-";
+        default:
+            return health;
     }
-
-    if (health === "healthy") {
-        return "здоров";
-    }
-
-    if (health === "unhealthy") {
-        return "ошибка";
-    }
-
-    if (health === "starting") {
-        return "запускается";
-    }
-
-    return health;
 }
 
 function formatPercent(value: number | null): string {

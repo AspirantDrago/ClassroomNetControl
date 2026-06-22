@@ -116,6 +116,10 @@ services:
       CMNC_MIKROTIK_USERNAME: ${CMNC_MIKROTIK_USERNAME}
       CMNC_MIKROTIK_PASSWORD: ${CMNC_MIKROTIK_PASSWORD}
       CMNC_MIKROTIK_VERIFY_TLS: ${CMNC_MIKROTIK_VERIFY_TLS:-false}
+      CMNC_POLICY_SYNC_HEALTHCHECK_WRITE_PROBE_ENABLED: ${CMNC_POLICY_SYNC_HEALTHCHECK_WRITE_PROBE_ENABLED:-true}
+      CMNC_POLICY_SYNC_HEALTHCHECK_ADDRESS_LIST_NAME: ${CMNC_POLICY_SYNC_HEALTHCHECK_ADDRESS_LIST_NAME:-cmnc_healthcheck}
+      CMNC_POLICY_SYNC_HEALTHCHECK_ADDRESS: ${CMNC_POLICY_SYNC_HEALTHCHECK_ADDRESS:-198.51.100.254}
+      CMNC_POLICY_SYNC_HEALTHCHECK_CONNECTION_SRC_IP: ${CMNC_POLICY_SYNC_HEALTHCHECK_CONNECTION_SRC_IP:-127.0.0.1}
     depends_on:
       cmnc-rabbitmq:
         condition: service_healthy
@@ -123,6 +127,12 @@ services:
         condition: service_healthy
     networks:
       - cmnc-network
+    healthcheck:
+      test: [ "CMD", "python", "-m", "cmnc_policy_sync_service.healthcheck" ]
+      interval: 60s
+      timeout: 20s
+      retries: 1
+      start_period: 20s
 
   cmnc-inventory-service:
     build:
@@ -170,8 +180,16 @@ services:
     depends_on:
       cmnc-rabbitmq:
         condition: service_healthy
+      cmnc-inventory-service:
+        condition: service_healthy
     networks:
       - cmnc-network
+    healthcheck:
+      test: [ "CMD", "python", "-m", "cmnc_mikrotik_poller_service.healthcheck" ]
+      interval: 60s
+      timeout: 20s
+      retries: 1
+      start_period: 20s
 
   cmnc-maintenance-service:
     build:
