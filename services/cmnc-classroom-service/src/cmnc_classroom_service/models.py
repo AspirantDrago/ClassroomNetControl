@@ -31,8 +31,6 @@ class Classroom(Base):
         server_default=text("false"),
         default=False,
     )
-    rtsp_main_stream: Mapped[str | None] = mapped_column(Text, nullable=True)
-    rtsp_sub_stream: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -50,6 +48,57 @@ class Classroom(Base):
         back_populates="classroom",
         cascade="all, delete-orphan",
     )
+    cameras: Mapped[list["ClassroomCamera"]] = relationship(
+        back_populates="classroom",
+        cascade="all, delete-orphan",
+    )
+
+
+class ClassroomCamera(Base):
+    __tablename__ = "classroom_cameras"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "classroom_id",
+            "sort_order",
+            name="uq_classroom_cameras_classroom_sort_order",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    classroom_id: Mapped[int] = mapped_column(
+        ForeignKey("classrooms.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("true"),
+        default=True,
+    )
+    rtsp_main_stream: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rtsp_sub_stream: Mapped[str | None] = mapped_column(Text, nullable=True)
+    default_quality: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        server_default="sub",
+        default="sub",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    classroom: Mapped[Classroom] = relationship(back_populates="cameras")
 
 
 class Device(Base):
@@ -91,8 +140,7 @@ class Device(Base):
     )
 
     policy_generation: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    sync_status: Mapped[str] = mapped_column(String(32), default="unknown",
-                                             nullable=False)
+    sync_status: Mapped[str] = mapped_column(String(32), default="unknown", nullable=False)
     sync_error: Mapped[str | None] = mapped_column(String(1024), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(

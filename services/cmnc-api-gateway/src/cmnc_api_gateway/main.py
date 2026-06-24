@@ -199,56 +199,169 @@ def can_read_classroom_rtsp(principal: PrincipalResponse) -> bool:
     return has_permission(principal, PERMISSION_CLASSROOMS_MANAGE)
 
 
-def get_classroom_camera_info(classroom: dict[str, Any]) -> dict[str, Any]:
+def get_camera_qualities(camera: dict[str, Any]) -> list[str]:
     qualities: list[str] = []
 
-    if classroom.get("rtsp_main_stream"):
+    if camera.get("rtsp_main_stream"):
         qualities.append("main")
 
-    if classroom.get("rtsp_sub_stream"):
+    if camera.get("rtsp_sub_stream"):
         qualities.append("sub")
 
+    return qualities
+
+
+def serialize_camera_for_principal(
+    principal: PrincipalResponse,
+    camera: dict[str, Any],
+) -> dict[str, Any]:
+    data = dict(camera)
+
+    if not can_read_classroom_rtsp(principal):
+        data.pop("rtsp_main_stream", None)
+        data.pop("rtsp_sub_stream", None)
+
+    return data
+
+
+def get_camera_info(camera: dict[str, Any]) -> dict[str, Any]:
+    qualities = get_camera_qualities(camera)
+    default_quality = camera.get("default_quality")
+
+    if default_quality not in qualities and qualities:
+        default_quality = "sub" if "sub" in qualities else qualities[0]
+
     return {
-        "enabled": len(qualities) > 0,
+        "id": camera.get("id"),
+        "name": camera.get("name") or "Камера",
+        "enabled": bool(camera.get("is_enabled") and qualities),
         "qualities": qualities,
+        "default_quality": default_quality or "sub",
     }
+
+
+def get_disabled_camera_info() -> dict[str, Any]:
+    return {
+        "id": None,
+        "name": "Камера",
+        "enabled": False,
+        "qualities": [],
+        "default_quality": "sub",
+    }
+
+
+def get_cameras_info(cameras: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        get_camera_info(camera)
+        for camera in cameras
+        if isinstance(camera, dict) and camera.get("is_enabled") is True
+    ]
 
 
 def get_requested_camera_quality(
     payload: dict[str, Any],
-    classroom: dict[str, Any],
+    camera: dict[str, Any],
 ) -> str:
     raw_quality = payload.get("quality")
+    qualities = get_camera_qualities(camera)
 
     if raw_quality is None:
-        qualities = get_classroom_camera_info(classroom)["qualities"]
+        default_quality = camera.get("default_quality")
+
+        if default_quality in qualities:
+            return str(default_quality)
 
         if len(qualities) == 1:
             return qualities[0]
+
+        if "sub" in qualities:
+            return "sub"
 
         raise HTTPException(status_code=422, detail="quality is required")
 
     if raw_quality not in {"main", "sub"}:
         raise HTTPException(status_code=422, detail="quality must be main or sub")
 
+    if raw_quality not in qualities:
+        raise HTTPException(status_code=404, detail="Camera stream is not configured")
+
     return str(raw_quality)
 
 
-def get_classroom_rtsp_stream(
-    classroom: dict[str, Any],
+def ensure_camera_belongs_to_classroom(
+    classroom_id: int,
+    camera: dict[str, Any],
+) -> None:
+    if camera.get("classroom_id") != classroom_id:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+
+async def get_classroom_cameras_or_502(classroom_id: int) -> list[dict[str, Any]]:
+    try:
+        cameras = await classroom_client.get_json(
+            f"/internal/classrooms/{classroom_id}/cameras"
+        )
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Classroom not found") from exc
+        raise HTTPException(status_code=502, detail=exc.response.text) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Classroom service unavailable: {exc}",
+        ) from exc
+
+    if not isinstance(cameras, list):
+        raise HTTPException(status_code=502, detail="Invalid classroom service response")
+
+    return [camera for camera in cameras if isinstance(camera, dict)]
+
+
+async def get_camera_or_404(classroom_id: int, camera_id: int) -> dict[str, Any]:
+    cameras = await get_classroom_cameras_or_502(classroom_id)
+
+    for camera in cameras:
+        if camera.get("id") == camera_id:
+            ensure_camera_belongs_to_classroom(classroom_id, camera)
+            return camera
+
+    raise HTTPException(status_code=404, detail="Camera not found")
+
+
+async def get_first_camera_or_404(classroom_id: int) -> dict[str, Any]:
+    cameras = await get_classroom_cameras_or_502(classroom_id)
+
+    for camera in cameras:
+        if camera.get("is_enabled") is True and get_camera_qualities(camera):
+            return camera
+
+    raise HTTPException(status_code=404, detail="Camera is not configured")
+
+
+async def get_camera_source(
+    classroom_id: int,
+    camera_id: int,
     quality: str,
-) -> str:
-    if quality == "main":
-        value = classroom.get("rtsp_main_stream")
-    elif quality == "sub":
-        value = classroom.get("rtsp_sub_stream")
-    else:
-        raise HTTPException(status_code=422, detail="quality must be main or sub")
+) -> dict[str, Any]:
+    try:
+        source = await classroom_client.get_json(
+            f"/internal/classrooms/{classroom_id}/cameras/{camera_id}/source?quality={quality}"
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Classroom service unavailable: {exc}",
+        ) from exc
 
-    if not isinstance(value, str) or not value.strip():
-        raise HTTPException(status_code=404, detail="Camera stream is not configured")
+    if not isinstance(source, dict) or not isinstance(source.get("rtsp_url"), str):
+        raise HTTPException(status_code=502, detail="Invalid classroom service response")
 
-    return value.strip()
+    return source
 
 
 async def stream_camera_service_response(path: str) -> StreamingResponse:
@@ -702,7 +815,15 @@ async def get_classroom_dashboard(
     classroom = layout["classroom"]
     devices = layout["devices"]
     observed_devices = observed["devices"]
-    camera = get_classroom_camera_info(classroom)
+    layout_cameras = layout.get("cameras", [])
+
+    if not isinstance(layout_cameras, list):
+        raise HTTPException(status_code=502, detail="Invalid classroom service response")
+
+    cameras = get_cameras_info([
+        item for item in layout_cameras if isinstance(item, dict)
+    ])
+    camera = cameras[0] if cameras else get_disabled_camera_info()
 
     observed_by_mac = {
         item["mac_address"].upper(): item
@@ -748,6 +869,7 @@ async def get_classroom_dashboard(
         devices=dashboard_devices,
         dynamic_devices=dynamic_devices,
         camera=camera,
+        cameras=cameras,
     )
 
 
@@ -996,6 +1118,123 @@ async def admin_update_classroom(
             status_code=exc.response.status_code,
             detail=exc.response.text,
         ) from exc
+
+
+
+
+@app.get("/api/admin/classrooms/{classroom_id}/cameras")
+async def admin_get_classroom_cameras(
+    classroom_id: int,
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    require_permission(principal, PERMISSION_CLASSROOMS_MANAGE)
+
+    try:
+        cameras = await classroom_client.get_json(
+            f"/internal/classrooms/{classroom_id}/cameras"
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Classroom service unavailable: {exc}",
+        ) from exc
+
+    if not isinstance(cameras, list):
+        raise HTTPException(status_code=502, detail="Invalid classroom service response")
+
+    return cameras
+
+
+@app.post("/api/admin/classrooms/{classroom_id}/cameras")
+async def admin_create_classroom_camera(
+    classroom_id: int,
+    payload: dict[str, Any],
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    require_permission(principal, PERMISSION_CLASSROOMS_MANAGE)
+
+    try:
+        return await classroom_client.post_json(
+            f"/internal/classrooms/{classroom_id}/cameras",
+            json=payload,
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Classroom service unavailable: {exc}",
+        ) from exc
+
+
+@app.patch("/api/admin/classrooms/{classroom_id}/cameras/{camera_id}")
+async def admin_update_classroom_camera(
+    classroom_id: int,
+    camera_id: int,
+    payload: dict[str, Any],
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    require_permission(principal, PERMISSION_CLASSROOMS_MANAGE)
+
+    try:
+        return await classroom_client.patch_json(
+            f"/internal/classrooms/{classroom_id}/cameras/{camera_id}",
+            json=payload,
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Classroom service unavailable: {exc}",
+        ) from exc
+
+
+@app.delete("/api/admin/classrooms/{classroom_id}/cameras/{camera_id}", status_code=204)
+async def admin_delete_classroom_camera(
+    classroom_id: int,
+    camera_id: int,
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Response:
+    principal = await get_current_principal(request, authorization)
+    require_permission(principal, PERMISSION_CLASSROOMS_MANAGE)
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(
+                f"{settings.classroom_service_url}/internal/classrooms/{classroom_id}/cameras/{camera_id}"
+            )
+            response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Classroom service unavailable: {exc}",
+        ) from exc
+
+    return Response(status_code=204)
 
 
 @app.post("/api/admin/devices")
@@ -1503,24 +1742,25 @@ async def admin_update_workstation_classrooms(
         ) from exc
 
 
-@app.post("/api/classrooms/{classroom_id}/camera/session")
-async def create_classroom_camera_session(
+async def create_camera_session_response(
     classroom_id: int,
+    camera: dict[str, Any],
     payload: dict[str, Any],
-    request: Request,
-    authorization: str | None = Header(default=None),
-) -> Any:
-    principal = await get_current_principal(request, authorization)
-    await ensure_classroom_access(principal, classroom_id)
-    classroom = await get_classroom_or_404(classroom_id)
+) -> dict[str, Any]:
+    camera_id = camera.get("id")
 
-    quality = get_requested_camera_quality(payload, classroom)
-    rtsp_url = get_classroom_rtsp_stream(classroom, quality)
+    if not isinstance(camera_id, int):
+        raise HTTPException(status_code=502, detail="Invalid classroom service response")
+
+    quality = get_requested_camera_quality(payload, camera)
+    source = await get_camera_source(classroom_id, camera_id, quality)
+    rtsp_url = source["rtsp_url"]
 
     try:
         data = await camera_client.post_json(
             "/internal/camera/sessions",
             json={
+                "camera_id": camera_id,
                 "rtsp_url": rtsp_url,
                 "quality": quality,
             },
@@ -1544,10 +1784,38 @@ async def create_classroom_camera_session(
     return {
         "mode": data.get("mode", "hls"),
         "quality": data.get("quality", quality),
+        "camera_id": camera_id,
         "session_id": session_id,
         "url": f"/api/camera/sessions/{session_id}/hls/index.m3u8",
         "expires_in_seconds": data.get("expires_in_seconds"),
     }
+
+
+@app.post("/api/classrooms/{classroom_id}/camera/session")
+async def create_classroom_camera_session(
+    classroom_id: int,
+    payload: dict[str, Any],
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    await ensure_classroom_access(principal, classroom_id)
+    camera = await get_first_camera_or_404(classroom_id)
+    return await create_camera_session_response(classroom_id, camera, payload)
+
+
+@app.post("/api/classrooms/{classroom_id}/cameras/{camera_id}/session")
+async def create_named_classroom_camera_session(
+    classroom_id: int,
+    camera_id: int,
+    payload: dict[str, Any],
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    await ensure_classroom_access(principal, classroom_id)
+    camera = await get_camera_or_404(classroom_id, camera_id)
+    return await create_camera_session_response(classroom_id, camera, payload)
 
 
 @app.delete("/api/camera/sessions/{session_id}", status_code=204)

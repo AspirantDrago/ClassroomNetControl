@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,9 +8,13 @@ from cmnc_contracts.routing_keys import CLASSROOM_DEVICE_WAN_POLICY_CHANGED
 
 from cmnc_classroom_service.db import get_session
 from cmnc_classroom_service.messaging import RabbitMqClient
-from cmnc_classroom_service.models import Classroom, Device
+from cmnc_classroom_service.models import Classroom, ClassroomCamera, Device
 from cmnc_classroom_service.schemas import (
     BulkWanPolicyChangeResponse,
+    ClassroomCameraCreate,
+    ClassroomCameraRead,
+    ClassroomCameraSourceResponse,
+    ClassroomCameraUpdate,
     ClassroomCreate,
     ClassroomLayoutResponse,
     ClassroomRead,
@@ -92,9 +96,244 @@ async def get_classroom_layout(
     )
     devices = list(result.scalars().all())
 
+    camera_result = await session.execute(
+        select(ClassroomCamera)
+        .where(ClassroomCamera.classroom_id == classroom_id)
+        .order_by(ClassroomCamera.sort_order, ClassroomCamera.id)
+    )
+    cameras = list(camera_result.scalars().all())
+
     return ClassroomLayoutResponse(
         classroom=ClassroomRead.model_validate(classroom),
         devices=[DeviceRead.model_validate(device) for device in devices],
+        cameras=[ClassroomCameraRead.model_validate(camera) for camera in cameras],
+    )
+
+
+
+def normalize_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+
+    normalized = value.strip()
+    return normalized or None
+
+
+def get_camera_qualities(camera: ClassroomCamera) -> list[str]:
+    qualities: list[str] = []
+
+    if camera.rtsp_main_stream:
+        qualities.append("main")
+
+    if camera.rtsp_sub_stream:
+        qualities.append("sub")
+
+    return qualities
+
+
+def ensure_camera_has_valid_streams(
+    *,
+    rtsp_main_stream: str | None,
+    rtsp_sub_stream: str | None,
+    default_quality: str,
+    is_enabled: bool,
+) -> str:
+    main = normalize_optional_text(rtsp_main_stream)
+    sub = normalize_optional_text(rtsp_sub_stream)
+
+    if default_quality not in {"main", "sub"}:
+        raise HTTPException(status_code=422, detail="default_quality must be main or sub")
+
+    if is_enabled and main is None and sub is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Enabled camera must have at least one RTSP stream",
+        )
+
+    if default_quality == "sub" and sub is None and main is not None:
+        return "main"
+
+    if default_quality == "main" and main is None and sub is not None:
+        return "sub"
+
+    return default_quality
+
+
+def get_camera_rtsp_stream(camera: ClassroomCamera, quality: str) -> str:
+    if quality == "main":
+        value = camera.rtsp_main_stream
+    elif quality == "sub":
+        value = camera.rtsp_sub_stream
+    else:
+        raise HTTPException(status_code=422, detail="quality must be main or sub")
+
+    if not isinstance(value, str) or not value.strip():
+        raise HTTPException(status_code=404, detail="Camera stream is not configured")
+
+    return value.strip()
+
+
+async def get_camera_or_404(
+    session: AsyncSession,
+    classroom_id: int,
+    camera_id: int,
+) -> ClassroomCamera:
+    camera = await session.get(ClassroomCamera, camera_id)
+
+    if camera is None or camera.classroom_id != classroom_id:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+    return camera
+
+
+@router.get(
+    "/internal/classrooms/{classroom_id}/cameras",
+    response_model=list[ClassroomCameraRead],
+)
+async def get_classroom_cameras(
+    classroom_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> list[ClassroomCameraRead]:
+    await ensure_classroom_exists(session, classroom_id)
+
+    result = await session.execute(
+        select(ClassroomCamera)
+        .where(ClassroomCamera.classroom_id == classroom_id)
+        .order_by(ClassroomCamera.sort_order, ClassroomCamera.id)
+    )
+    cameras = list(result.scalars().all())
+
+    return [ClassroomCameraRead.model_validate(camera) for camera in cameras]
+
+
+@router.post(
+    "/internal/classrooms/{classroom_id}/cameras",
+    response_model=ClassroomCameraRead,
+    status_code=201,
+)
+async def create_classroom_camera(
+    classroom_id: int,
+    payload: ClassroomCameraCreate,
+    session: AsyncSession = Depends(get_session),
+) -> ClassroomCameraRead:
+    await ensure_classroom_exists(session, classroom_id)
+
+    rtsp_main_stream = normalize_optional_text(payload.rtsp_main_stream)
+    rtsp_sub_stream = normalize_optional_text(payload.rtsp_sub_stream)
+    default_quality = ensure_camera_has_valid_streams(
+        rtsp_main_stream=rtsp_main_stream,
+        rtsp_sub_stream=rtsp_sub_stream,
+        default_quality=payload.default_quality,
+        is_enabled=payload.is_enabled,
+    )
+
+    camera = ClassroomCamera(
+        classroom_id=classroom_id,
+        name=payload.name.strip(),
+        sort_order=payload.sort_order,
+        is_enabled=payload.is_enabled,
+        rtsp_main_stream=rtsp_main_stream,
+        rtsp_sub_stream=rtsp_sub_stream,
+        default_quality=default_quality,
+    )
+    session.add(camera)
+
+    await commit_or_409(
+        session,
+        detail="Camera with the same sort order already exists in classroom",
+    )
+    await session.refresh(camera)
+
+    return ClassroomCameraRead.model_validate(camera)
+
+
+@router.patch(
+    "/internal/classrooms/{classroom_id}/cameras/{camera_id}",
+    response_model=ClassroomCameraRead,
+)
+async def update_classroom_camera(
+    classroom_id: int,
+    camera_id: int,
+    payload: ClassroomCameraUpdate,
+    session: AsyncSession = Depends(get_session),
+) -> ClassroomCameraRead:
+    camera = await get_camera_or_404(session, classroom_id, camera_id)
+    update_data = payload.model_dump(exclude_unset=True)
+
+    if "name" in update_data and isinstance(update_data["name"], str):
+        update_data["name"] = update_data["name"].strip()
+
+    if "rtsp_main_stream" in update_data:
+        update_data["rtsp_main_stream"] = normalize_optional_text(
+            update_data["rtsp_main_stream"]
+        )
+
+    if "rtsp_sub_stream" in update_data:
+        update_data["rtsp_sub_stream"] = normalize_optional_text(
+            update_data["rtsp_sub_stream"]
+        )
+
+    final_main = update_data.get("rtsp_main_stream", camera.rtsp_main_stream)
+    final_sub = update_data.get("rtsp_sub_stream", camera.rtsp_sub_stream)
+    final_quality = update_data.get("default_quality", camera.default_quality)
+    final_enabled = update_data.get("is_enabled", camera.is_enabled)
+
+    update_data["default_quality"] = ensure_camera_has_valid_streams(
+        rtsp_main_stream=final_main,
+        rtsp_sub_stream=final_sub,
+        default_quality=final_quality,
+        is_enabled=final_enabled,
+    )
+
+    for field_name, value in update_data.items():
+        setattr(camera, field_name, value)
+
+    await commit_or_409(
+        session,
+        detail="Camera update violates database constraints",
+    )
+    await session.refresh(camera)
+
+    return ClassroomCameraRead.model_validate(camera)
+
+
+@router.delete(
+    "/internal/classrooms/{classroom_id}/cameras/{camera_id}",
+    status_code=204,
+)
+async def delete_classroom_camera(
+    classroom_id: int,
+    camera_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    camera = await get_camera_or_404(session, classroom_id, camera_id)
+    await session.delete(camera)
+    await session.commit()
+    return Response(status_code=204)
+
+
+@router.get(
+    "/internal/classrooms/{classroom_id}/cameras/{camera_id}/source",
+    response_model=ClassroomCameraSourceResponse,
+)
+async def get_classroom_camera_source(
+    classroom_id: int,
+    camera_id: int,
+    quality: str,
+    session: AsyncSession = Depends(get_session),
+) -> ClassroomCameraSourceResponse:
+    camera = await get_camera_or_404(session, classroom_id, camera_id)
+
+    if not camera.is_enabled:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+    rtsp_url = get_camera_rtsp_stream(camera, quality)
+
+    return ClassroomCameraSourceResponse(
+        camera_id=camera.id,
+        classroom_id=camera.classroom_id,
+        quality=quality,
+        rtsp_url=rtsp_url,
     )
 
 
@@ -407,8 +646,6 @@ async def create_classroom(
         display_order=payload.display_order,
         is_active=payload.is_active,
         is_service=payload.is_service,
-        rtsp_main_stream=payload.rtsp_main_stream,
-        rtsp_sub_stream=payload.rtsp_sub_stream,
     )
 
     session.add(classroom)

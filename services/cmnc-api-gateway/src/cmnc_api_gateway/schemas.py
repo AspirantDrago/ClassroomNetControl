@@ -43,8 +43,11 @@ class DynamicDevice(BaseModel):
 
 
 class ClassroomCameraResponse(BaseModel):
+    id: int | None = None
+    name: str = "Камера"
     enabled: bool
     qualities: list[str]
+    default_quality: str = "sub"
 
 
 class ClassroomDashboardResponse(BaseModel):
@@ -52,6 +55,7 @@ class ClassroomDashboardResponse(BaseModel):
     devices: list[DashboardDevice]
     dynamic_devices: list[DynamicDevice]
     camera: ClassroomCameraResponse
+    cameras: list[ClassroomCameraResponse]
 
 
 class PinObservedDeviceRequest(BaseModel):

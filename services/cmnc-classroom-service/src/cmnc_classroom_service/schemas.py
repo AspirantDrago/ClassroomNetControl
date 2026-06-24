@@ -18,8 +18,44 @@ class ClassroomRead(BaseModel):
     display_order: int
     is_active: bool
     is_service: bool
+
+
+class ClassroomCameraRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    classroom_id: int
+    name: str
+    sort_order: int
+    is_enabled: bool
     rtsp_main_stream: str | None
     rtsp_sub_stream: str | None
+    default_quality: str
+
+
+class ClassroomCameraCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    sort_order: int = 0
+    is_enabled: bool = True
+    rtsp_main_stream: str | None = Field(default=None, max_length=4096)
+    rtsp_sub_stream: str | None = Field(default=None, max_length=4096)
+    default_quality: str = Field(default="sub", pattern="^(main|sub)$")
+
+
+class ClassroomCameraUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    sort_order: int | None = None
+    is_enabled: bool | None = None
+    rtsp_main_stream: str | None = Field(default=None, max_length=4096)
+    rtsp_sub_stream: str | None = Field(default=None, max_length=4096)
+    default_quality: str | None = Field(default=None, pattern="^(main|sub)$")
+
+
+class ClassroomCameraSourceResponse(BaseModel):
+    camera_id: int
+    classroom_id: int
+    quality: str
+    rtsp_url: str
 
 
 class DeviceRead(BaseModel):
@@ -44,6 +80,7 @@ class DeviceRead(BaseModel):
 class ClassroomLayoutResponse(BaseModel):
     classroom: ClassroomRead
     devices: list[DeviceRead]
+    cameras: list[ClassroomCameraRead]
 
 
 class WanPolicyChangeResponse(BaseModel):
@@ -89,8 +126,6 @@ class ClassroomCreate(BaseModel):
     display_order: int = 0
     is_active: bool = True
     is_service: bool = False
-    rtsp_main_stream: str | None = Field(default=None, max_length=4096)
-    rtsp_sub_stream: str | None = Field(default=None, max_length=4096)
 
 
 class ClassroomUpdate(BaseModel):
@@ -100,8 +135,6 @@ class ClassroomUpdate(BaseModel):
     display_order: int | None = None
     is_active: bool | None = None
     is_service: bool | None = None
-    rtsp_main_stream: str | None = Field(default=None, max_length=4096)
-    rtsp_sub_stream: str | None = Field(default=None, max_length=4096)
 
 
 class DeviceCreate(BaseModel):
