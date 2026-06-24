@@ -61,11 +61,33 @@ function getAuthToken(): string | null {
     return window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
 }
 
+function requestFullscreen(element: HTMLElement): Promise<void> | void {
+    const fullscreenElement = element as HTMLElement & {
+        webkitRequestFullscreen?: () => Promise<void> | void;
+        msRequestFullscreen?: () => Promise<void> | void;
+    };
+
+    if (fullscreenElement.requestFullscreen) {
+        return fullscreenElement.requestFullscreen();
+    }
+
+    if (fullscreenElement.webkitRequestFullscreen) {
+        return fullscreenElement.webkitRequestFullscreen();
+    }
+
+    if (fullscreenElement.msRequestFullscreen) {
+        return fullscreenElement.msRequestFullscreen();
+    }
+
+    return undefined;
+}
+
 export function ClassroomCameraPanel({
     classroomId,
     camera,
 }: ClassroomCameraPanelProps) {
     const videoRef = useRef<HTMLVideoElement | null>(null);
+    const isMutedRef = useRef(true);
 
     const defaultQuality = useMemo<CameraQuality | null>(() => {
         if (camera.qualities.includes(camera.default_quality)) {
@@ -84,6 +106,7 @@ export function ClassroomCameraPanel({
     }, [camera.default_quality, camera.qualities]);
 
     const [isOpen, setIsOpen] = useState(false);
+    const [isMuted, setIsMuted] = useState(true);
     const [selectedQuality, setSelectedQuality] = useState<CameraQuality | null>(
         defaultQuality,
     );
@@ -91,6 +114,14 @@ export function ClassroomCameraPanel({
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [, setStatus] = useState<string | null>(null);
+
+    useEffect(() => {
+        isMutedRef.current = isMuted;
+
+        if (videoRef.current) {
+            videoRef.current.muted = isMuted;
+        }
+    }, [isMuted]);
 
     useEffect(() => {
         setSelectedQuality(defaultQuality);
@@ -164,7 +195,7 @@ export function ClassroomCameraPanel({
         setError(null);
         setStatus("Инициализация HLS-плеера...");
 
-        video.muted = true;
+        video.muted = isMutedRef.current;
         video.autoplay = true;
         video.playsInline = true;
         video.pause();
@@ -340,6 +371,42 @@ export function ClassroomCameraPanel({
         setSelectedQuality(value);
     }
 
+    function toggleMute() {
+        const nextMuted = !isMuted;
+        isMutedRef.current = nextMuted;
+        setIsMuted(nextMuted);
+
+        if (videoRef.current) {
+            videoRef.current.muted = nextMuted;
+
+            if (!nextMuted) {
+                void videoRef.current.play().catch((err: unknown) => {
+                    setError(
+                        `Не удалось включить звук: ${extractErrorDetail(err)}`,
+                    );
+                });
+            }
+        }
+    }
+
+    function openFullscreen() {
+        const video = videoRef.current;
+
+        if (!video) {
+            return;
+        }
+
+        const fullscreenResult = requestFullscreen(video);
+
+        if (fullscreenResult instanceof Promise) {
+            fullscreenResult.catch((err: unknown) => {
+                setError(
+                    `Не удалось открыть полноэкранный режим: ${extractErrorDetail(err)}`,
+                );
+            });
+        }
+    }
+
     return (
         <section className="classroom-camera-panel">
             <button
@@ -353,37 +420,60 @@ export function ClassroomCameraPanel({
 
             {isOpen && (
                 <div className="classroom-camera-panel__body">
-                    {camera.qualities.length > 1 && (
-                        <label className="classroom-camera-panel__quality-select">
-                            <span>Качество</span>
-                            <select
-                                value={selectedQuality}
-                                disabled={!canSelectQuality}
-                                onChange={(event) =>
-                                    handleQualityChange(event.target.value)
-                                }
-                            >
-                                {camera.qualities.includes("main") && (
-                                    <option value="main">Основной поток</option>
-                                )}
-
-                                {camera.qualities.includes("sub") && (
-                                    <option value="sub">Дополнительный поток</option>
-                                )}
-                            </select>
-                        </label>
-                    )}
-
                     {error && <pre className="classroom-camera-panel__error">{error}</pre>}
                     {streamUrl ? (
-                        <video
-                            ref={videoRef}
-                            className="classroom-camera-panel__video"
-                            controls
-                            muted
-                            autoPlay
-                            playsInline
-                        />
+                        <div className="classroom-camera-panel__player">
+                            <video
+                                ref={videoRef}
+                                className="classroom-camera-panel__video"
+                                muted={isMuted}
+                                autoPlay
+                                playsInline
+                                disablePictureInPicture
+                                onContextMenu={(event) => event.preventDefault()}
+                            />
+                            <div className="classroom-camera-panel__controls">
+                                <div>
+                                    {camera.qualities.length > 1 && (
+                                        <label className="classroom-camera-panel__quality-select">
+                                            <span>Качество</span>
+                                            <select
+                                                value={selectedQuality}
+                                                disabled={!canSelectQuality}
+                                                onChange={(event) =>
+                                                    handleQualityChange(event.target.value)
+                                                }
+                                            >
+                                                {camera.qualities.includes("main") && (
+                                                    <option value="main">Высокое</option>
+                                                )}
+
+                                                {camera.qualities.includes("sub") && (
+                                                    <option value="sub">Низкое</option>
+                                                )}
+                                            </select>
+                                        </label>
+                                    )}
+                                </div>
+
+                                <div>
+                                    <button
+                                        type="button"
+                                        className="classroom-camera-panel__control-button"
+                                        onClick={toggleMute}
+                                    >
+                                        {isMuted ? "🔇" : "🔊"}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="classroom-camera-panel__control-button"
+                                        onClick={openFullscreen}
+                                    >
+                                        ⛶
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     ) : (
                         <div className="classroom-camera-panel__placeholder">
                             {busy

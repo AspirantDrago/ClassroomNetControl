@@ -96,3 +96,31 @@
     background: rgba(15, 23, 42, 0.7);
     color: #cbd5e1;
 }
+
+.classroom-camera-panel__player {
+    display: grid;
+    gap: 10px;
+}
+
+.classroom-camera-panel__controls, .classroom-camera-panel__controls div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: space-between;
+}
+
+.classroom-camera-panel__control-button {
+    border: 1px solid #334155;
+    border-radius: 10px;
+    background: #111827;
+    color: #f9fafb;
+    font: inherit;
+    cursor: pointer;
+    font-size: 30px;
+    width: 36px;
+    box-sizing: content-box;
+}
+
+.classroom-camera-panel__control-button:hover {
+    background: #1f2937;
+}
