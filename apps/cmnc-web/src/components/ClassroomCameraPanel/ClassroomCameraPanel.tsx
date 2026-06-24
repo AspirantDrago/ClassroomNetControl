@@ -16,6 +16,14 @@ type ClassroomCameraPanelProps = {
     camera: ClassroomCamera;
 };
 
+function getQualityLabel(quality: CameraQuality): string {
+    if (quality === "main") {
+        return "Основной поток";
+    }
+
+    return "Дополнительный поток";
+}
+
 export function ClassroomCameraPanel({
     classroomId,
     camera,
@@ -33,7 +41,9 @@ export function ClassroomCameraPanel({
     }, [camera.qualities]);
 
     const [isOpen, setIsOpen] = useState(false);
-    const [selectedQuality, setSelectedQuality] = useState<CameraQuality | null>(defaultQuality);
+    const [selectedQuality, setSelectedQuality] = useState<CameraQuality | null>(
+        defaultQuality,
+    );
     const [session, setSession] = useState<CameraSessionResponse | null>(null);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -43,87 +53,75 @@ export function ClassroomCameraPanel({
     }, [defaultQuality]);
 
     useEffect(() => {
+        let cancelled = false;
+        let createdSessionId: string | null = null;
+
+        async function openSession() {
+            if (!isOpen || selectedQuality === null) {
+                setSession(null);
+                setBusy(false);
+                return;
+            }
+
+            setBusy(true);
+            setError(null);
+            setSession(null);
+
+            try {
+                const createdSession = await createClassroomCameraSession(
+                    classroomId,
+                    selectedQuality,
+                );
+
+                createdSessionId = createdSession.session_id;
+
+                if (cancelled) {
+                    await deleteCameraSession(createdSession.session_id);
+                    return;
+                }
+
+                setSession(createdSession);
+            } catch (err) {
+                if (!cancelled) {
+                    setError(extractErrorDetail(err));
+                }
+            } finally {
+                if (!cancelled) {
+                    setBusy(false);
+                }
+            }
+        }
+
+        void openSession();
+
         return () => {
-            if (session !== null) {
-                void deleteCameraSession(session.session_id);
+            cancelled = true;
+
+            if (createdSessionId !== null) {
+                void deleteCameraSession(createdSessionId);
             }
         };
-    }, [session]);
+    }, [classroomId, isOpen, selectedQuality]);
 
     if (!camera.enabled || selectedQuality === null) {
         return null;
     }
 
     const streamUrl = session ? getCameraStreamUrl(session.url) : null;
-    const canSelectQuality = camera.qualities.length > 1 && session === null && !busy;
+    const canSelectQuality = camera.qualities.length > 1 && !busy;
 
-    async function stopCurrentSession() {
-        if (session === null) {
-            return;
-        }
-
-        const sessionId = session.session_id;
-        setSession(null);
-
-        try {
-            await deleteCameraSession(sessionId);
-        } catch {
-            // Сессию могли уже закрыть по TTL или из-за перезапуска сервиса.
-        }
-    }
-
-    async function togglePanel() {
+    function togglePanel() {
         setError(null);
-
-        if (isOpen) {
-            setIsOpen(false);
-            await stopCurrentSession();
-            return;
-        }
-
-        setIsOpen(true);
+        setIsOpen((value) => !value);
     }
 
-    async function startStream() {
-        if (selectedQuality === null) {
-            return;
-        }
-
-        setBusy(true);
-        setError(null);
-
-        try {
-            const createdSession = await createClassroomCameraSession(
-                classroomId,
-                selectedQuality,
-            );
-            setSession(createdSession);
-        } catch (err) {
-            setError(extractErrorDetail(err));
-        } finally {
-            setBusy(false);
-        }
-    }
-
-    async function stopStream() {
-        setBusy(true);
-        setError(null);
-
-        try {
-            await stopCurrentSession();
-        } finally {
-            setBusy(false);
-        }
-    }
-
-    async function selectQuality(quality: CameraQuality) {
-        if (quality === selectedQuality) {
+    function handleQualityChange(value: string) {
+        if (value !== "main" && value !== "sub") {
             return;
         }
 
         setError(null);
-        await stopCurrentSession();
-        setSelectedQuality(quality);
+        setSelectedQuality(value);
     }
 
     return (
@@ -131,7 +129,7 @@ export function ClassroomCameraPanel({
             <button
                 type="button"
                 className="classroom-camera-panel__summary"
-                onClick={() => void togglePanel()}
+                onClick={togglePanel}
             >
                 <span>{isOpen ? "▼" : "▶"}</span>
                 <span>Камера аудитории</span>
@@ -140,64 +138,25 @@ export function ClassroomCameraPanel({
             {isOpen && (
                 <div className="classroom-camera-panel__body">
                     {camera.qualities.length > 1 && (
-                        <div className="classroom-camera-panel__qualities">
-                            {camera.qualities.includes("main") && (
-                                <button
-                                    type="button"
-                                    className={
-                                        selectedQuality === "main"
-                                            ? "secondary-button classroom-camera-panel__quality classroom-camera-panel__quality--active"
-                                            : "secondary-button classroom-camera-panel__quality"
-                                    }
-                                    disabled={!canSelectQuality}
-                                    onClick={() => void selectQuality("main")}
-                                >
-                                    Основной поток
-                                </button>
-                            )}
+                        <label className="classroom-camera-panel__quality-select">
+                            <span>Качество</span>
+                            <select
+                                value={selectedQuality}
+                                disabled={!canSelectQuality}
+                                onChange={(event) =>
+                                    handleQualityChange(event.target.value)
+                                }
+                            >
+                                {camera.qualities.includes("main") && (
+                                    <option value="main">Основной поток</option>
+                                )}
 
-                            {camera.qualities.includes("sub") && (
-                                <button
-                                    type="button"
-                                    className={
-                                        selectedQuality === "sub"
-                                            ? "secondary-button classroom-camera-panel__quality classroom-camera-panel__quality--active"
-                                            : "secondary-button classroom-camera-panel__quality"
-                                    }
-                                    disabled={!canSelectQuality}
-                                    onClick={() => void selectQuality("sub")}
-                                >
-                                    Дополнительный поток
-                                </button>
-                            )}
-                        </div>
+                                {camera.qualities.includes("sub") && (
+                                    <option value="sub">Дополнительный поток</option>
+                                )}
+                            </select>
+                        </label>
                     )}
-
-                    <div className="classroom-camera-panel__controls">
-                        {session === null ? (
-                            <button
-                                type="button"
-                                className="secondary-button"
-                                disabled={busy}
-                                onClick={() => void startStream()}
-                            >
-                                {busy ? "Открытие камеры..." : "Открыть камеру"}
-                            </button>
-                        ) : (
-                            <button
-                                type="button"
-                                className="secondary-button"
-                                disabled={busy}
-                                onClick={() => void stopStream()}
-                            >
-                                {busy ? "Закрытие камеры..." : "Закрыть камеру"}
-                            </button>
-                        )}
-
-                        <span className="classroom-camera-panel__hint">
-                            Видео запускается только после открытия камеры.
-                        </span>
-                    </div>
 
                     {error && <pre className="classroom-camera-panel__error">{error}</pre>}
 
@@ -212,7 +171,9 @@ export function ClassroomCameraPanel({
                         />
                     ) : (
                         <div className="classroom-camera-panel__placeholder">
-                            Выберите качество и нажмите “Открыть камеру”. RTSP-ссылка остаётся на backend.
+                            {busy
+                                ? `Подключение: ${getQualityLabel(selectedQuality)}...`
+                                : "Видео недоступно."}
                         </div>
                     )}
                 </div>
