@@ -27,6 +27,7 @@ import {
 } from "./api";
 import "./App.css";
 import { ClassroomTabs } from "./components/ClassroomTabs/ClassroomTabs";
+import { ClassroomCameraPanel } from "./components/ClassroomCameraPanel/ClassroomCameraPanel";
 import {
     ClassroomFormModal,
     type ClassroomFormState,
@@ -843,32 +844,10 @@ export function App() {
                                 </section>
 
                                 {dashboard.camera.enabled && (
-                                    <details className="classroom-camera-panel">
-                                        <summary>Камера аудитории</summary>
-
-                                        <div className="classroom-camera-panel__body">
-                                            {dashboard.camera.qualities.length > 1 && (
-                                                <div className="classroom-camera-panel__qualities">
-                                                    {dashboard.camera.qualities.includes("main") && (
-                                                        <button type="button" className="secondary-button">
-                                                            Основной поток
-                                                        </button>
-                                                    )}
-
-                                                    {dashboard.camera.qualities.includes("sub") && (
-                                                        <button type="button" className="secondary-button">
-                                                            Дополнительный поток
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            )}
-
-                                            <div className="classroom-camera-panel__placeholder">
-                                                RTSP-поток настроен. Видеоплеер будет подключён на следующем этапе
-                                                через HLS/WebRTC proxy, без передачи RTSP-ссылки в браузер.
-                                            </div>
-                                        </div>
-                                    </details>
+                                    <ClassroomCameraPanel
+                                        classroomId={dashboard.classroom.id}
+                                        camera={dashboard.camera}
+                                    />
                                 )}
 
                                 <DeviceGrid

@@ -1,0 +1,83 @@
+.classroom-camera-panel {
+    margin-bottom: 18px;
+    border: 1px solid #1f2937;
+    border-radius: 14px;
+    background: #0f172a;
+    color: #e5e7eb;
+    overflow: hidden;
+}
+
+.classroom-camera-panel__summary {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 14px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+}
+
+.classroom-camera-panel__summary:hover {
+    background: rgba(148, 163, 184, 0.08);
+}
+
+.classroom-camera-panel__body {
+    display: grid;
+    gap: 12px;
+    padding: 0 14px 14px;
+}
+
+.classroom-camera-panel__qualities,
+.classroom-camera-panel__controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.classroom-camera-panel__quality--active {
+    border-color: #38bdf8;
+    color: #e0f2fe;
+}
+
+.classroom-camera-panel__hint {
+    color: #9ca3af;
+    font-size: 13px;
+}
+
+.classroom-camera-panel__error {
+    padding: 12px;
+    margin: 0;
+    border: 1px solid #7f1d1d;
+    border-radius: 10px;
+    background: #450a0a;
+    color: #fecaca;
+    overflow: auto;
+}
+
+.classroom-camera-panel__video,
+.classroom-camera-panel__placeholder {
+    width: 100%;
+    min-height: 220px;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    background: #020617;
+}
+
+.classroom-camera-panel__video {
+    display: block;
+    max-height: 70vh;
+}
+
+.classroom-camera-panel__placeholder {
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    color: #9ca3af;
+    text-align: center;
+}

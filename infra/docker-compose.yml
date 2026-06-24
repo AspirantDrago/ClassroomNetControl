@@ -116,10 +116,6 @@ services:
       CMNC_MIKROTIK_USERNAME: ${CMNC_MIKROTIK_USERNAME}
       CMNC_MIKROTIK_PASSWORD: ${CMNC_MIKROTIK_PASSWORD}
       CMNC_MIKROTIK_VERIFY_TLS: ${CMNC_MIKROTIK_VERIFY_TLS:-false}
-      CMNC_POLICY_SYNC_HEALTHCHECK_WRITE_PROBE_ENABLED: ${CMNC_POLICY_SYNC_HEALTHCHECK_WRITE_PROBE_ENABLED:-true}
-      CMNC_POLICY_SYNC_HEALTHCHECK_ADDRESS_LIST_NAME: ${CMNC_POLICY_SYNC_HEALTHCHECK_ADDRESS_LIST_NAME:-cmnc_healthcheck}
-      CMNC_POLICY_SYNC_HEALTHCHECK_ADDRESS: ${CMNC_POLICY_SYNC_HEALTHCHECK_ADDRESS:-198.51.100.254}
-      CMNC_POLICY_SYNC_HEALTHCHECK_CONNECTION_SRC_IP: ${CMNC_POLICY_SYNC_HEALTHCHECK_CONNECTION_SRC_IP:-127.0.0.1}
     depends_on:
       cmnc-rabbitmq:
         condition: service_healthy
@@ -127,12 +123,6 @@ services:
         condition: service_healthy
     networks:
       - cmnc-network
-    healthcheck:
-      test: [ "CMD", "python", "-m", "cmnc_policy_sync_service.healthcheck" ]
-      interval: 60s
-      timeout: 20s
-      retries: 1
-      start_period: 20s
 
   cmnc-inventory-service:
     build:
@@ -180,16 +170,8 @@ services:
     depends_on:
       cmnc-rabbitmq:
         condition: service_healthy
-      cmnc-inventory-service:
-        condition: service_healthy
     networks:
       - cmnc-network
-    healthcheck:
-      test: [ "CMD", "python", "-m", "cmnc_mikrotik_poller_service.healthcheck" ]
-      interval: 60s
-      timeout: 20s
-      retries: 1
-      start_period: 20s
 
   cmnc-maintenance-service:
     build:
@@ -215,6 +197,29 @@ services:
       timeout: 5s
       retries: 5
 
+  cmnc-camera-service:
+    build:
+      context: ..
+      dockerfile: services/cmnc-camera-service/Dockerfile
+    container_name: cmnc-camera-service
+    restart: unless-stopped
+    environment:
+      CMNC_CAMERA_HOST: 0.0.0.0
+      CMNC_CAMERA_PORT: 8005
+      CMNC_CAMERA_SESSION_TTL_SECONDS: ${CMNC_CAMERA_SESSION_TTL_SECONDS:-3600}
+      CMNC_CAMERA_CLEANUP_INTERVAL_SECONDS: ${CMNC_CAMERA_CLEANUP_INTERVAL_SECONDS:-60}
+      CMNC_CAMERA_RTSP_TRANSPORT: ${CMNC_CAMERA_RTSP_TRANSPORT:-tcp}
+      CMNC_CAMERA_TRANSCODE_VIDEO: ${CMNC_CAMERA_TRANSCODE_VIDEO:-false}
+    expose:
+      - "8005"
+    networks:
+      - cmnc-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8005/health').read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
   cmnc-api-gateway:
     build:
       context: ..
@@ -228,6 +233,7 @@ services:
       CMNC_API_GATEWAY_CLASSROOM_SERVICE_URL: http://cmnc-classroom-service:8002
       CMNC_API_GATEWAY_INVENTORY_SERVICE_URL: http://cmnc-inventory-service:8003
       CMNC_API_GATEWAY_MAINTENANCE_SERVICE_URL: http://cmnc-maintenance-service:8004
+      CMNC_API_GATEWAY_CAMERA_SERVICE_URL: http://cmnc-camera-service:8005
       CMNC_API_GATEWAY_DEFAULT_ROUTER_ID: 1
     ports:
       - "127.0.0.1:${CMNC_API_GATEWAY_PORT:-8000}:8000"
@@ -241,6 +247,8 @@ services:
       cmnc-inventory-service:
         condition: service_healthy
       cmnc-maintenance-service:
+        condition: service_healthy
+      cmnc-camera-service:
         condition: service_healthy
     networks:
       - cmnc-network

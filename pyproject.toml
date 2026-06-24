@@ -12,6 +12,7 @@ members = [
     "services/cmnc-auth-service",
     "services/cmnc-classroom-service",
     "services/cmnc-inventory-service",
+    "services/cmnc-camera-service",
     "services/cmnc-mikrotik-poller-service",
     "services/cmnc-policy-sync-service",
 ]

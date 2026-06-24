@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 import uvicorn
 from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from cmnc_api_gateway.clients import ServiceClient
@@ -52,6 +52,7 @@ auth_client = ServiceClient(settings.auth_service_url)
 classroom_client = ServiceClient(settings.classroom_service_url)
 inventory_client = ServiceClient(settings.inventory_service_url)
 maintenance_client = ServiceClient(settings.maintenance_service_url)
+camera_client = ServiceClient(settings.camera_service_url)
 
 
 def extract_bearer_token(authorization: str | None) -> str | None:
@@ -211,6 +212,83 @@ def get_classroom_camera_info(classroom: dict[str, Any]) -> dict[str, Any]:
         "enabled": len(qualities) > 0,
         "qualities": qualities,
     }
+
+
+def get_requested_camera_quality(
+    payload: dict[str, Any],
+    classroom: dict[str, Any],
+) -> str:
+    raw_quality = payload.get("quality")
+
+    if raw_quality is None:
+        qualities = get_classroom_camera_info(classroom)["qualities"]
+
+        if len(qualities) == 1:
+            return qualities[0]
+
+        raise HTTPException(status_code=422, detail="quality is required")
+
+    if raw_quality not in {"main", "sub"}:
+        raise HTTPException(status_code=422, detail="quality must be main or sub")
+
+    return str(raw_quality)
+
+
+def get_classroom_rtsp_stream(
+    classroom: dict[str, Any],
+    quality: str,
+) -> str:
+    if quality == "main":
+        value = classroom.get("rtsp_main_stream")
+    elif quality == "sub":
+        value = classroom.get("rtsp_sub_stream")
+    else:
+        raise HTTPException(status_code=422, detail="quality must be main or sub")
+
+    if not isinstance(value, str) or not value.strip():
+        raise HTTPException(status_code=404, detail="Camera stream is not configured")
+
+    return value.strip()
+
+
+async def stream_camera_service_response(path: str) -> StreamingResponse:
+    client = httpx.AsyncClient(timeout=None)
+
+    try:
+        request = client.build_request(
+            "GET",
+            f"{settings.camera_service_url}{path}",
+        )
+        upstream = await client.send(request, stream=True)
+    except httpx.HTTPError as exc:
+        await client.aclose()
+        raise HTTPException(
+            status_code=502,
+            detail=f"Camera service unavailable: {exc}",
+        ) from exc
+
+    if upstream.status_code != 200:
+        detail = (await upstream.aread()).decode("utf-8", errors="replace")
+        await upstream.aclose()
+        await client.aclose()
+        raise HTTPException(status_code=upstream.status_code, detail=detail)
+
+    async def iterator():
+        try:
+            async for chunk in upstream.aiter_bytes():
+                yield chunk
+        finally:
+            await upstream.aclose()
+            await client.aclose()
+
+    return StreamingResponse(
+        iterator(),
+        media_type=upstream.headers.get("content-type") or "video/mp4",
+        headers={
+            "Cache-Control": "no-store",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 def serialize_classroom_for_principal(
@@ -1423,6 +1501,85 @@ async def admin_update_workstation_classrooms(
             status_code=502,
             detail=f"Auth service unavailable: {exc}",
         ) from exc
+
+
+@app.post("/api/classrooms/{classroom_id}/camera/session")
+async def create_classroom_camera_session(
+    classroom_id: int,
+    payload: dict[str, Any],
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    await ensure_classroom_access(principal, classroom_id)
+    classroom = await get_classroom_or_404(classroom_id)
+
+    quality = get_requested_camera_quality(payload, classroom)
+    rtsp_url = get_classroom_rtsp_stream(classroom, quality)
+
+    try:
+        data = await camera_client.post_json(
+            "/internal/camera/sessions",
+            json={
+                "rtsp_url": rtsp_url,
+                "quality": quality,
+            },
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Camera service unavailable: {exc}",
+        ) from exc
+
+    if not isinstance(data, dict) or not isinstance(data.get("session_id"), str):
+        raise HTTPException(status_code=502, detail="Invalid camera service response")
+
+    session_id = data["session_id"]
+
+    return {
+        "mode": data.get("mode", "fmp4"),
+        "quality": data.get("quality", quality),
+        "session_id": session_id,
+        "url": f"/api/camera/sessions/{session_id}/stream.mp4",
+        "expires_in_seconds": data.get("expires_in_seconds"),
+    }
+
+
+@app.delete("/api/camera/sessions/{session_id}", status_code=204)
+async def stop_camera_session(
+    session_id: str,
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Response:
+    await get_current_principal(request, authorization)
+
+    try:
+        await camera_client.post_json(f"/internal/camera/sessions/{session_id}/stop")
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code != 404:
+            raise HTTPException(
+                status_code=exc.response.status_code,
+                detail=exc.response.text,
+            ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Camera service unavailable: {exc}",
+        ) from exc
+
+    return Response(status_code=204)
+
+
+@app.get("/api/camera/sessions/{session_id}/stream.mp4")
+async def stream_camera_session(session_id: str) -> StreamingResponse:
+    return await stream_camera_service_response(
+        f"/internal/camera/sessions/{session_id}/stream.mp4"
+    )
 
 
 @app.get("/api/admin/maintenance/containers")

@@ -46,9 +46,19 @@ export type DynamicDevice = {
     raw: Record<string, unknown>;
 };
 
+export type CameraQuality = "main" | "sub";
+
 export type ClassroomCamera = {
     enabled: boolean;
-    qualities: Array<"main" | "sub">;
+    qualities: CameraQuality[];
+};
+
+export type CameraSessionResponse = {
+    mode: "fmp4" | "hls" | "webrtc" | string;
+    quality: CameraQuality;
+    session_id: string;
+    url: string;
+    expires_in_seconds: number | null;
 };
 
 export type ClassroomDashboard = {
@@ -301,6 +311,26 @@ export function allowClassroomWan(classroomId: number): Promise<unknown> {
     return request(`/api/classrooms/${classroomId}/wan/allow-all`, {
         method: "POST",
     });
+}
+
+export function createClassroomCameraSession(
+    classroomId: number,
+    quality: CameraQuality,
+): Promise<CameraSessionResponse> {
+    return request<CameraSessionResponse>(`/api/classrooms/${classroomId}/camera/session`, {
+        method: "POST",
+        body: JSON.stringify({ quality }),
+    });
+}
+
+export function deleteCameraSession(sessionId: string): Promise<undefined> {
+    return request<undefined>(`/api/camera/sessions/${encodeURIComponent(sessionId)}`, {
+        method: "DELETE",
+    });
+}
+
+export function getCameraStreamUrl(path: string): string {
+    return `${API_BASE_URL}${path}`;
 }
 
 export type PinObservedDeviceRequest = {

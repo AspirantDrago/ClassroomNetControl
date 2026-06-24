@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     classroom_service_url: str = "http://localhost:8002"
     inventory_service_url: str = "http://localhost:8003"
     maintenance_service_url: str = "http://localhost:8004"
+    camera_service_url: str = "http://localhost:8005"
 
     default_router_id: int = 1
 
