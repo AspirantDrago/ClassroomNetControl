@@ -9,6 +9,8 @@ export type Classroom = {
     display_order: number;
     is_active: boolean;
     is_service: boolean;
+    rtsp_main_stream?: string | null;
+    rtsp_sub_stream?: string | null;
 };
 
 export type DashboardDevice = {
@@ -44,10 +46,16 @@ export type DynamicDevice = {
     raw: Record<string, unknown>;
 };
 
+export type ClassroomCamera = {
+    enabled: boolean;
+    qualities: Array<"main" | "sub">;
+};
+
 export type ClassroomDashboard = {
     classroom: Classroom;
     devices: DashboardDevice[];
     dynamic_devices: DynamicDevice[];
+    camera: ClassroomCamera;
 };
 
 export type CurrentPrincipal = {
@@ -375,6 +383,8 @@ export type ClassroomCreateRequest = {
     display_order?: number;
     is_active?: boolean;
     is_service?: boolean;
+    rtsp_main_stream?: string | null;
+    rtsp_sub_stream?: string | null;
 };
 
 export type ClassroomUpdateRequest = {
@@ -384,6 +394,8 @@ export type ClassroomUpdateRequest = {
     display_order?: number;
     is_active?: boolean;
     is_service?: boolean;
+    rtsp_main_stream?: string | null;
+    rtsp_sub_stream?: string | null;
 };
 
 export function createClassroom(

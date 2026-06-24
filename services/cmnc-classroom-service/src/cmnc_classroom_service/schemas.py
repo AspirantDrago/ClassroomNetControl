@@ -18,6 +18,8 @@ class ClassroomRead(BaseModel):
     display_order: int
     is_active: bool
     is_service: bool
+    rtsp_main_stream: str | None
+    rtsp_sub_stream: str | None
 
 
 class DeviceRead(BaseModel):
@@ -87,6 +89,8 @@ class ClassroomCreate(BaseModel):
     display_order: int = 0
     is_active: bool = True
     is_service: bool = False
+    rtsp_main_stream: str | None = Field(default=None, max_length=4096)
+    rtsp_sub_stream: str | None = Field(default=None, max_length=4096)
 
 
 class ClassroomUpdate(BaseModel):
@@ -96,6 +100,8 @@ class ClassroomUpdate(BaseModel):
     display_order: int | None = None
     is_active: bool | None = None
     is_service: bool | None = None
+    rtsp_main_stream: str | None = Field(default=None, max_length=4096)
+    rtsp_sub_stream: str | None = Field(default=None, max_length=4096)
 
 
 class DeviceCreate(BaseModel):

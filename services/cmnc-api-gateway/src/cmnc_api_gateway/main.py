@@ -194,6 +194,38 @@ def can_view_dynamic_devices(principal: PrincipalResponse) -> bool:
     return principal.role in {ROLE_SUPERADMIN, ROLE_ADMIN}
 
 
+def can_read_classroom_rtsp(principal: PrincipalResponse) -> bool:
+    return has_permission(principal, PERMISSION_CLASSROOMS_MANAGE)
+
+
+def get_classroom_camera_info(classroom: dict[str, Any]) -> dict[str, Any]:
+    qualities: list[str] = []
+
+    if classroom.get("rtsp_main_stream"):
+        qualities.append("main")
+
+    if classroom.get("rtsp_sub_stream"):
+        qualities.append("sub")
+
+    return {
+        "enabled": len(qualities) > 0,
+        "qualities": qualities,
+    }
+
+
+def serialize_classroom_for_principal(
+    principal: PrincipalResponse,
+    classroom: dict[str, Any],
+) -> dict[str, Any]:
+    data = dict(classroom)
+
+    if not can_read_classroom_rtsp(principal):
+        data.pop("rtsp_main_stream", None)
+        data.pop("rtsp_sub_stream", None)
+
+    return data
+
+
 async def get_classroom_or_404(classroom_id: int) -> dict[str, Any]:
     try:
         data = await classroom_client.get_json(f"/internal/classrooms/{classroom_id}")
@@ -550,10 +582,13 @@ async def get_classrooms(
     ]
 
     if can_access_all_classrooms(principal):
-        return visible_classrooms
+        return [
+            serialize_classroom_for_principal(principal, classroom)
+            for classroom in visible_classrooms
+        ]
 
     return [
-        classroom
+        serialize_classroom_for_principal(principal, classroom)
         for classroom in visible_classrooms
         if classroom["id"] in principal.classroom_ids
     ]
@@ -589,6 +624,7 @@ async def get_classroom_dashboard(
     classroom = layout["classroom"]
     devices = layout["devices"]
     observed_devices = observed["devices"]
+    camera = get_classroom_camera_info(classroom)
 
     observed_by_mac = {
         item["mac_address"].upper(): item
@@ -630,9 +666,10 @@ async def get_classroom_dashboard(
             dynamic_devices.append(DynamicDevice.model_validate(item))
 
     return ClassroomDashboardResponse(
-        classroom=classroom,
+        classroom=serialize_classroom_for_principal(principal, classroom),
         devices=dashboard_devices,
         dynamic_devices=dynamic_devices,
+        camera=camera,
     )
 
 

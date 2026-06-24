@@ -407,6 +407,8 @@ async def create_classroom(
         display_order=payload.display_order,
         is_active=payload.is_active,
         is_service=payload.is_service,
+        rtsp_main_stream=payload.rtsp_main_stream,
+        rtsp_sub_stream=payload.rtsp_sub_stream,
     )
 
     session.add(classroom)

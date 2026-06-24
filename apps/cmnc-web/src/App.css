@@ -53,3 +53,42 @@
     opacity: 0.65;
     cursor: not-allowed;
 }
+
+
+.classroom-camera-panel {
+    margin-bottom: 18px;
+    border: 1px solid #1f2937;
+    border-radius: 14px;
+    background: #0f172a;
+    color: #e5e7eb;
+}
+
+.classroom-camera-panel summary {
+    cursor: pointer;
+    padding: 12px 14px;
+    font-weight: 600;
+}
+
+.classroom-camera-panel__body {
+    display: grid;
+    gap: 12px;
+    padding: 0 14px 14px;
+}
+
+.classroom-camera-panel__qualities {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.classroom-camera-panel__placeholder {
+    min-height: 180px;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    border: 1px dashed #334155;
+    border-radius: 12px;
+    background: #020617;
+    color: #9ca3af;
+    text-align: center;
+}

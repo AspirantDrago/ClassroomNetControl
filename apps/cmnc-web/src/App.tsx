@@ -325,6 +325,8 @@ export function App() {
             vlanId: "",
             displayOrder: "",
             isService: false,
+            rtspMainStream: "",
+            rtspSubStream: "",
         });
     }
 
@@ -343,6 +345,8 @@ export function App() {
             vlanId: classroom.vlan_id?.toString() ?? "",
             displayOrder: classroom.display_order.toString(),
             isService: classroom.is_service,
+            rtspMainStream: classroom.rtsp_main_stream ?? "",
+            rtspSubStream: classroom.rtsp_sub_stream ?? "",
         });
     }
 
@@ -383,6 +387,8 @@ export function App() {
                     display_order: displayOrder,
                     is_active: true,
                     is_service: classroomForm.isService,
+                    rtsp_main_stream: emptyStringToNull(classroomForm.rtspMainStream),
+                    rtsp_sub_stream: emptyStringToNull(classroomForm.rtspSubStream),
                 });
 
                 setClassroomForm(null);
@@ -397,6 +403,8 @@ export function App() {
                 display_order: displayOrder,
                 is_active: true,
                 is_service: classroomForm.isService,
+                rtsp_main_stream: emptyStringToNull(classroomForm.rtspMainStream),
+                rtsp_sub_stream: emptyStringToNull(classroomForm.rtspSubStream),
             });
 
             setClassroomForm(null);
@@ -833,6 +841,35 @@ export function App() {
                                         )}
                                     </div>
                                 </section>
+
+                                {dashboard.camera.enabled && (
+                                    <details className="classroom-camera-panel">
+                                        <summary>Камера аудитории</summary>
+
+                                        <div className="classroom-camera-panel__body">
+                                            {dashboard.camera.qualities.length > 1 && (
+                                                <div className="classroom-camera-panel__qualities">
+                                                    {dashboard.camera.qualities.includes("main") && (
+                                                        <button type="button" className="secondary-button">
+                                                            Основной поток
+                                                        </button>
+                                                    )}
+
+                                                    {dashboard.camera.qualities.includes("sub") && (
+                                                        <button type="button" className="secondary-button">
+                                                            Дополнительный поток
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            <div className="classroom-camera-panel__placeholder">
+                                                RTSP-поток настроен. Видеоплеер будет подключён на следующем этапе
+                                                через HLS/WebRTC proxy, без передачи RTSP-ссылки в браузер.
+                                            </div>
+                                        </div>
+                                    </details>
+                                )}
 
                                 <DeviceGrid
                                     deviceGrid={deviceGrid}

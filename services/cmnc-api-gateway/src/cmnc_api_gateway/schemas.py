@@ -42,10 +42,16 @@ class DynamicDevice(BaseModel):
     raw: dict[str, Any]
 
 
+class ClassroomCameraResponse(BaseModel):
+    enabled: bool
+    qualities: list[str]
+
+
 class ClassroomDashboardResponse(BaseModel):
     classroom: dict[str, Any]
     devices: list[DashboardDevice]
     dynamic_devices: list[DynamicDevice]
+    camera: ClassroomCameraResponse
 
 
 class PinObservedDeviceRequest(BaseModel):

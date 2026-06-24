@@ -11,6 +11,8 @@ export type ClassroomFormState =
     vlanId: string;
     displayOrder: string;
     isService: boolean;
+    rtspMainStream: string;
+    rtspSubStream: string;
 }
     | {
     mode: "edit";
@@ -20,6 +22,8 @@ export type ClassroomFormState =
     vlanId: string;
     displayOrder: string;
     isService: boolean;
+    rtspMainStream: string;
+    rtspSubStream: string;
 };
 
 type ClassroomFormModalProps = {
@@ -51,7 +55,7 @@ export function ClassroomFormModal(props: ClassroomFormModalProps) {
                         <div className="muted">
                             {form.mode === "create"
                                 ? "Аудитория появится в списке вкладок."
-                                : "Можно изменить название, подсеть, VLAN, порядок отображения и служебный статус."}
+                                : "Можно изменить название, подсеть, VLAN, порядок отображения, служебный статус и RTSP-потоки."}
                         </div>
                     </div>
 
@@ -123,6 +127,38 @@ export function ClassroomFormModal(props: ClassroomFormModalProps) {
                                 })
                             }
                             placeholder="10"
+                        />
+                    </label>
+                </div>
+
+
+
+                <div className="classroom-rtsp-grid">
+                    <label>
+                        RTSP основной поток
+                        <input
+                            value={form.rtspMainStream}
+                            onChange={(event) =>
+                                onChange({
+                                    ...form,
+                                    rtspMainStream: event.target.value,
+                                })
+                            }
+                            placeholder="rtsp://user:password@camera/stream1"
+                        />
+                    </label>
+
+                    <label>
+                        RTSP дополнительный поток
+                        <input
+                            value={form.rtspSubStream}
+                            onChange={(event) =>
+                                onChange({
+                                    ...form,
+                                    rtspSubStream: event.target.value,
+                                })
+                            }
+                            placeholder="rtsp://user:password@camera/stream2"
                         />
                     </label>
                 </div>
