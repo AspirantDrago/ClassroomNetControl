@@ -47,7 +47,7 @@ function getVideoErrorMessage(video: HTMLVideoElement): string {
     }
 
     if (mediaError.code === MediaError.MEDIA_ERR_DECODE) {
-        return "Браузер не смог декодировать видеопоток. Проверьте, что backend отдаёт H.264/yuv420p без аудио.";
+        return "Браузер не смог декодировать видеопоток. Проверьте, что backend отдаёт H.264/yuv420p и совместимый звук AAC или поток без звука.";
     }
 
     if (mediaError.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
@@ -68,6 +68,10 @@ export function ClassroomCameraPanel({
     const videoRef = useRef<HTMLVideoElement | null>(null);
 
     const defaultQuality = useMemo<CameraQuality | null>(() => {
+        if (camera.qualities.includes(camera.default_quality)) {
+            return camera.default_quality;
+        }
+
         if (camera.qualities.includes("sub")) {
             return "sub";
         }
@@ -77,7 +81,7 @@ export function ClassroomCameraPanel({
         }
 
         return null;
-    }, [camera.qualities]);
+    }, [camera.default_quality, camera.qualities]);
 
     const [isOpen, setIsOpen] = useState(false);
     const [selectedQuality, setSelectedQuality] = useState<CameraQuality | null>(
@@ -97,7 +101,7 @@ export function ClassroomCameraPanel({
         let createdSessionId: string | null = null;
 
         async function openSession() {
-            if (!isOpen || selectedQuality === null) {
+            if (!isOpen || selectedQuality === null || camera.id === null) {
                 setSession(null);
                 setBusy(false);
                 setStatus(null);
@@ -112,6 +116,7 @@ export function ClassroomCameraPanel({
             try {
                 const createdSession = await createClassroomCameraSession(
                     classroomId,
+                    camera.id,
                     selectedQuality,
                 );
 
@@ -145,7 +150,7 @@ export function ClassroomCameraPanel({
                 void deleteCameraSession(createdSessionId);
             }
         };
-    }, [classroomId, isOpen, selectedQuality]);
+    }, [camera.id, classroomId, isOpen, selectedQuality]);
 
     const streamUrl = session ? getCameraStreamUrl(session.url) : null;
 
@@ -313,7 +318,7 @@ export function ClassroomCameraPanel({
         };
     }, [streamUrl]);
 
-    if (!camera.enabled || selectedQuality === null) {
+    if (!camera.enabled || camera.id === null || selectedQuality === null) {
         return null;
     }
 
@@ -343,7 +348,7 @@ export function ClassroomCameraPanel({
                 onClick={togglePanel}
             >
                 <span>{isOpen ? "▼" : "▶"}</span>
-                <span>Камера аудитории</span>
+                <span>Камера: {camera.name}</span>
             </button>
 
             {isOpen && (

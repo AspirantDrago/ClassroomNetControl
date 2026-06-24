@@ -49,8 +49,11 @@ export type DynamicDevice = {
 export type CameraQuality = "main" | "sub";
 
 export type ClassroomCamera = {
+    id: number | null;
+    name: string;
     enabled: boolean;
     qualities: CameraQuality[];
+    default_quality: CameraQuality;
 };
 
 export type CameraSessionResponse = {
@@ -65,7 +68,8 @@ export type ClassroomDashboard = {
     classroom: Classroom;
     devices: DashboardDevice[];
     dynamic_devices: DynamicDevice[];
-    camera: ClassroomCamera;
+    camera?: ClassroomCamera;
+    cameras: ClassroomCamera[];
 };
 
 export type CurrentPrincipal = {
@@ -315,12 +319,16 @@ export function allowClassroomWan(classroomId: number): Promise<unknown> {
 
 export function createClassroomCameraSession(
     classroomId: number,
+    cameraId: number,
     quality: CameraQuality,
 ): Promise<CameraSessionResponse> {
-    return request<CameraSessionResponse>(`/api/classrooms/${classroomId}/camera/session`, {
-        method: "POST",
-        body: JSON.stringify({ quality }),
-    });
+    return request<CameraSessionResponse>(
+        `/api/classrooms/${classroomId}/cameras/${cameraId}/session`,
+        {
+            method: "POST",
+            body: JSON.stringify({ quality }),
+        },
+    );
 }
 
 export function deleteCameraSession(sessionId: string): Promise<undefined> {

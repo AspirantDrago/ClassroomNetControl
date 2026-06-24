@@ -843,12 +843,15 @@ export function App() {
                                     </div>
                                 </section>
 
-                                {dashboard.camera.enabled && (
-                                    <ClassroomCameraPanel
-                                        classroomId={dashboard.classroom.id}
-                                        camera={dashboard.camera}
-                                    />
-                                )}
+                                {(dashboard.cameras ?? [])
+                                    .filter((camera) => camera.enabled)
+                                    .map((camera) => (
+                                        <ClassroomCameraPanel
+                                            key={camera.id ?? camera.name}
+                                            classroomId={dashboard.classroom.id}
+                                            camera={camera}
+                                        />
+                                    ))}
 
                                 <DeviceGrid
                                     deviceGrid={deviceGrid}
