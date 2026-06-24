@@ -283,7 +283,7 @@ async def stream_camera_service_response(path: str) -> StreamingResponse:
 
     return StreamingResponse(
         iterator(),
-        media_type=upstream.headers.get("content-type") or "video/mp4",
+        media_type=upstream.headers.get("content-type") or "application/octet-stream",
         headers={
             "Cache-Control": "no-store",
             "X-Accel-Buffering": "no",
@@ -1542,10 +1542,10 @@ async def create_classroom_camera_session(
     session_id = data["session_id"]
 
     return {
-        "mode": data.get("mode", "fmp4"),
+        "mode": data.get("mode", "hls"),
         "quality": data.get("quality", quality),
         "session_id": session_id,
-        "url": f"/api/camera/sessions/{session_id}/stream.mp4",
+        "url": f"/api/camera/sessions/{session_id}/hls/index.m3u8",
         "expires_in_seconds": data.get("expires_in_seconds"),
     }
 
@@ -1575,10 +1575,10 @@ async def stop_camera_session(
     return Response(status_code=204)
 
 
-@app.get("/api/camera/sessions/{session_id}/stream.mp4")
-async def stream_camera_session(session_id: str) -> StreamingResponse:
+@app.get("/api/camera/sessions/{session_id}/hls/{filename}")
+async def get_camera_hls_file(session_id: str, filename: str) -> StreamingResponse:
     return await stream_camera_service_response(
-        f"/internal/camera/sessions/{session_id}/stream.mp4"
+        f"/internal/camera/sessions/{session_id}/hls/{filename}"
     )
 
 

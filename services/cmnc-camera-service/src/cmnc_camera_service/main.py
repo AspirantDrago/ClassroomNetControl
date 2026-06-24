@@ -1,10 +1,14 @@
 import asyncio
+import logging
+import shutil
+import shlex
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse
 
 from cmnc_camera_service.schemas import (
     CameraSessionCreateRequest,
@@ -12,20 +16,28 @@ from cmnc_camera_service.schemas import (
     CameraSessionStopResponse,
     HealthResponse,
 )
-from cmnc_camera_service.session_store import CameraSessionStore
+from cmnc_camera_service.session_store import CameraSession, CameraSessionStore
 from cmnc_camera_service.settings import settings
 
+logger = logging.getLogger("cmnc_camera_service")
+
 session_store = CameraSessionStore(ttl_seconds=settings.session_ttl_seconds)
+hls_root_dir = Path(settings.hls_root_dir)
+ffmpeg_processes: dict[str, asyncio.subprocess.Process] = {}
 
 
 async def cleanup_expired_sessions() -> None:
     while True:
         await asyncio.sleep(settings.cleanup_interval_seconds)
-        session_store.delete_expired()
+
+        for session in session_store.pop_expired():
+            await stop_session_process(session.id)
+            remove_session_dir(session)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    hls_root_dir.mkdir(parents=True, exist_ok=True)
     cleanup_task = asyncio.create_task(cleanup_expired_sessions())
 
     try:
@@ -34,6 +46,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         cleanup_task.cancel()
         with suppress(asyncio.CancelledError):
             await cleanup_task
+
+        for session_id in list(ffmpeg_processes):
+            await stop_session_process(session_id)
 
 
 app = FastAPI(title=settings.service_name, lifespan=lifespan)
@@ -63,13 +78,37 @@ async def create_camera_session(
     session = session_store.create(
         rtsp_url=rtsp_url,
         quality=payload.quality,
+        hls_root_dir=hls_root_dir,
     )
+    session.hls_dir.mkdir(parents=True, exist_ok=True)
+
+    ffmpeg_command = build_ffmpeg_command(session)
+    logger.info(
+        "Starting ffmpeg[%s]: %s",
+        session.id,
+        " ".join(shlex.quote(arg) for arg in ffmpeg_command),
+    )
+
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *ffmpeg_command,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError as exc:
+        session_store.delete(session.id)
+        remove_session_dir(session)
+        raise HTTPException(status_code=502, detail=f"Could not start ffmpeg: {exc}") from exc
+
+    ffmpeg_processes[session.id] = process
+    asyncio.create_task(log_ffmpeg_stderr(session.id, process))
+    asyncio.create_task(watch_ffmpeg_process(session.id, process))
 
     return CameraSessionResponse(
         session_id=session.id,
-        mode="fmp4",
+        mode="hls",
         quality=session.quality,
-        stream_path=f"/internal/camera/sessions/{session.id}/stream.mp4",
+        stream_path=f"/internal/camera/sessions/{session.id}/hls/index.m3u8",
         expires_in_seconds=settings.session_ttl_seconds,
     )
 
@@ -79,46 +118,39 @@ async def create_camera_session(
     response_model=CameraSessionStopResponse,
 )
 async def stop_camera_session(session_id: str) -> CameraSessionStopResponse:
-    stopped = session_store.delete(session_id)
+    session = session_store.delete(session_id)
+    await stop_session_process(session_id)
+
+    if session is not None:
+        remove_session_dir(session)
 
     return CameraSessionStopResponse(
-        stopped=stopped,
+        stopped=session is not None,
         session_id=session_id,
     )
 
 
-@app.get("/internal/camera/sessions/{session_id}/stream.mp4")
-async def stream_camera_session(session_id: str) -> StreamingResponse:
+@app.get("/internal/camera/sessions/{session_id}/hls/{filename}")
+async def get_camera_hls_file(session_id: str, filename: str) -> FileResponse:
     session = session_store.get(session_id)
 
     if session is None:
         raise HTTPException(status_code=404, detail="Camera session not found")
 
-    process = await asyncio.create_subprocess_exec(
-        *build_ffmpeg_command(session.rtsp_url),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.DEVNULL,
-    )
+    if not is_allowed_hls_filename(filename):
+        raise HTTPException(status_code=404, detail="HLS file not found")
 
-    if process.stdout is None:
-        await stop_process(process)
-        raise HTTPException(status_code=502, detail="Could not start ffmpeg stream")
+    path = session.hls_dir / filename
 
-    async def iterator() -> AsyncIterator[bytes]:
-        try:
-            while True:
-                chunk = await process.stdout.read(settings.stream_chunk_size)
+    if filename == "index.m3u8":
+        await wait_for_file(path)
 
-                if not chunk:
-                    break
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail="HLS file not found")
 
-                yield chunk
-        finally:
-            await stop_process(process)
-
-    return StreamingResponse(
-        iterator(),
-        media_type="video/mp4",
+    return FileResponse(
+        path,
+        media_type=get_hls_media_type(filename),
         headers={
             "Cache-Control": "no-store",
             "X-Accel-Buffering": "no",
@@ -126,7 +158,10 @@ async def stream_camera_session(session_id: str) -> StreamingResponse:
     )
 
 
-def build_ffmpeg_command(rtsp_url: str) -> list[str]:
+def build_ffmpeg_command(session: CameraSession) -> list[str]:
+    playlist_path = session.hls_dir / "index.m3u8"
+    segment_path = session.hls_dir / "segment_%05d.ts"
+
     command = [
         settings.ffmpeg_path,
         "-hide_banner",
@@ -134,34 +169,111 @@ def build_ffmpeg_command(rtsp_url: str) -> list[str]:
         "warning",
         "-rtsp_transport",
         settings.rtsp_transport,
+        "-fflags",
+        "+discardcorrupt+genpts",
+        "-use_wallclock_as_timestamps",
+        "1",
         "-i",
-        rtsp_url,
+        session.rtsp_url,
+        "-map",
+        "0:v:0",
         "-an",
+        "-sn",
+        "-dn",
     ]
 
     if settings.transcode_video:
+        fps = settings.transcode_fps
+        keyframe_interval = max(settings.hls_time_seconds * fps, fps)
+
+        if settings.transcode_max_width > 0:
+            video_filter = (
+                f"fps={fps},"
+                f"scale='min({settings.transcode_max_width},iw)':-2,"
+                "format=yuv420p"
+            )
+        else:
+            video_filter = f"fps={fps},format=yuv420p"
+
         command.extend([
+            "-vf",
+            video_filter,
+            "-r",
+            str(fps),
+            "-fps_mode",
+            "cfr",
+            "-enc_time_base",
+            f"1:{fps}",
             "-c:v",
             "libx264",
             "-preset",
-            "veryfast",
+            settings.transcode_preset,
             "-tune",
             "zerolatency",
+            "-profile:v",
+            settings.transcode_profile,
+            "-level:v",
+            settings.transcode_level,
+            "-crf",
+            str(settings.transcode_crf),
             "-pix_fmt",
             "yuv420p",
+            "-g",
+            str(keyframe_interval),
+            "-keyint_min",
+            str(keyframe_interval),
+            "-bf",
+            "0",
+            "-refs",
+            "1",
+            "-sc_threshold",
+            "0",
+            "-force_key_frames",
+            f"expr:gte(t,n_forced*{settings.hls_time_seconds})",
+            "-x264-params",
+            f"keyint={keyframe_interval}:min-keyint={keyframe_interval}:scenecut=0:force-cfr=1",
         ])
     else:
         command.extend(["-c:v", "copy"])
 
     command.extend([
-        "-movflags",
-        "frag_keyframe+empty_moov+default_base_moof",
         "-f",
-        "mp4",
-        "pipe:1",
+        "hls",
+        "-hls_time",
+        str(settings.hls_time_seconds),
+        "-hls_list_size",
+        str(settings.hls_list_size),
+        "-hls_segment_type",
+        "mpegts",
+        "-hls_flags",
+        "delete_segments+omit_endlist+independent_segments+temp_file",
+        "-hls_allow_cache",
+        "0",
+        "-hls_segment_filename",
+        str(segment_path),
+        str(playlist_path),
     ])
 
     return command
+
+
+async def wait_for_file(path: Path) -> None:
+    deadline = asyncio.get_running_loop().time() + settings.hls_start_timeout_seconds
+
+    while asyncio.get_running_loop().time() < deadline:
+        if path.exists() and path.stat().st_size > 0:
+            return
+
+        await asyncio.sleep(0.2)
+
+
+async def stop_session_process(session_id: str) -> None:
+    process = ffmpeg_processes.pop(session_id, None)
+
+    if process is None:
+        return
+
+    await stop_process(process)
 
 
 async def stop_process(process: asyncio.subprocess.Process) -> None:
@@ -175,6 +287,54 @@ async def stop_process(process: asyncio.subprocess.Process) -> None:
     except asyncio.TimeoutError:
         process.kill()
         await process.wait()
+
+
+async def log_ffmpeg_stderr(session_id: str, process: asyncio.subprocess.Process) -> None:
+    if process.stderr is None:
+        return
+
+    while True:
+        line = await process.stderr.readline()
+
+        if not line:
+            break
+
+        message = line.decode("utf-8", errors="replace").strip()
+        if message:
+            logger.warning("ffmpeg[%s]: %s", session_id, message)
+
+
+async def watch_ffmpeg_process(session_id: str, process: asyncio.subprocess.Process) -> None:
+    returncode = await process.wait()
+
+    if ffmpeg_processes.get(session_id) is process:
+        ffmpeg_processes.pop(session_id, None)
+
+    if returncode == 0:
+        logger.info("ffmpeg[%s] exited with code 0", session_id)
+    else:
+        logger.warning("ffmpeg[%s] exited with code %s", session_id, returncode)
+
+
+def remove_session_dir(session: CameraSession) -> None:
+    shutil.rmtree(session.hls_dir, ignore_errors=True)
+
+
+def is_allowed_hls_filename(filename: str) -> bool:
+    if filename == "index.m3u8":
+        return True
+
+    return filename.startswith("segment_") and filename.endswith(".ts")
+
+
+def get_hls_media_type(filename: str) -> str:
+    if filename.endswith(".m3u8"):
+        return "application/vnd.apple.mpegurl"
+
+    if filename.endswith(".ts"):
+        return "video/mp2t"
+
+    return "application/octet-stream"
 
 
 def run() -> None:

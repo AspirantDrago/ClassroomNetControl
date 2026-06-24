@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from secrets import token_urlsafe
 
 
@@ -8,6 +9,7 @@ class CameraSession:
     id: str
     rtsp_url: str
     quality: str
+    hls_dir: Path
     created_at: datetime
     expires_at: datetime
 
@@ -17,12 +19,14 @@ class CameraSessionStore:
         self._ttl_seconds = ttl_seconds
         self._sessions: dict[str, CameraSession] = {}
 
-    def create(self, rtsp_url: str, quality: str) -> CameraSession:
+    def create(self, rtsp_url: str, quality: str, hls_root_dir: Path) -> CameraSession:
         now = datetime.now(timezone.utc)
+        session_id = token_urlsafe(32)
         session = CameraSession(
-            id=token_urlsafe(32),
+            id=session_id,
             rtsp_url=rtsp_url,
             quality=quality,
+            hls_dir=hls_root_dir / session_id,
             created_at=now,
             expires_at=now + timedelta(seconds=self._ttl_seconds),
         )
@@ -41,10 +45,10 @@ class CameraSessionStore:
 
         return session
 
-    def delete(self, session_id: str) -> bool:
-        return self._sessions.pop(session_id, None) is not None
+    def delete(self, session_id: str) -> CameraSession | None:
+        return self._sessions.pop(session_id, None)
 
-    def delete_expired(self) -> int:
+    def pop_expired(self) -> list[CameraSession]:
         now = datetime.now(timezone.utc)
         expired_ids = [
             session_id
@@ -52,7 +56,12 @@ class CameraSessionStore:
             if session.expires_at <= now
         ]
 
-        for session_id in expired_ids:
-            self._sessions.pop(session_id, None)
+        expired_sessions: list[CameraSession] = []
 
-        return len(expired_ids)
+        for session_id in expired_ids:
+            session = self._sessions.pop(session_id, None)
+
+            if session is not None:
+                expired_sessions.append(session)
+
+        return expired_sessions

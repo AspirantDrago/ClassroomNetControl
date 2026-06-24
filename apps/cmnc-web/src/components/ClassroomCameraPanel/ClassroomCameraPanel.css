@@ -87,3 +87,12 @@
     color: #9ca3af;
     text-align: center;
 }
+
+.classroom-camera-panel__status {
+    padding: 10px 12px;
+    margin: 0;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.7);
+    color: #cbd5e1;
+}

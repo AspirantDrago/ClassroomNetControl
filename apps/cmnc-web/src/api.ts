@@ -54,7 +54,7 @@ export type ClassroomCamera = {
 };
 
 export type CameraSessionResponse = {
-    mode: "fmp4" | "hls" | "webrtc" | string;
+    mode: "hls" | "fmp4" | "webrtc" | string;
     quality: CameraQuality;
     session_id: string;
     url: string;

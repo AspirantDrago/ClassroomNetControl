@@ -12,13 +12,25 @@ class Settings(BaseSettings):
 
     ffmpeg_path: str = "ffmpeg"
     rtsp_transport: str = "tcp"
-    stream_chunk_size: int = Field(default=65536, ge=4096)
     stop_timeout_seconds: float = Field(default=5.0, ge=1.0)
 
-    # False means ffmpeg copies the camera video stream into fragmented MP4.
-    # This is light on CPU, but browser playback requires a browser-supported codec, usually H.264.
-    # Set to true only if cameras need transcoding and the server CPU can handle it.
-    transcode_video: bool = False
+    hls_root_dir: str = "/tmp/cmnc-camera-hls"
+    hls_time_seconds: int = Field(default=2, ge=1)
+    hls_list_size: int = Field(default=6, ge=3)
+    hls_start_timeout_seconds: float = Field(default=20.0, ge=1.0)
+
+    # Used only when transcode_video=true. Normalizes broken/missing RTSP timestamps
+    # and prevents libx264 from seeing an unrealistically high input frame rate.
+    transcode_fps: int = Field(default=15, ge=1, le=60)
+    transcode_crf: int = Field(default=23, ge=18, le=35)
+    transcode_max_width: int = Field(default=1280, ge=0)
+    transcode_preset: str = "veryfast"
+    transcode_profile: str = "baseline"
+    transcode_level: str = "4.1"
+
+    # True means ffmpeg always emits browser-safe H.264/yuv420p HLS.
+    # False copies the camera video stream and works only when the camera already emits browser-supported H.264.
+    transcode_video: bool = True
 
     model_config = SettingsConfigDict(
         env_prefix="CMNC_CAMERA_",
