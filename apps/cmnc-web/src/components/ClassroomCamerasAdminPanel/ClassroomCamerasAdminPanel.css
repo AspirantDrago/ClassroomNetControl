@@ -1,0 +1,186 @@
+.classroom-cameras-admin-panel {
+    margin-top: 18px;
+    border-top: 1px solid #1f2937;
+    padding-top: 18px;
+    color: #e5e7eb;
+}
+
+.classroom-cameras-admin-panel__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.classroom-cameras-admin-panel__header h3 {
+    margin: 0 0 4px;
+}
+
+.classroom-cameras-admin-panel__error {
+    margin: 0 0 12px;
+    padding: 10px;
+    border: 1px solid #7f1d1d;
+    border-radius: 10px;
+    background: #450a0a;
+    color: #fecaca;
+    white-space: pre-wrap;
+}
+
+.classroom-cameras-admin-panel__empty {
+    padding: 12px;
+    border: 1px dashed #334155;
+    border-radius: 10px;
+    color: #9ca3af;
+}
+
+.classroom-cameras-admin-panel__table-wrap {
+    overflow-x: auto;
+}
+
+.classroom-cameras-admin-panel__table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.classroom-cameras-admin-panel__table th,
+.classroom-cameras-admin-panel__table td {
+    padding: 9px 8px;
+    border-bottom: 1px solid #1f2937;
+    text-align: left;
+    vertical-align: middle;
+}
+
+.classroom-cameras-admin-panel__table th {
+    color: #9ca3af;
+    font-weight: 600;
+}
+
+.classroom-cameras-admin-panel__row-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.classroom-camera-form {
+    margin-top: 14px;
+    padding: 14px;
+    border: 1px solid #1f2937;
+    border-radius: 12px;
+    background: #020617;
+}
+
+.classroom-camera-form__header {
+    margin-bottom: 12px;
+}
+
+.classroom-camera-form__header h4 {
+    margin: 0 0 4px;
+}
+
+.classroom-camera-form-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1.3fr;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.classroom-camera-rtsp-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.classroom-camera-form-grid label,
+.classroom-camera-rtsp-grid label {
+    display: grid;
+    gap: 5px;
+    color: #9ca3af;
+    font-size: 13px;
+}
+
+.classroom-camera-form-grid input,
+.classroom-camera-form-grid select,
+.classroom-camera-rtsp-grid input {
+    width: 100%;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 8px 10px;
+    background: #0f172a;
+    color: #e5e7eb;
+}
+
+.classroom-camera-form-grid input:focus,
+.classroom-camera-form-grid select:focus,
+.classroom-camera-rtsp-grid input:focus {
+    outline: 1px solid #2563eb;
+}
+
+.classroom-camera-enabled-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    color: #d1d5db;
+    font-size: 14px;
+}
+
+.classroom-camera-form-actions {
+    justify-content: flex-end;
+}
+
+@media (max-width: 820px) {
+    .classroom-cameras-admin-panel__header {
+        flex-direction: column;
+    }
+
+    .classroom-cameras-admin-panel__header button {
+        width: 100%;
+    }
+
+    .classroom-cameras-admin-panel__table,
+    .classroom-cameras-admin-panel__table thead,
+    .classroom-cameras-admin-panel__table tbody,
+    .classroom-cameras-admin-panel__table tr,
+    .classroom-cameras-admin-panel__table th,
+    .classroom-cameras-admin-panel__table td {
+        display: block;
+    }
+
+    .classroom-cameras-admin-panel__table thead {
+        display: none;
+    }
+
+    .classroom-cameras-admin-panel__table tr {
+        padding: 10px 0;
+        border-bottom: 1px solid #1f2937;
+    }
+
+    .classroom-cameras-admin-panel__table td {
+        border-bottom: 0;
+        padding: 5px 0;
+    }
+
+    .classroom-cameras-admin-panel__row-actions {
+        justify-content: stretch;
+    }
+
+    .classroom-cameras-admin-panel__row-actions button {
+        flex: 1;
+    }
+
+    .classroom-camera-form-grid,
+    .classroom-camera-rtsp-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .classroom-camera-form-actions {
+        flex-direction: column-reverse;
+    }
+
+    .classroom-camera-form-actions button {
+        width: 100%;
+    }
+}

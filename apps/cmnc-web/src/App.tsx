@@ -326,8 +326,6 @@ export function App() {
             vlanId: "",
             displayOrder: "",
             isService: false,
-            rtspMainStream: "",
-            rtspSubStream: "",
         });
     }
 
@@ -346,8 +344,6 @@ export function App() {
             vlanId: classroom.vlan_id?.toString() ?? "",
             displayOrder: classroom.display_order.toString(),
             isService: classroom.is_service,
-            rtspMainStream: classroom.rtsp_main_stream ?? "",
-            rtspSubStream: classroom.rtsp_sub_stream ?? "",
         });
     }
 
@@ -388,8 +384,6 @@ export function App() {
                     display_order: displayOrder,
                     is_active: true,
                     is_service: classroomForm.isService,
-                    rtsp_main_stream: emptyStringToNull(classroomForm.rtspMainStream),
-                    rtsp_sub_stream: emptyStringToNull(classroomForm.rtspSubStream),
                 });
 
                 setClassroomForm(null);
@@ -404,8 +398,6 @@ export function App() {
                 display_order: displayOrder,
                 is_active: true,
                 is_service: classroomForm.isService,
-                rtsp_main_stream: emptyStringToNull(classroomForm.rtspMainStream),
-                rtsp_sub_stream: emptyStringToNull(classroomForm.rtspSubStream),
             });
 
             setClassroomForm(null);
@@ -906,6 +898,7 @@ export function App() {
                             ? handleDeactivateClassroom
                             : undefined
                     }
+                    onCamerasChanged={reload}
                 />
             )}
         </div>

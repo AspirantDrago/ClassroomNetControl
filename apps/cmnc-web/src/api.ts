@@ -9,8 +9,6 @@ export type Classroom = {
     display_order: number;
     is_active: boolean;
     is_service: boolean;
-    rtsp_main_stream?: string | null;
-    rtsp_sub_stream?: string | null;
 };
 
 export type DashboardDevice = {
@@ -421,8 +419,6 @@ export type ClassroomCreateRequest = {
     display_order?: number;
     is_active?: boolean;
     is_service?: boolean;
-    rtsp_main_stream?: string | null;
-    rtsp_sub_stream?: string | null;
 };
 
 export type ClassroomUpdateRequest = {
@@ -432,8 +428,6 @@ export type ClassroomUpdateRequest = {
     display_order?: number;
     is_active?: boolean;
     is_service?: boolean;
-    rtsp_main_stream?: string | null;
-    rtsp_sub_stream?: string | null;
 };
 
 export function createClassroom(
@@ -452,6 +446,68 @@ export function updateClassroom(
     return request<Classroom>(`/api/admin/classrooms/${classroomId}`, {
         method: "PATCH",
         body: JSON.stringify(payload),
+    });
+}
+
+export type AdminClassroomCamera = {
+    id: number;
+    classroom_id: number;
+    name: string;
+    sort_order: number;
+    is_enabled: boolean;
+    rtsp_main_stream: string | null;
+    rtsp_sub_stream: string | null;
+    default_quality: CameraQuality;
+};
+
+export type AdminClassroomCameraCreateRequest = {
+    name: string;
+    sort_order: number;
+    is_enabled: boolean;
+    rtsp_main_stream: string | null;
+    rtsp_sub_stream: string | null;
+    default_quality: CameraQuality;
+};
+
+export type AdminClassroomCameraUpdateRequest = {
+    name?: string;
+    sort_order?: number;
+    is_enabled?: boolean;
+    rtsp_main_stream?: string | null;
+    rtsp_sub_stream?: string | null;
+    default_quality?: CameraQuality;
+};
+
+export function getAdminClassroomCameras(
+    classroomId: number,
+): Promise<AdminClassroomCamera[]> {
+    return request<AdminClassroomCamera[]>(`/api/admin/classrooms/${classroomId}/cameras`);
+}
+
+export function createAdminClassroomCamera(
+    classroomId: number,
+    payload: AdminClassroomCameraCreateRequest,
+): Promise<AdminClassroomCamera> {
+    return request<AdminClassroomCamera>(`/api/admin/classrooms/${classroomId}/cameras`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}
+
+export function updateAdminClassroomCamera(
+    classroomId: number,
+    cameraId: number,
+    payload: AdminClassroomCameraUpdateRequest,
+): Promise<AdminClassroomCamera> {
+    return request<AdminClassroomCamera>(`/api/admin/classrooms/${classroomId}/cameras/${cameraId}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+    });
+}
+
+export function deleteAdminClassroomCamera(classroomId: number, cameraId: number): Promise<undefined> {
+    return request<undefined>(`/api/admin/classrooms/${classroomId}/cameras/${cameraId}`, {
+        method: "DELETE",
     });
 }
 

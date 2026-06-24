@@ -1,5 +1,11 @@
 .classroom-modal-card {
-    width: min(760px, 100%);
+    width: min(1080px, 100%);
+    max-height: min(92vh, 960px);
+    overflow: auto;
+}
+
+.classroom-form-section {
+    margin-bottom: 18px;
 }
 
 .classroom-form-grid {
@@ -29,34 +35,6 @@
     outline: 1px solid #2563eb;
 }
 
-
-.classroom-rtsp-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-bottom: 16px;
-}
-
-.classroom-rtsp-grid label {
-    display: grid;
-    gap: 5px;
-    color: #9ca3af;
-    font-size: 13px;
-}
-
-.classroom-rtsp-grid input {
-    width: 100%;
-    border: 1px solid #334155;
-    border-radius: 8px;
-    padding: 8px 10px;
-    background: #0f172a;
-    color: #e5e7eb;
-}
-
-.classroom-rtsp-grid input:focus {
-    outline: 1px solid #2563eb;
-}
-
 .classroom-service-checkbox {
     display: inline-flex;
     align-items: center;
@@ -75,8 +53,7 @@
 }
 
 @media (max-width: 760px) {
-    .classroom-form-grid,
-    .classroom-rtsp-grid {
+    .classroom-form-grid {
         grid-template-columns: 1fr;
     }
 

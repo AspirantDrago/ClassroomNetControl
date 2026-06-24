@@ -1,30 +1,27 @@
-import type {FormEvent} from "react";
-import type {Classroom} from "../../api";
+import type { FormEvent } from "react";
+import type { Classroom } from "../../api";
+import { ClassroomCamerasAdminPanel } from "../ClassroomCamerasAdminPanel/ClassroomCamerasAdminPanel";
 import "./ClassroomFormModal.css";
 
 export type ClassroomFormState =
     | {
-    mode: "create";
-    classroom: null;
-    name: string;
-    subnetCidr: string;
-    vlanId: string;
-    displayOrder: string;
-    isService: boolean;
-    rtspMainStream: string;
-    rtspSubStream: string;
-}
+          mode: "create";
+          classroom: null;
+          name: string;
+          subnetCidr: string;
+          vlanId: string;
+          displayOrder: string;
+          isService: boolean;
+      }
     | {
-    mode: "edit";
-    classroom: Classroom;
-    name: string;
-    subnetCidr: string;
-    vlanId: string;
-    displayOrder: string;
-    isService: boolean;
-    rtspMainStream: string;
-    rtspSubStream: string;
-};
+          mode: "edit";
+          classroom: Classroom;
+          name: string;
+          subnetCidr: string;
+          vlanId: string;
+          displayOrder: string;
+          isService: boolean;
+      };
 
 type ClassroomFormModalProps = {
     form: ClassroomFormState;
@@ -33,16 +30,24 @@ type ClassroomFormModalProps = {
     onClose: () => void;
     onSubmit: (event: FormEvent<HTMLFormElement>) => void;
     onDeactivate?: () => void;
+    onCamerasChanged?: () => void | Promise<void>;
 };
 
 export function ClassroomFormModal(props: ClassroomFormModalProps) {
-    const {form, busy, onChange, onClose, onSubmit, onDeactivate} = props;
+    const {
+        form,
+        busy,
+        onChange,
+        onClose,
+        onSubmit,
+        onDeactivate,
+        onCamerasChanged,
+    } = props;
 
     return (
         <div className="modal-backdrop" onMouseDown={onClose}>
-            <form
+            <div
                 className="modal-card classroom-modal-card"
-                onSubmit={onSubmit}
                 onMouseDown={(event) => event.stopPropagation()}
             >
                 <div className="modal-header">
@@ -55,7 +60,7 @@ export function ClassroomFormModal(props: ClassroomFormModalProps) {
                         <div className="muted">
                             {form.mode === "create"
                                 ? "Аудитория появится в списке вкладок."
-                                : "Можно изменить название, подсеть, VLAN, порядок отображения, служебный статус и RTSP-потоки."}
+                                : "Можно изменить название, подсеть, VLAN, порядок отображения, служебный статус и камеры."}
                         </div>
                     </div>
 
@@ -68,145 +73,122 @@ export function ClassroomFormModal(props: ClassroomFormModalProps) {
                     </button>
                 </div>
 
-                <div className="classroom-form-grid">
-                    <label>
-                        Название
+                <form className="classroom-form-section" onSubmit={onSubmit}>
+                    <div className="classroom-form-grid">
+                        <label>
+                            Название
+                            <input
+                                value={form.name}
+                                onChange={(event) =>
+                                    onChange({
+                                        ...form,
+                                        name: event.target.value,
+                                    })
+                                }
+                                placeholder="Аудитория 1"
+                            />
+                        </label>
+
+                        <label>
+                            Подсеть
+                            <input
+                                value={form.subnetCidr}
+                                onChange={(event) =>
+                                    onChange({
+                                        ...form,
+                                        subnetCidr: event.target.value,
+                                    })
+                                }
+                                placeholder="192.168.100.0/24"
+                            />
+                        </label>
+
+                        <label>
+                            VLAN
+                            <input
+                                type="number"
+                                min="1"
+                                max="4094"
+                                value={form.vlanId}
+                                onChange={(event) =>
+                                    onChange({
+                                        ...form,
+                                        vlanId: event.target.value,
+                                    })
+                                }
+                                placeholder="100"
+                            />
+                        </label>
+
+                        <label>
+                            Порядок
+                            <input
+                                type="number"
+                                min="0"
+                                value={form.displayOrder}
+                                onChange={(event) =>
+                                    onChange({
+                                        ...form,
+                                        displayOrder: event.target.value,
+                                    })
+                                }
+                                placeholder="10"
+                            />
+                        </label>
+                    </div>
+
+                    <label className="classroom-service-checkbox">
                         <input
-                            value={form.name}
+                            type="checkbox"
+                            checked={form.isService}
                             onChange={(event) =>
                                 onChange({
                                     ...form,
-                                    name: event.target.value,
+                                    isService: event.target.checked,
                                 })
                             }
-                            placeholder="Аудитория 1"
                         />
+                        <span>Служебная аудитория</span>
                     </label>
 
-                    <label>
-                        Подсеть
-                        <input
-                            value={form.subnetCidr}
-                            onChange={(event) =>
-                                onChange({
-                                    ...form,
-                                    subnetCidr: event.target.value,
-                                })
-                            }
-                            placeholder="192.168.100.0/24"
-                        />
-                    </label>
+                    <div className="modal-actions classroom-modal-actions">
+                        {form.mode === "edit" && onDeactivate && (
+                            <button
+                                type="button"
+                                className="danger-button"
+                                disabled={busy}
+                                onClick={onDeactivate}
+                            >
+                                Деактивировать
+                            </button>
+                        )}
 
-                    <label>
-                        VLAN
-                        <input
-                            type="number"
-                            min="1"
-                            max="4094"
-                            value={form.vlanId}
-                            onChange={(event) =>
-                                onChange({
-                                    ...form,
-                                    vlanId: event.target.value,
-                                })
-                            }
-                            placeholder="100"
-                        />
-                    </label>
-
-                    <label>
-                        Порядок
-                        <input
-                            type="number"
-                            min="0"
-                            value={form.displayOrder}
-                            onChange={(event) =>
-                                onChange({
-                                    ...form,
-                                    displayOrder: event.target.value,
-                                })
-                            }
-                            placeholder="10"
-                        />
-                    </label>
-                </div>
-
-
-
-                <div className="classroom-rtsp-grid">
-                    <label>
-                        RTSP основной поток
-                        <input
-                            value={form.rtspMainStream}
-                            onChange={(event) =>
-                                onChange({
-                                    ...form,
-                                    rtspMainStream: event.target.value,
-                                })
-                            }
-                            placeholder="rtsp://user:password@camera/stream1"
-                        />
-                    </label>
-
-                    <label>
-                        RTSP дополнительный поток
-                        <input
-                            value={form.rtspSubStream}
-                            onChange={(event) =>
-                                onChange({
-                                    ...form,
-                                    rtspSubStream: event.target.value,
-                                })
-                            }
-                            placeholder="rtsp://user:password@camera/stream2"
-                        />
-                    </label>
-                </div>
-
-                <label className="classroom-service-checkbox">
-                    <input
-                        type="checkbox"
-                        checked={form.isService}
-                        onChange={(event) =>
-                            onChange({
-                                ...form,
-                                isService: event.target.checked,
-                            })
-                        }
-                    />
-                    <span>Служебная аудитория</span>
-                </label>
-
-                <div className="modal-actions classroom-modal-actions">
-                    {form.mode === "edit" && onDeactivate && (
                         <button
                             type="button"
-                            className="danger-button"
+                            className="secondary-button"
                             disabled={busy}
-                            onClick={onDeactivate}
+                            onClick={onClose}
                         >
-                            Деактивировать
+                            Отмена
                         </button>
-                    )}
 
-                    <button
-                        type="button"
-                        className="secondary-button"
-                        disabled={busy}
-                        onClick={onClose}
-                    >
-                        Отмена
-                    </button>
+                        <button
+                            type="submit"
+                            className="primary-button"
+                            disabled={busy}
+                        >
+                            {form.mode === "create" ? "Создать" : "Сохранить"}
+                        </button>
+                    </div>
+                </form>
 
-                    <button
-                        type="submit"
-                        className="primary-button"
-                        disabled={busy}
-                    >
-                        {form.mode === "create" ? "Создать" : "Сохранить"}
-                    </button>
-                </div>
-            </form>
+                {form.mode === "edit" && onCamerasChanged && (
+                    <ClassroomCamerasAdminPanel
+                        classroomId={form.classroom.id}
+                        onChanged={onCamerasChanged}
+                    />
+                )}
+            </div>
         </div>
     );
 }
