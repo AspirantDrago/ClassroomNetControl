@@ -161,6 +161,9 @@ async def get_camera_hls_file(session_id: str, filename: str) -> FileResponse:
 def build_ffmpeg_command(session: CameraSession) -> list[str]:
     playlist_path = session.hls_dir / "index.m3u8"
     segment_path = session.hls_dir / "segment_%05d.ts"
+    fps = settings.transcode_fps
+    keyframe_interval = max(settings.hls_time_seconds * fps, fps)
+    video_mode = get_video_mode()
 
     command = [
         settings.ffmpeg_path,
@@ -177,27 +180,50 @@ def build_ffmpeg_command(session: CameraSession) -> list[str]:
         session.rtsp_url,
         "-map",
         "0:v:0",
-        "-an",
-        "-sn",
-        "-dn",
     ]
 
-    if settings.transcode_video:
-        fps = settings.transcode_fps
-        keyframe_interval = max(settings.hls_time_seconds * fps, fps)
+    if settings.audio_mode != "none":
+        command.extend(["-map", "0:a:0?"])
 
-        if settings.transcode_max_width > 0:
-            video_filter = (
-                f"fps={fps},"
-                f"scale='min({settings.transcode_max_width},iw)':-2,"
-                "format=yuv420p"
-            )
-        else:
-            video_filter = f"fps={fps},format=yuv420p"
+    command.extend(["-sn", "-dn"])
 
+    if video_mode == "copy":
+        command.extend(["-c:v", "copy"])
+    elif video_mode == "hevc":
         command.extend([
             "-vf",
-            video_filter,
+            build_video_filter(fps),
+            "-r",
+            str(fps),
+            "-fps_mode",
+            "cfr",
+            "-enc_time_base",
+            f"1:{fps}",
+            "-c:v",
+            "libx265",
+            "-preset",
+            settings.transcode_preset,
+            "-crf",
+            str(settings.transcode_crf),
+            "-pix_fmt",
+            "yuv420p",
+            "-tag:v",
+            "hvc1",
+            "-g",
+            str(keyframe_interval),
+            "-keyint_min",
+            str(keyframe_interval),
+            "-sc_threshold",
+            "0",
+            "-force_key_frames",
+            f"expr:gte(t,n_forced*{settings.hls_time_seconds})",
+            "-x265-params",
+            f"keyint={keyframe_interval}:min-keyint={keyframe_interval}:scenecut=0:log-level=warning",
+        ])
+    else:
+        command.extend([
+            "-vf",
+            build_video_filter(fps),
             "-r",
             str(fps),
             "-fps_mode",
@@ -224,8 +250,6 @@ def build_ffmpeg_command(session: CameraSession) -> list[str]:
             str(keyframe_interval),
             "-bf",
             "0",
-            "-refs",
-            "1",
             "-sc_threshold",
             "0",
             "-force_key_frames",
@@ -233,10 +257,12 @@ def build_ffmpeg_command(session: CameraSession) -> list[str]:
             "-x264-params",
             f"keyint={keyframe_interval}:min-keyint={keyframe_interval}:scenecut=0:force-cfr=1",
         ])
-    else:
-        command.extend(["-c:v", "copy"])
+
+    add_audio_options(command)
 
     command.extend([
+        "-max_muxing_queue_size",
+        "1024",
         "-f",
         "hls",
         "-hls_time",
@@ -256,6 +282,46 @@ def build_ffmpeg_command(session: CameraSession) -> list[str]:
 
     return command
 
+
+def get_video_mode() -> str:
+    if settings.video_mode is not None:
+        return settings.video_mode
+
+    if settings.transcode_video:
+        return "h264"
+
+    return "copy"
+
+
+def build_video_filter(fps: int) -> str:
+    filters = [f"fps={fps}"]
+
+    if settings.transcode_max_width > 0:
+        filters.append(f"scale='min({settings.transcode_max_width},iw)':-2")
+
+    filters.append("format=yuv420p")
+    return ",".join(filters)
+
+
+def add_audio_options(command: list[str]) -> None:
+    if settings.audio_mode == "none":
+        command.append("-an")
+        return
+
+    if settings.audio_mode == "copy":
+        command.extend(["-c:a", "copy"])
+        return
+
+    command.extend([
+        "-c:a",
+        "aac",
+        "-b:a",
+        settings.audio_bitrate,
+        "-ac",
+        str(settings.audio_channels),
+        "-ar",
+        str(settings.audio_sample_rate),
+    ])
 
 async def wait_for_file(path: Path) -> None:
     deadline = asyncio.get_running_loop().time() + settings.hls_start_timeout_seconds
