@@ -1,9 +1,12 @@
 import asyncio
+import hashlib
 import logging
 import shutil
 import shlex
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 import uvicorn
@@ -23,7 +26,23 @@ logger = logging.getLogger("cmnc_camera_service")
 
 session_store = CameraSessionStore(ttl_seconds=settings.session_ttl_seconds)
 hls_root_dir = Path(settings.hls_root_dir)
-ffmpeg_processes: dict[str, asyncio.subprocess.Process] = {}
+
+
+@dataclass(slots=True)
+class SharedCameraStream:
+    id: str
+    key: str
+    rtsp_url: str
+    quality: str
+    hls_dir: Path
+    created_at: datetime
+    viewer_session_ids: set[str] = field(default_factory=set)
+    process: asyncio.subprocess.Process | None = None
+    last_viewer_left_at: datetime | None = None
+
+
+shared_streams: dict[str, SharedCameraStream] = {}
+shared_streams_lock = asyncio.Lock()
 
 
 async def cleanup_expired_sessions() -> None:
@@ -31,8 +50,9 @@ async def cleanup_expired_sessions() -> None:
         await asyncio.sleep(settings.cleanup_interval_seconds)
 
         for session in session_store.pop_expired():
-            await stop_session_process(session.id)
-            remove_session_dir(session)
+            await release_session(session)
+
+        await cleanup_idle_streams()
 
 
 @asynccontextmanager
@@ -47,8 +67,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         with suppress(asyncio.CancelledError):
             await cleanup_task
 
-        for session_id in list(ffmpeg_processes):
-            await stop_session_process(session_id)
+        async with shared_streams_lock:
+            streams = list(shared_streams.values())
+            shared_streams.clear()
+
+        for stream in streams:
+            await stop_stream_process(stream)
+            remove_stream_dir(stream)
 
 
 app = FastAPI(title=settings.service_name, lifespan=lifespan)
@@ -75,34 +100,31 @@ async def create_camera_session(
     if not rtsp_url.startswith(("rtsp://", "rtsps://")):
         raise HTTPException(status_code=422, detail="rtsp_url must start with rtsp:// or rtsps://")
 
+    stream = await get_or_start_shared_stream(rtsp_url=rtsp_url, quality=payload.quality)
     session = session_store.create(
         rtsp_url=rtsp_url,
         quality=payload.quality,
-        hls_root_dir=hls_root_dir,
+        stream_key=stream.key,
+        hls_dir=stream.hls_dir,
     )
-    session.hls_dir.mkdir(parents=True, exist_ok=True)
 
-    ffmpeg_command = build_ffmpeg_command(session)
+    async with shared_streams_lock:
+        current_stream = shared_streams.get(stream.key)
+
+        if current_stream is None:
+            session_store.delete(session.id)
+            raise HTTPException(status_code=503, detail="Camera stream is not available")
+
+        current_stream.viewer_session_ids.add(session.id)
+        current_stream.last_viewer_left_at = None
+        viewer_count = len(current_stream.viewer_session_ids)
+
     logger.info(
-        "Starting ffmpeg[%s]: %s",
+        "Attached camera session[%s] to shared stream[%s], viewers=%s",
         session.id,
-        " ".join(shlex.quote(arg) for arg in ffmpeg_command),
+        stream.id,
+        viewer_count,
     )
-
-    try:
-        process = await asyncio.create_subprocess_exec(
-            *ffmpeg_command,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.PIPE,
-        )
-    except OSError as exc:
-        session_store.delete(session.id)
-        remove_session_dir(session)
-        raise HTTPException(status_code=502, detail=f"Could not start ffmpeg: {exc}") from exc
-
-    ffmpeg_processes[session.id] = process
-    asyncio.create_task(log_ffmpeg_stderr(session.id, process))
-    asyncio.create_task(watch_ffmpeg_process(session.id, process))
 
     return CameraSessionResponse(
         session_id=session.id,
@@ -119,10 +141,9 @@ async def create_camera_session(
 )
 async def stop_camera_session(session_id: str) -> CameraSessionStopResponse:
     session = session_store.delete(session_id)
-    await stop_session_process(session_id)
 
     if session is not None:
-        remove_session_dir(session)
+        await release_session(session)
 
     return CameraSessionStopResponse(
         stopped=session is not None,
@@ -158,9 +179,60 @@ async def get_camera_hls_file(session_id: str, filename: str) -> FileResponse:
     )
 
 
-def build_ffmpeg_command(session: CameraSession) -> list[str]:
-    playlist_path = session.hls_dir / "index.m3u8"
-    segment_path = session.hls_dir / "segment_%05d.ts"
+async def get_or_start_shared_stream(rtsp_url: str, quality: str) -> SharedCameraStream:
+    stream_key = build_stream_key(rtsp_url=rtsp_url, quality=quality)
+
+    async with shared_streams_lock:
+        existing_stream = shared_streams.get(stream_key)
+
+        if existing_stream is not None and is_stream_process_running(existing_stream):
+            logger.info("Reusing shared stream[%s] for quality=%s", existing_stream.id, quality)
+            return existing_stream
+
+        if existing_stream is not None:
+            logger.warning("Replacing inactive shared stream[%s]", existing_stream.id)
+            shared_streams.pop(stream_key, None)
+            await stop_stream_process(existing_stream)
+            remove_stream_dir(existing_stream)
+
+        stream = SharedCameraStream(
+            id=stream_key[:24],
+            key=stream_key,
+            rtsp_url=rtsp_url,
+            quality=quality,
+            hls_dir=hls_root_dir / stream_key,
+            created_at=datetime.now(timezone.utc),
+        )
+        remove_stream_dir(stream)
+        stream.hls_dir.mkdir(parents=True, exist_ok=True)
+
+        ffmpeg_command = build_ffmpeg_command(stream)
+        logger.info(
+            "Starting shared ffmpeg[%s]: %s",
+            stream.id,
+            " ".join(shlex.quote(arg) for arg in ffmpeg_command),
+        )
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *ffmpeg_command,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except OSError as exc:
+            remove_stream_dir(stream)
+            raise HTTPException(status_code=502, detail=f"Could not start ffmpeg: {exc}") from exc
+
+        stream.process = process
+        shared_streams[stream.key] = stream
+        asyncio.create_task(log_ffmpeg_stderr(stream.id, process))
+        asyncio.create_task(watch_ffmpeg_process(stream.key, stream.id, process))
+        return stream
+
+
+def build_ffmpeg_command(stream: SharedCameraStream) -> list[str]:
+    playlist_path = stream.hls_dir / "index.m3u8"
+    segment_path = stream.hls_dir / "segment_%05d.ts"
     fps = settings.transcode_fps
     keyframe_interval = max(settings.hls_time_seconds * fps, fps)
     video_mode = get_video_mode()
@@ -177,7 +249,7 @@ def build_ffmpeg_command(session: CameraSession) -> list[str]:
         "-use_wallclock_as_timestamps",
         "1",
         "-i",
-        session.rtsp_url,
+        stream.rtsp_url,
         "-map",
         "0:v:0",
     ]
@@ -323,6 +395,52 @@ def add_audio_options(command: list[str]) -> None:
         str(settings.audio_sample_rate),
     ])
 
+
+async def release_session(session: CameraSession) -> None:
+    async with shared_streams_lock:
+        stream = shared_streams.get(session.stream_key)
+
+        if stream is None:
+            return
+
+        stream.viewer_session_ids.discard(session.id)
+        viewer_count = len(stream.viewer_session_ids)
+
+        if viewer_count == 0:
+            stream.last_viewer_left_at = datetime.now(timezone.utc)
+
+        logger.info(
+            "Detached camera session[%s] from shared stream[%s], viewers=%s",
+            session.id,
+            stream.id,
+            viewer_count,
+        )
+
+
+async def cleanup_idle_streams() -> None:
+    now = datetime.now(timezone.utc)
+    idle_timeout_seconds = settings.stream_idle_timeout_seconds
+
+    async with shared_streams_lock:
+        for stream_key, stream in list(shared_streams.items()):
+            if stream.viewer_session_ids:
+                continue
+
+            if stream.last_viewer_left_at is None:
+                stream.last_viewer_left_at = now
+                continue
+
+            idle_seconds = (now - stream.last_viewer_left_at).total_seconds()
+
+            if idle_seconds < idle_timeout_seconds:
+                continue
+
+            shared_streams.pop(stream_key, None)
+            logger.info("Stopping idle shared stream[%s] after %.1fs", stream.id, idle_seconds)
+            await stop_stream_process(stream)
+            remove_stream_dir(stream)
+
+
 async def wait_for_file(path: Path) -> None:
     deadline = asyncio.get_running_loop().time() + settings.hls_start_timeout_seconds
 
@@ -333,8 +451,13 @@ async def wait_for_file(path: Path) -> None:
         await asyncio.sleep(0.2)
 
 
-async def stop_session_process(session_id: str) -> None:
-    process = ffmpeg_processes.pop(session_id, None)
+def is_stream_process_running(stream: SharedCameraStream) -> bool:
+    return stream.process is not None and stream.process.returncode is None
+
+
+async def stop_stream_process(stream: SharedCameraStream) -> None:
+    process = stream.process
+    stream.process = None
 
     if process is None:
         return
@@ -355,7 +478,7 @@ async def stop_process(process: asyncio.subprocess.Process) -> None:
         await process.wait()
 
 
-async def log_ffmpeg_stderr(session_id: str, process: asyncio.subprocess.Process) -> None:
+async def log_ffmpeg_stderr(stream_id: str, process: asyncio.subprocess.Process) -> None:
     if process.stderr is None:
         return
 
@@ -367,23 +490,51 @@ async def log_ffmpeg_stderr(session_id: str, process: asyncio.subprocess.Process
 
         message = line.decode("utf-8", errors="replace").strip()
         if message:
-            logger.warning("ffmpeg[%s]: %s", session_id, message)
+            logger.warning("ffmpeg[%s]: %s", stream_id, message)
 
 
-async def watch_ffmpeg_process(session_id: str, process: asyncio.subprocess.Process) -> None:
+async def watch_ffmpeg_process(stream_key: str, stream_id: str, process: asyncio.subprocess.Process) -> None:
     returncode = await process.wait()
 
-    if ffmpeg_processes.get(session_id) is process:
-        ffmpeg_processes.pop(session_id, None)
+    async with shared_streams_lock:
+        stream = shared_streams.get(stream_key)
+
+        if stream is not None and stream.id == stream_id and stream.process is process:
+            stream.process = None
+
+            if not stream.viewer_session_ids:
+                stream.last_viewer_left_at = datetime.now(timezone.utc)
 
     if returncode == 0:
-        logger.info("ffmpeg[%s] exited with code 0", session_id)
+        logger.info("ffmpeg[%s] exited with code 0", stream_id)
     else:
-        logger.warning("ffmpeg[%s] exited with code %s", session_id, returncode)
+        logger.warning("ffmpeg[%s] exited with code %s", stream_id, returncode)
 
 
-def remove_session_dir(session: CameraSession) -> None:
-    shutil.rmtree(session.hls_dir, ignore_errors=True)
+def remove_stream_dir(stream: SharedCameraStream) -> None:
+    shutil.rmtree(stream.hls_dir, ignore_errors=True)
+
+
+def build_stream_key(rtsp_url: str, quality: str) -> str:
+    parts = [
+        rtsp_url.strip(),
+        quality,
+        get_video_mode(),
+        settings.audio_mode,
+        str(settings.audio_bitrate),
+        str(settings.audio_sample_rate),
+        str(settings.audio_channels),
+        str(settings.rtsp_transport),
+        str(settings.hls_time_seconds),
+        str(settings.hls_list_size),
+        str(settings.transcode_fps),
+        str(settings.transcode_crf),
+        str(settings.transcode_max_width),
+        str(settings.transcode_preset),
+        str(settings.transcode_profile),
+        str(settings.transcode_level),
+    ]
+    return hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()
 
 
 def is_allowed_hls_filename(filename: str) -> bool:

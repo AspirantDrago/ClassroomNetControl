@@ -9,6 +9,7 @@ class CameraSession:
     id: str
     rtsp_url: str
     quality: str
+    stream_key: str
     hls_dir: Path
     created_at: datetime
     expires_at: datetime
@@ -19,14 +20,22 @@ class CameraSessionStore:
         self._ttl_seconds = ttl_seconds
         self._sessions: dict[str, CameraSession] = {}
 
-    def create(self, rtsp_url: str, quality: str, hls_root_dir: Path) -> CameraSession:
+    def create(
+        self,
+        *,
+        rtsp_url: str,
+        quality: str,
+        stream_key: str,
+        hls_dir: Path,
+    ) -> CameraSession:
         now = datetime.now(timezone.utc)
         session_id = token_urlsafe(32)
         session = CameraSession(
             id=session_id,
             rtsp_url=rtsp_url,
             quality=quality,
-            hls_dir=hls_root_dir / session_id,
+            stream_key=stream_key,
+            hls_dir=hls_dir,
             created_at=now,
             expires_at=now + timedelta(seconds=self._ttl_seconds),
         )

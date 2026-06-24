@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     hls_list_size: int = Field(default=6, ge=3)
     hls_start_timeout_seconds: float = Field(default=20.0, ge=1.0)
 
+    # When the last viewer closes a camera, keep the ffmpeg worker alive for a short
+    # grace period. This avoids restarting the RTSP connection during quick tab
+    # switches, page refreshes, or quality selector re-renders.
+    stream_idle_timeout_seconds: float = Field(default=45.0, ge=0.0)
+
     # Video modes:
     # - h264: browser-safe H.264 HLS. Recommended for Chrome/Edge/Firefox.
     # - copy: keep the camera video codec as-is. Allows H.265 for VLC/Safari-like clients,
