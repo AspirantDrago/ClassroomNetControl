@@ -12,6 +12,7 @@ class ClassroomRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    router_id: int
     name: str
     subnet_cidr: str
     vlan_id: int | None
@@ -120,6 +121,7 @@ class ErrorResponse(BaseModel):
 
 
 class ClassroomCreate(BaseModel):
+    router_id: int = Field(default=1, ge=1)
     name: str = Field(min_length=1, max_length=255)
     subnet_cidr: str = Field(min_length=1, max_length=64)
     vlan_id: int | None = None
@@ -129,6 +131,7 @@ class ClassroomCreate(BaseModel):
 
 
 class ClassroomUpdate(BaseModel):
+    router_id: int | None = Field(default=None, ge=1)
     name: str | None = Field(default=None, min_length=1, max_length=255)
     subnet_cidr: str | None = Field(default=None, min_length=1, max_length=64)
     vlan_id: int | None = None

@@ -59,7 +59,8 @@ async def get_classrooms(
         .where(Classroom.is_active.is_(True))
         .order_by(Classroom.display_order, Classroom.id)
     )
-    return list(result.scalars().all())
+    classrooms = list(result.scalars().all())
+    return [ClassroomRead.model_validate(classroom) for classroom in classrooms]
 
 
 @router.get("/internal/classrooms/{classroom_id}", response_model=ClassroomRead)
@@ -108,7 +109,6 @@ async def get_classroom_layout(
         devices=[DeviceRead.model_validate(device) for device in devices],
         cameras=[ClassroomCameraRead.model_validate(camera) for camera in cameras],
     )
-
 
 
 def normalize_optional_text(value: str | None) -> str | None:
@@ -398,6 +398,8 @@ async def set_device_wan_state(
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found")
 
+    classroom = await ensure_classroom_exists(session, device.classroom_id)
+
     if wan_allowed is False:
         if device.wan_protected:
             raise HTTPException(
@@ -431,7 +433,7 @@ async def set_device_wan_state(
     await session.refresh(device)
 
     event = WanPolicyChangedEvent(
-        router_id=settings.default_router_id,
+        router_id=classroom.router_id,
         classroom_id=device.classroom_id,
         device_id=device.id,
         policy_generation=device.policy_generation,
@@ -492,7 +494,7 @@ async def set_classroom_wan_state(
     classroom_id: int,
     wan_allowed: bool,
 ) -> BulkWanPolicyChangeResponse:
-    await ensure_classroom_exists(session, classroom_id)
+    classroom = await ensure_classroom_exists(session, classroom_id)
 
     result = await session.execute(
         select(Device)
@@ -531,7 +533,7 @@ async def set_classroom_wan_state(
     if queued_devices:
         event_device = queued_devices[0]
         event = WanPolicyChangedEvent(
-            router_id=settings.default_router_id,
+            router_id=classroom.router_id,
             classroom_id=classroom_id,
             device_id=event_device.id,
             policy_generation=policy_generation,
@@ -566,6 +568,8 @@ async def get_desired_blocklist(
 ) -> DesiredBlocklistResponse:
     generation_result = await session.execute(
         select(func.coalesce(func.max(Device.policy_generation), 0))
+        .join(Classroom, Classroom.id == Device.classroom_id)
+        .where(Classroom.router_id == router_id)
         .where(Device.is_pinned.is_(True))
         .where(Device.static_ip.is_not(None))
     )
@@ -573,6 +577,8 @@ async def get_desired_blocklist(
 
     result = await session.execute(
         select(Device)
+        .join(Classroom, Classroom.id == Device.classroom_id)
+        .where(Classroom.router_id == router_id)
         .where(Device.wan_allowed.is_(False))
         .where(Device.is_pinned.is_(True))
         .where(Device.static_ip.is_not(None))
@@ -587,6 +593,7 @@ async def get_desired_blocklist(
             ip_address=device.static_ip or "",
             comment=(
                 f"managed-by=cmnc; "
+                f"router-id={router_id}; "
                 f"device-id={device.id}; "
                 f"mac={device.mac_address}; "
                 f"generation={device.policy_generation}"
@@ -640,6 +647,7 @@ async def create_classroom(
     session: AsyncSession = Depends(get_session),
 ) -> ClassroomRead:
     classroom = Classroom(
+        router_id=payload.router_id,
         name=payload.name,
         subnet_cidr=payload.subnet_cidr,
         vlan_id=payload.vlan_id,
@@ -674,6 +682,9 @@ async def update_classroom(
         raise HTTPException(status_code=404, detail="Classroom not found")
 
     update_data = payload.model_dump(exclude_unset=True)
+
+    if update_data.get("router_id") is None and "router_id" in update_data:
+        raise HTTPException(status_code=422, detail="router_id cannot be null")
 
     for field_name, value in update_data.items():
         setattr(classroom, field_name, value)
@@ -806,8 +817,9 @@ async def update_device(
     await session.refresh(device)
 
     if should_publish_policy_event:
+        classroom = await ensure_classroom_exists(session, device.classroom_id)
         event = WanPolicyChangedEvent(
-            router_id=settings.default_router_id,
+            router_id=classroom.router_id,
             classroom_id=device.classroom_id,
             device_id=device.id,
             policy_generation=device.policy_generation,

@@ -20,6 +20,12 @@ class Classroom(Base):
     __tablename__ = "classrooms"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    router_id: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default=text("1"),
+        default=1,
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     subnet_cidr: Mapped[str] = mapped_column(String(64), nullable=False)
     vlan_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
