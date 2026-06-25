@@ -603,28 +603,42 @@ def ensure_observed_device_is_unpinned_in_classroom(
         )
 
 
+def get_classroom_router_id(classroom: dict[str, Any]) -> int:
+    router_id = classroom.get("router_id")
+
+    if not isinstance(router_id, int):
+        raise HTTPException(status_code=502, detail="Invalid classroom service response")
+
+    return router_id
+
+
 async def get_classroom_layout_and_observed_devices(
     classroom_id: int,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     layout = await classroom_client.get_json(
         f"/internal/classrooms/{classroom_id}/layout"
     )
-    observed = await inventory_client.get_json(
-        f"/internal/routers/{settings.default_router_id}/observed-devices"
-    )
 
-    if not isinstance(layout, dict) or not isinstance(observed, dict):
+    if not isinstance(layout, dict):
         raise HTTPException(status_code=502, detail="Invalid service response")
 
     classroom = layout.get("classroom")
     devices = layout.get("devices")
+
+    if not isinstance(classroom, dict) or not isinstance(devices, list):
+        raise HTTPException(status_code=502, detail="Invalid service response")
+
+    router_id = get_classroom_router_id(classroom)
+    observed = await inventory_client.get_json(
+        f"/internal/routers/{router_id}/observed-devices"
+    )
+
+    if not isinstance(observed, dict):
+        raise HTTPException(status_code=502, detail="Invalid service response")
+
     observed_devices = observed.get("devices")
 
-    if (
-        not isinstance(classroom, dict)
-        or not isinstance(devices, list)
-        or not isinstance(observed_devices, list)
-    ):
+    if not isinstance(observed_devices, list):
         raise HTTPException(status_code=502, detail="Invalid service response")
 
     return classroom, devices, observed_devices
@@ -771,8 +785,10 @@ async def get_classroom_dashboard(
         layout = await classroom_client.get_json(
             f"/internal/classrooms/{classroom_id}/layout"
         )
+        classroom = layout["classroom"]
+        router_id = get_classroom_router_id(classroom)
         observed = await inventory_client.get_json(
-            f"/internal/routers/{settings.default_router_id}/observed-devices"
+            f"/internal/routers/{router_id}/observed-devices"
         )
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 404:
@@ -883,7 +899,7 @@ async def admin_delete_observed_device(
 
     try:
         return await inventory_client.post_json(
-            f"/internal/routers/{settings.default_router_id}/observed-devices/delete",
+            f"/internal/routers/{get_classroom_router_id(classroom)}/observed-devices/delete",
             json={"ids": [observed_device_id]},
         )
     except httpx.HTTPStatusError as exc:
@@ -949,7 +965,7 @@ async def admin_cleanup_stale_observed_devices(
 
     try:
         return await inventory_client.post_json(
-            f"/internal/routers/{settings.default_router_id}/observed-devices/delete",
+            f"/internal/routers/{get_classroom_router_id(classroom)}/observed-devices/delete",
             json={"ids": ids_to_delete},
         )
     except httpx.HTTPStatusError as exc:
@@ -1349,8 +1365,10 @@ async def admin_pin_observed_device(
         layout = await classroom_client.get_json(
             f"/internal/classrooms/{classroom_id}/layout"
         )
+        classroom = layout["classroom"]
+        router_id = get_classroom_router_id(classroom)
         observed = await inventory_client.get_json(
-            f"/internal/routers/{settings.default_router_id}/observed-devices"
+            f"/internal/routers/{router_id}/observed-devices"
         )
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 404:
