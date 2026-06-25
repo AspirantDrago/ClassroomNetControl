@@ -66,7 +66,6 @@ export type ClassroomDashboard = {
     classroom: Classroom;
     devices: DashboardDevice[];
     dynamic_devices: DynamicDevice[];
-    camera?: ClassroomCamera;
     cameras: ClassroomCamera[];
 };
 

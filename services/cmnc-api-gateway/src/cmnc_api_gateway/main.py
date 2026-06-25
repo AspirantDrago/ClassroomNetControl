@@ -211,18 +211,6 @@ def get_camera_qualities(camera: dict[str, Any]) -> list[str]:
     return qualities
 
 
-def serialize_camera_for_principal(
-    principal: PrincipalResponse,
-    camera: dict[str, Any],
-) -> dict[str, Any]:
-    data = dict(camera)
-
-    if not can_read_classroom_rtsp(principal):
-        data.pop("rtsp_main_stream", None)
-        data.pop("rtsp_sub_stream", None)
-
-    return data
-
 
 def get_camera_info(camera: dict[str, Any]) -> dict[str, Any]:
     qualities = get_camera_qualities(camera)
@@ -239,15 +227,6 @@ def get_camera_info(camera: dict[str, Any]) -> dict[str, Any]:
         "default_quality": default_quality or "sub",
     }
 
-
-def get_disabled_camera_info() -> dict[str, Any]:
-    return {
-        "id": None,
-        "name": "Камера",
-        "enabled": False,
-        "qualities": [],
-        "default_quality": "sub",
-    }
 
 
 def get_cameras_info(cameras: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -327,15 +306,6 @@ async def get_camera_or_404(classroom_id: int, camera_id: int) -> dict[str, Any]
 
     raise HTTPException(status_code=404, detail="Camera not found")
 
-
-async def get_first_camera_or_404(classroom_id: int) -> dict[str, Any]:
-    cameras = await get_classroom_cameras_or_502(classroom_id)
-
-    for camera in cameras:
-        if camera.get("is_enabled") is True and get_camera_qualities(camera):
-            return camera
-
-    raise HTTPException(status_code=404, detail="Camera is not configured")
 
 
 async def get_camera_source(
@@ -823,8 +793,6 @@ async def get_classroom_dashboard(
     cameras = get_cameras_info([
         item for item in layout_cameras if isinstance(item, dict)
     ])
-    camera = cameras[0] if cameras else get_disabled_camera_info()
-
     observed_by_mac = {
         item["mac_address"].upper(): item
         for item in observed_devices
@@ -868,7 +836,6 @@ async def get_classroom_dashboard(
         classroom=serialize_classroom_for_principal(principal, classroom),
         devices=dashboard_devices,
         dynamic_devices=dynamic_devices,
-        camera=camera,
         cameras=cameras,
     )
 
@@ -1790,18 +1757,6 @@ async def create_camera_session_response(
         "expires_in_seconds": data.get("expires_in_seconds"),
     }
 
-
-@app.post("/api/classrooms/{classroom_id}/camera/session")
-async def create_classroom_camera_session(
-    classroom_id: int,
-    payload: dict[str, Any],
-    request: Request,
-    authorization: str | None = Header(default=None),
-) -> Any:
-    principal = await get_current_principal(request, authorization)
-    await ensure_classroom_access(principal, classroom_id)
-    camera = await get_first_camera_or_404(classroom_id)
-    return await create_camera_session_response(classroom_id, camera, payload)
 
 
 @app.post("/api/classrooms/{classroom_id}/cameras/{camera_id}/session")

@@ -54,7 +54,6 @@ class ClassroomDashboardResponse(BaseModel):
     classroom: dict[str, Any]
     devices: list[DashboardDevice]
     dynamic_devices: list[DynamicDevice]
-    camera: ClassroomCameraResponse
     cameras: list[ClassroomCameraResponse]
 
 
