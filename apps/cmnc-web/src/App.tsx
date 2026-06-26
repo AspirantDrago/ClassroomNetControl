@@ -43,6 +43,7 @@ import { LoginPage } from "./pages/LoginPage/LoginPage";
 import { AdminAccessPage } from "./pages/AdminAccessPage/AdminAccessPage";
 import { AccountPage } from "./pages/AccountPage/AccountPage";
 import { MaintenancePage } from "./pages/MaintenancePage/MaintenancePage";
+import { RoutersAdminPage } from "./pages/RoutersAdminPage/RoutersAdminPage";
 import {
     canControlWanForClassroom,
     canManageClassrooms,
@@ -58,7 +59,7 @@ import {
 } from "./utils/devices";
 import { parseOptionalInteger, parseRequiredString } from "./utils/forms";
 
-type AppPage = "dashboard" | "account" | "access" | "maintenance";
+type AppPage = "dashboard" | "account" | "access" | "maintenance" | "routers";
 
 export function App() {
     const [principal, setPrincipal] = useState<CurrentPrincipal | null>(null);
@@ -69,26 +70,17 @@ export function App() {
     const [buildInfo, setBuildInfo] = useState<BuildInfo | null>(null);
 
     const [classrooms, setClassrooms] = useState<Classroom[]>([]);
-    const [selectedClassroomId, setSelectedClassroomId] = useState<number | null>(
-        null,
-    );
+    const [selectedClassroomId, setSelectedClassroomId] = useState<number | null>(null);
     const [dashboard, setDashboard] = useState<ClassroomDashboard | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [busyDeviceId, setBusyDeviceId] = useState<number | null>(null);
-    const [busyClassroomWanAction, setBusyClassroomWanAction] = useState<
-        "block" | "allow" | null
-    >(null);
-    const [busyDeleteObservedDeviceId, setBusyDeleteObservedDeviceId] = useState<
-        number | null
-    >(null);
-    const [busyCleanupStaleObservedDevices, setBusyCleanupStaleObservedDevices] =
-        useState(false);
+    const [busyClassroomWanAction, setBusyClassroomWanAction] = useState<"block" | "allow" | null>(null);
+    const [busyDeleteObservedDeviceId, setBusyDeleteObservedDeviceId] = useState<number | null>(null);
+    const [busyCleanupStaleObservedDevices, setBusyCleanupStaleObservedDevices] = useState(false);
     const [deviceForm, setDeviceForm] = useState<DeviceFormState | null>(null);
     const [busyForm, setBusyForm] = useState(false);
-    const [classroomForm, setClassroomForm] = useState<ClassroomFormState | null>(
-        null,
-    );
+    const [classroomForm, setClassroomForm] = useState<ClassroomFormState | null>(null);
     const [busyClassroomForm, setBusyClassroomForm] = useState(false);
 
     useEffect(() => {
@@ -363,18 +355,14 @@ export function App() {
 
         try {
             const name = parseRequiredString(classroomForm.name, "Название");
-            const subnetCidr = parseRequiredString(
-                classroomForm.subnetCidr,
-                "Подсеть",
-            );
+            const subnetCidr = parseRequiredString(classroomForm.subnetCidr, "Подсеть");
             const vlanId = parseOptionalInteger(classroomForm.vlanId, "VLAN", {
                 min: 1,
                 max: 4094,
             });
-            const displayOrder =
-                parseOptionalInteger(classroomForm.displayOrder, "Порядок", {
-                    min: 0,
-                }) ?? 0;
+            const displayOrder = parseOptionalInteger(classroomForm.displayOrder, "Порядок", {
+                min: 0,
+            }) ?? 0;
 
             if (classroomForm.mode === "create") {
                 const created = await createClassroom({
@@ -522,7 +510,6 @@ export function App() {
         }
     }
 
-
     async function handleDeleteInactiveObservedDevice(device: DynamicDevice) {
         if (
             selectedClassroomId === null ||
@@ -554,10 +541,7 @@ export function App() {
     }
 
     async function handleCleanupStaleObservedDevices() {
-        if (
-            selectedClassroomId === null ||
-            !canManageWorkstations(principal)
-        ) {
+        if (selectedClassroomId === null || !canManageWorkstations(principal)) {
             return;
         }
 
@@ -639,14 +623,8 @@ export function App() {
         setBusyForm(true);
 
         try {
-            const rowIndex = parseOptionalPositiveInteger(
-                deviceForm.rowIndex,
-                "row_index",
-            );
-            const columnIndex = parseOptionalPositiveInteger(
-                deviceForm.columnIndex,
-                "column_index",
-            );
+            const rowIndex = parseOptionalPositiveInteger(deviceForm.rowIndex, "row_index");
+            const columnIndex = parseOptionalPositiveInteger(deviceForm.columnIndex, "column_index");
 
             if (deviceForm.mode === "pin-observed") {
                 await pinObservedDevice(selectedClassroomId, {
@@ -710,11 +688,9 @@ export function App() {
     const userCanManageWorkstations = canManageWorkstations(principal);
     const userCanOpenAccessAdmin = canOpenAccessAdmin(principal);
     const userCanOpenMaintenance = canOpenMaintenance(principal);
+    const userCanOpenRouters = userCanManageClassrooms;
     const userCanViewDynamicDevices = canViewDynamicDevices(principal);
-    const userCanControlWan = canControlWanForClassroom(
-        principal,
-        selectedClassroomId,
-    );
+    const userCanControlWan = canControlWanForClassroom(principal, selectedClassroomId);
 
     useEffect(() => {
         if (currentPage === "access" && !userCanOpenAccessAdmin) {
@@ -724,7 +700,11 @@ export function App() {
         if (currentPage === "maintenance" && !userCanOpenMaintenance) {
             setCurrentPage("dashboard");
         }
-    }, [currentPage, userCanOpenAccessAdmin, userCanOpenMaintenance]);
+
+        if (currentPage === "routers" && !userCanOpenRouters) {
+            setCurrentPage("dashboard");
+        }
+    }, [currentPage, userCanOpenAccessAdmin, userCanOpenMaintenance, userCanOpenRouters]);
 
     if (!authChecked) {
         return (
@@ -735,13 +715,7 @@ export function App() {
     }
 
     if (principal === null) {
-        return (
-            <LoginPage
-                busy={authBusy}
-                error={authError}
-                onLogin={handleLogin}
-            />
-        );
+        return <LoginPage busy={authBusy} error={authError} onLogin={handleLogin} />;
     }
 
     return (
@@ -755,27 +729,25 @@ export function App() {
                 canCreateClassroom={userCanManageClassrooms}
                 canOpenAccessAdmin={userCanOpenAccessAdmin}
                 canOpenMaintenance={userCanOpenMaintenance}
+                canOpenRouters={userCanOpenRouters}
                 onOpenDashboard={() => setCurrentPage("dashboard")}
                 onOpenAccount={() => setCurrentPage("account")}
                 onOpenAccessAdmin={() => setCurrentPage("access")}
                 onOpenMaintenance={() => setCurrentPage("maintenance")}
+                onOpenRouters={() => setCurrentPage("routers")}
                 principalName={getPrincipalName(principal)}
                 onLogout={handleLogout}
             />
 
             <main className="content">
                 {currentPage === "account" ? (
-                    <AccountPage
-                        principal={principal}
-                        onPrincipalChanged={setPrincipal}
-                    />
+                    <AccountPage principal={principal} onPrincipalChanged={setPrincipal} />
                 ) : currentPage === "access" && userCanOpenAccessAdmin ? (
-                    <AdminAccessPage
-                        principal={principal}
-                        classrooms={classrooms}
-                    />
+                    <AdminAccessPage principal={principal} classrooms={classrooms} />
                 ) : currentPage === "maintenance" && userCanOpenMaintenance ? (
                     <MaintenancePage />
+                ) : currentPage === "routers" && userCanOpenRouters ? (
+                    <RoutersAdminPage />
                 ) : (
                     <>
                         <ClassroomTabs
@@ -795,7 +767,8 @@ export function App() {
                                         <h2>{dashboard.classroom.name}</h2>
                                         <div className="muted">
                                             subnet: {dashboard.classroom.subnet_cidr}, VLAN:{" "}
-                                            {dashboard.classroom.vlan_id ?? "-"}
+                                            {dashboard.classroom.vlan_id ?? "-"}, MikroTik:{" "}
+                                            {dashboard.classroom.router_id}
                                         </div>
                                     </div>
 
@@ -880,9 +853,7 @@ export function App() {
                     onChange={setDeviceForm}
                     onClose={closeDeviceForm}
                     onSubmit={handleDeviceFormSubmit}
-                    onUnpin={
-                        deviceForm.mode === "edit-device" ? handleUnpinDevice : undefined
-                    }
+                    onUnpin={deviceForm.mode === "edit-device" ? handleUnpinDevice : undefined}
                 />
             )}
 
@@ -893,11 +864,7 @@ export function App() {
                     onChange={setClassroomForm}
                     onClose={closeClassroomForm}
                     onSubmit={handleClassroomFormSubmit}
-                    onDeactivate={
-                        classroomForm.mode === "edit"
-                            ? handleDeactivateClassroom
-                            : undefined
-                    }
+                    onDeactivate={classroomForm.mode === "edit" ? handleDeactivateClassroom : undefined}
                     onCamerasChanged={reload}
                 />
             )}

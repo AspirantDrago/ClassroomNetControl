@@ -90,6 +90,60 @@ async def get_active_routers(
     return [RouterConnectionRead.model_validate(router) for router in routers]
 
 
+@app.get("/internal/routers/status", response_model=list[RouterStatusItem])
+async def get_routers_status(
+    session: AsyncSession = Depends(get_session),
+) -> list[RouterStatusItem]:
+    routers_result = await session.execute(select(Router).order_by(Router.id))
+    routers = list(routers_result.scalars().all())
+
+    status_result = await session.execute(
+        select(RouterServiceStatus).order_by(
+            RouterServiceStatus.router_id,
+            RouterServiceStatus.service_name,
+        )
+    )
+    statuses = list(status_result.scalars().all())
+
+    statuses_by_router: dict[int, list[RouterServiceStatus]] = {}
+    for status in statuses:
+        statuses_by_router.setdefault(status.router_id, []).append(status)
+
+    return [
+        RouterStatusItem(
+            router=RouterRead.model_validate(router),
+            services=[
+                RouterServiceStatusRead.model_validate(status)
+                for status in statuses_by_router.get(router.id, [])
+            ],
+        )
+        for router in routers
+    ]
+
+
+@app.get(
+    "/internal/routers/{router_id}/status",
+    response_model=list[RouterServiceStatusRead],
+)
+async def get_router_status(
+    router_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> list[RouterServiceStatusRead]:
+    router = await session.get(Router, router_id)
+
+    if router is None:
+        raise HTTPException(status_code=404, detail="Router not found")
+
+    result = await session.execute(
+        select(RouterServiceStatus)
+        .where(RouterServiceStatus.router_id == router_id)
+        .order_by(RouterServiceStatus.service_name)
+    )
+    statuses = list(result.scalars().all())
+
+    return [RouterServiceStatusRead.model_validate(status) for status in statuses]
+
+
 @app.get("/internal/routers/{router_id}", response_model=RouterRead)
 async def get_router(
     router_id: int,
@@ -166,60 +220,6 @@ async def update_router(
     await session.refresh(router)
 
     return RouterRead.model_validate(router)
-
-
-@app.get("/internal/routers/status", response_model=list[RouterStatusItem])
-async def get_routers_status(
-    session: AsyncSession = Depends(get_session),
-) -> list[RouterStatusItem]:
-    routers_result = await session.execute(select(Router).order_by(Router.id))
-    routers = list(routers_result.scalars().all())
-
-    status_result = await session.execute(
-        select(RouterServiceStatus).order_by(
-            RouterServiceStatus.router_id,
-            RouterServiceStatus.service_name,
-        )
-    )
-    statuses = list(status_result.scalars().all())
-
-    statuses_by_router: dict[int, list[RouterServiceStatus]] = {}
-    for status in statuses:
-        statuses_by_router.setdefault(status.router_id, []).append(status)
-
-    return [
-        RouterStatusItem(
-            router=RouterRead.model_validate(router),
-            services=[
-                RouterServiceStatusRead.model_validate(status)
-                for status in statuses_by_router.get(router.id, [])
-            ],
-        )
-        for router in routers
-    ]
-
-
-@app.get(
-    "/internal/routers/{router_id}/status",
-    response_model=list[RouterServiceStatusRead],
-)
-async def get_router_status(
-    router_id: int,
-    session: AsyncSession = Depends(get_session),
-) -> list[RouterServiceStatusRead]:
-    router = await session.get(Router, router_id)
-
-    if router is None:
-        raise HTTPException(status_code=404, detail="Router not found")
-
-    result = await session.execute(
-        select(RouterServiceStatus)
-        .where(RouterServiceStatus.router_id == router_id)
-        .order_by(RouterServiceStatus.service_name)
-    )
-    statuses = list(result.scalars().all())
-
-    return [RouterServiceStatusRead.model_validate(status) for status in statuses]
 
 
 @app.put(

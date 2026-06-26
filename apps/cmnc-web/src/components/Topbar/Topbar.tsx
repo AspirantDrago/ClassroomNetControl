@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { BuildInfo } from "../../api";
 import "./Topbar.css";
 
-type AppPage = "dashboard" | "account" | "access" | "maintenance";
+type AppPage = "dashboard" | "account" | "access" | "maintenance" | "routers";
 
 type TopbarProps = {
     currentPage: AppPage;
@@ -13,10 +13,12 @@ type TopbarProps = {
     canCreateClassroom: boolean;
     canOpenAccessAdmin: boolean;
     canOpenMaintenance: boolean;
+    canOpenRouters: boolean;
     onOpenDashboard: () => void;
     onOpenAccount: () => void;
     onOpenAccessAdmin: () => void;
     onOpenMaintenance: () => void;
+    onOpenRouters: () => void;
     principalName: string;
     onLogout: () => void;
 };
@@ -31,10 +33,12 @@ export function Topbar(props: TopbarProps) {
         canCreateClassroom,
         canOpenAccessAdmin,
         canOpenMaintenance,
+        canOpenRouters,
         onOpenDashboard,
         onOpenAccount,
         onOpenAccessAdmin,
         onOpenMaintenance,
+        onOpenRouters,
         principalName,
         onLogout,
     } = props;
@@ -48,10 +52,7 @@ export function Topbar(props: TopbarProps) {
         }
 
         function handlePointerDown(event: PointerEvent) {
-            if (
-                menuRef.current !== null &&
-                !menuRef.current.contains(event.target as Node)
-            ) {
+            if (menuRef.current !== null && !menuRef.current.contains(event.target as Node)) {
                 setMenuOpen(false);
             }
         }
@@ -86,14 +87,9 @@ export function Topbar(props: TopbarProps) {
                     <h1>Classroom MikroTik Net Control</h1>
                     <p>Управление доступом ученических ПК в WAN</p>
                     {buildInfo && (
-                        <div
-                            className="topbar__build-info"
-                            title={formatBuildInfoTitle(buildInfo)}
-                        >
+                        <div className="topbar__build-info" title={formatBuildInfoTitle(buildInfo)}>
                             <span>{formatBuildVersion(buildInfo)}</span>
-                            {buildInfo.built_at && (
-                                <span>{formatBuildDate(buildInfo.built_at)}</span>
-                            )}
+                            {buildInfo.built_at && <span>{formatBuildDate(buildInfo.built_at)}</span>}
                         </div>
                     )}
                 </div>
@@ -114,9 +110,7 @@ export function Topbar(props: TopbarProps) {
 
                 {menuOpen && (
                     <div className="topbar-dropdown">
-                        <div className="topbar-dropdown__user">
-                            {principalName}
-                        </div>
+                        <div className="topbar-dropdown__user">{principalName}</div>
 
                         <button
                             className={
@@ -141,6 +135,20 @@ export function Topbar(props: TopbarProps) {
                                 onClick={() => runMenuAction(onOpenAccessAdmin)}
                             >
                                 Пользователи
+                            </button>
+                        )}
+
+                        {canOpenRouters && (
+                            <button
+                                className={
+                                    currentPage === "routers"
+                                        ? "topbar-menu-item topbar-menu-item--active"
+                                        : "topbar-menu-item"
+                                }
+                                type="button"
+                                onClick={() => runMenuAction(onOpenRouters)}
+                            >
+                                MikroTik
                             </button>
                         )}
 
@@ -210,7 +218,6 @@ export function Topbar(props: TopbarProps) {
         </header>
     );
 }
-
 
 function formatBuildVersion(buildInfo: BuildInfo): string {
     if (buildInfo.version.trim() !== "") {

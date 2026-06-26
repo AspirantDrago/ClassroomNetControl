@@ -3,6 +3,7 @@ const ACCESS_TOKEN_STORAGE_KEY = "cmnc_access_token";
 
 export type Classroom = {
     id: number;
+    router_id: number;
     name: string;
     subnet_cidr: string;
     vlan_id: number | null;
@@ -101,7 +102,6 @@ export function getAccessToken(): string | null {
 export function setAccessToken(token: string): void {
     window.localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, token);
 }
-
 
 export function extractErrorDetail(error: unknown): string {
     const fallback = "Unknown error";
@@ -374,7 +374,6 @@ export function cleanupStaleObservedDevices(
     );
 }
 
-
 export function pinObservedDevice(
     classroomId: number,
     payload: PinObservedDeviceRequest,
@@ -413,6 +412,7 @@ export function unpinDevice(deviceId: number): Promise<unknown> {
 
 export type ClassroomCreateRequest = {
     name: string;
+    router_id?: number;
     subnet_cidr: string;
     vlan_id?: number | null;
     display_order?: number;
@@ -422,6 +422,7 @@ export type ClassroomCreateRequest = {
 
 export type ClassroomUpdateRequest = {
     name?: string;
+    router_id?: number;
     subnet_cidr?: string;
     vlan_id?: number | null;
     display_order?: number;
@@ -644,6 +645,90 @@ export function updateAdminWorkstationClassrooms(
     );
 }
 
+export type AdminRouter = {
+    id: number;
+    name: string;
+    api_host: string;
+    api_port: number;
+    api_use_ssl: boolean;
+    api_username: string;
+    is_enabled: boolean;
+    poll_enabled: boolean;
+    sync_enabled: boolean;
+    poll_interval_seconds: number;
+    created_at: string;
+    updated_at: string;
+};
+
+export type AdminRouterCreateRequest = {
+    name: string;
+    api_host: string;
+    api_port: number;
+    api_use_ssl: boolean;
+    api_username: string;
+    api_password: string;
+    is_enabled: boolean;
+    poll_enabled: boolean;
+    sync_enabled: boolean;
+    poll_interval_seconds: number;
+};
+
+export type AdminRouterUpdateRequest = Partial<AdminRouterCreateRequest>;
+
+export type AdminRouterServiceStatus = {
+    id: number;
+    router_id: number;
+    service_name: string;
+    worker_id: string | null;
+    status: string;
+    is_running: boolean;
+    heartbeat_at: string | null;
+    last_started_at: string | null;
+    last_attempt_at: string | null;
+    last_success_at: string | null;
+    last_error_at: string | null;
+    last_error: string | null;
+    consecutive_failures: number;
+    details: Record<string, unknown>;
+    updated_at: string;
+};
+
+export type AdminRouterStatusItem = {
+    router: AdminRouter;
+    services: AdminRouterServiceStatus[];
+};
+
+export function getAdminRouters(): Promise<AdminRouter[]> {
+    return request<AdminRouter[]>("/api/admin/routers");
+}
+
+export function createAdminRouter(
+    payload: AdminRouterCreateRequest,
+): Promise<AdminRouter> {
+    return request<AdminRouter>("/api/admin/routers", {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}
+
+export function updateAdminRouter(
+    routerId: number,
+    payload: AdminRouterUpdateRequest,
+): Promise<AdminRouter> {
+    return request<AdminRouter>(`/api/admin/routers/${routerId}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+    });
+}
+
+export function getAdminRoutersStatus(): Promise<AdminRouterStatusItem[]> {
+    return request<AdminRouterStatusItem[]>("/api/admin/routers/status");
+}
+
+export function getAdminRouterStatus(routerId: number): Promise<AdminRouterServiceStatus[]> {
+    return request<AdminRouterServiceStatus[]>(`/api/admin/routers/${routerId}/status`);
+}
+
 export type MaintenanceContainerStatus = {
     id: string;
     name: string;
@@ -674,7 +759,6 @@ export type MaintenanceContainerLogsResponse = {
     logs: string;
 };
 
-
 export function getMaintenanceContainerLogs(
     containerId: string,
     tail: 100 | 1000 | 10000,
@@ -683,7 +767,6 @@ export function getMaintenanceContainerLogs(
         `/api/admin/maintenance/containers/${encodeURIComponent(containerId)}/logs?tail=${tail}`,
     );
 }
-
 
 export type MaintenanceDatabaseRestoreResponse = {
     restored: boolean;
