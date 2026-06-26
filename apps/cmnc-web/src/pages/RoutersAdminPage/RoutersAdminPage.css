@@ -2,6 +2,7 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
+    color: #e5e7eb;
 }
 
 .routers-page__header {
@@ -13,11 +14,12 @@
 
 .routers-page__header h2 {
     margin: 0 0 6px;
+    color: #f8fafc;
 }
 
 .routers-page__header p {
     margin: 0;
-    color: #64748b;
+    color: #94a3b8;
 }
 
 .routers-page__actions {
@@ -29,9 +31,10 @@
 
 .routers-table-wrapper {
     overflow-x: auto;
-    border: 1px solid #e2e8f0;
+    border: 1px solid #1f2937;
     border-radius: 14px;
-    background: #fff;
+    background: #0f172a;
+    box-shadow: 0 18px 45px rgba(2, 6, 23, 0.35);
 }
 
 .routers-table {
@@ -43,14 +46,14 @@
 .routers-table th,
 .routers-table td {
     padding: 12px;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid #1f2937;
     text-align: left;
     vertical-align: top;
 }
 
 .routers-table th {
-    background: #f8fafc;
-    color: #334155;
+    background: #111827;
+    color: #dbeafe;
     font-weight: 700;
     white-space: nowrap;
 }
@@ -59,34 +62,42 @@
     border-bottom: 0;
 }
 
+.routers-table tbody tr {
+    background: #0f172a;
+}
+
+.routers-table tbody tr:nth-child(even) {
+    background: #111827;
+}
+
 .routers-table__name {
     font-weight: 700;
-    color: #0f172a;
+    color: #f8fafc;
 }
 
 .routers-table__muted {
     margin-top: 3px;
-    color: #64748b;
+    color: #94a3b8;
     font-size: 12px;
 }
 
 .routers-table__warning {
     margin-top: 4px;
-    color: #92400e;
+    color: #fbbf24;
     font-size: 12px;
 }
 
 .routers-table__error {
     max-width: 340px;
     margin-top: 4px;
-    color: #b91c1c;
+    color: #fca5a5;
     font-size: 12px;
     white-space: pre-wrap;
     word-break: break-word;
 }
 
 .routers-table__empty {
-    color: #64748b;
+    color: #94a3b8;
     text-align: center !important;
 }
 
@@ -110,41 +121,41 @@
     min-width: 76px;
     padding: 3px 8px;
     border-radius: 999px;
-    background: #e2e8f0;
-    color: #334155;
+    background: #334155;
+    color: #e5e7eb;
     font-size: 12px;
     font-weight: 700;
     text-transform: uppercase;
 }
 
 .router-status-pill--ok {
-    background: #dcfce7;
-    color: #166534;
+    background: rgba(22, 101, 52, 0.28);
+    color: #86efac;
 }
 
 .router-status-pill--starting,
 .router-status-pill--warning {
-    background: #fef3c7;
-    color: #92400e;
+    background: rgba(146, 64, 14, 0.35);
+    color: #fbbf24;
 }
 
 .router-status-pill--error,
 .router-status-pill--stale {
-    background: #fee2e2;
-    color: #991b1b;
+    background: rgba(127, 29, 29, 0.5);
+    color: #fecaca;
 }
 
 .router-status-pill--disabled {
-    background: #e2e8f0;
-    color: #475569;
+    background: #334155;
+    color: #cbd5e1;
 }
 
 .mini-button,
 .toggle-button {
-    border: 1px solid #cbd5e1;
+    border: 1px solid #475569;
     border-radius: 999px;
-    background: #fff;
-    color: #334155;
+    background: #111827;
+    color: #e5e7eb;
     cursor: pointer;
     font-size: 12px;
     font-weight: 700;
@@ -153,13 +164,13 @@
 
 .mini-button:hover,
 .toggle-button:hover {
-    background: #f8fafc;
+    background: #1f2937;
 }
 
 .toggle-button--active {
-    border-color: #86efac;
-    background: #dcfce7;
-    color: #166534;
+    border-color: #22c55e;
+    background: rgba(22, 101, 52, 0.35);
+    color: #bbf7d0;
 }
 
 .routers-modal-backdrop {
@@ -170,16 +181,18 @@
     align-items: center;
     justify-content: center;
     padding: 16px;
-    background: rgba(15, 23, 42, 0.45);
+    background: rgba(2, 6, 23, 0.78);
 }
 
 .routers-modal {
     width: min(760px, 100%);
     max-height: calc(100vh - 32px);
     overflow: auto;
+    border: 1px solid #1f2937;
     border-radius: 16px;
-    background: #fff;
-    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.25);
+    background: #0f172a;
+    color: #e5e7eb;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
 }
 
 .routers-modal form {
@@ -199,6 +212,7 @@
 
 .routers-modal__header h3 {
     margin: 0;
+    color: #f8fafc;
 }
 
 .routers-modal__footer {
@@ -215,21 +229,27 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    color: #334155;
+    color: #cbd5e1;
     font-weight: 700;
 }
 
 .routers-form-grid input {
-    border: 1px solid #cbd5e1;
+    border: 1px solid #334155;
     border-radius: 10px;
     padding: 10px 12px;
+    background: #020617;
+    color: #f8fafc;
     font: inherit;
+}
+
+.routers-form-grid input::placeholder {
+    color: #64748b;
 }
 
 .routers-form-grid input:focus {
     border-color: #2563eb;
     outline: none;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
 }
 
 .routers-checkboxes {
@@ -242,7 +262,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    color: #334155;
+    color: #cbd5e1;
     font-weight: 700;
 }
 
@@ -251,14 +271,14 @@
     border-radius: 999px;
     width: 34px;
     height: 34px;
-    background: #f1f5f9;
-    color: #334155;
+    background: #1f2937;
+    color: #e5e7eb;
     cursor: pointer;
     font-weight: 700;
 }
 
 .icon-button:hover {
-    background: #e2e8f0;
+    background: #374151;
 }
 
 @media (max-width: 760px) {
