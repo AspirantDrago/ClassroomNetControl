@@ -730,7 +730,7 @@ function RouterCapabilitiesResultCard({ state, onClose }: RouterCapabilitiesResu
                         className={capability.ok ? "router-capability router-capability--ok" : "router-capability router-capability--error"}
                     >
                         <div className="router-capability__top">
-                            <span className={capability.ok ? "status-pill status-pill--ok" : "status-pill status-pill--error"}>
+                            <span className={capability.ok ? "router-status-pill router-status-pill--ok" : "router-status-pill router-status-pill--error"}>
                                 {capability.ok ? "ok" : "error"}
                             </span>
                             <strong>{capability.label}</strong>
@@ -852,7 +852,7 @@ function ServiceStatusBlock({ title, enabled, status, onToggle }: ServiceStatusB
     return (
         <div className="service-status-block">
             <div className="service-status-block__top">
-                <span className={`status-pill status-pill--${status?.status ?? "unknown"}`}>
+                <span className={`router-status-pill router-status-pill--${status?.status ?? "unknown"}`}>
                     {status?.status ?? "unknown"}
                 </span>
                 <button type="button" className="mini-button" onClick={onToggle}>

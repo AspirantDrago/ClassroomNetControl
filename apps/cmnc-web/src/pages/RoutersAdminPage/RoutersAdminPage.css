@@ -114,7 +114,7 @@
     flex-wrap: wrap;
 }
 
-.status-pill {
+.router-status-pill {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -128,24 +128,24 @@
     text-transform: uppercase;
 }
 
-.status-pill--ok {
+.router-status-pill--ok {
     background: rgba(22, 101, 52, 0.28);
     color: #86efac;
 }
 
-.status-pill--starting,
-.status-pill--warning {
+.router-status-pill--starting,
+.router-status-pill--warning {
     background: rgba(146, 64, 14, 0.35);
     color: #fbbf24;
 }
 
-.status-pill--error,
-.status-pill--stale {
+.router-status-pill--error,
+.router-status-pill--stale {
     background: rgba(127, 29, 29, 0.5);
     color: #fecaca;
 }
 
-.status-pill--disabled {
+.router-status-pill--disabled {
     background: #334155;
     color: #cbd5e1;
 }
