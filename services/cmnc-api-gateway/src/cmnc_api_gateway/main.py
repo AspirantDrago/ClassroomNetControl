@@ -1943,20 +1943,32 @@ async def admin_upload_database_backup(
         ) from exc
 
 
+def get_default_build_info() -> dict[str, Any]:
+    return {
+        "git_commit_count": 0,
+        "compose_build_number": 0,
+        "version": "v 0.0",
+        "built_at": None,
+    }
+
+
 @app.get("/api/build-info")
 async def build_info() -> dict[str, Any]:
     path = Path("/app/.build-info.json")
 
-    if not path.exists():
-        return {
-            "git_commit_count": 0,
-            "compose_build_number": 0,
-            "version": "v 0.0",
-            "built_at": None,
-        }
+    if not path.is_file():
+        return get_default_build_info()
 
-    with path.open("r", encoding="utf-8") as file:
-        return json.load(file)
+    try:
+        with path.open("r", encoding="utf-8") as file:
+            data = json.load(file)
+    except (OSError, json.JSONDecodeError):
+        return get_default_build_info()
+
+    if not isinstance(data, dict):
+        return get_default_build_info()
+
+    return data
 
 
 def run() -> None:
