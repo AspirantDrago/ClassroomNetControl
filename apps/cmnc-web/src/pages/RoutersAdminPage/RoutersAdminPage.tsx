@@ -7,7 +7,9 @@ import {
     type AdminRouterCreateRequest,
     type AdminRouterServiceStatus,
     type AdminRouterStatusItem,
+    type AdminRouterTestConnectionResponse,
     type AdminRouterUpdateRequest,
+    testAdminRouterConnection,
     updateAdminRouter,
 } from "../../api";
 import "./RoutersAdminPage.css";
@@ -25,6 +27,11 @@ type RouterFormState = {
     pollEnabled: boolean;
     syncEnabled: boolean;
     pollIntervalSeconds: string;
+};
+
+type RouterTestResultState = {
+    routerName: string;
+    result: AdminRouterTestConnectionResponse;
 };
 
 const EMPTY_FORM: RouterFormState = {
@@ -48,6 +55,8 @@ export function RoutersAdminPage() {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [form, setForm] = useState<RouterFormState | null>(null);
+    const [testingRouterId, setTestingRouterId] = useState<number | null>(null);
+    const [testResult, setTestResult] = useState<RouterTestResultState | null>(null);
 
     async function loadStatuses(showLoader = false) {
         if (showLoader) {
@@ -238,6 +247,24 @@ export function RoutersAdminPage() {
         }
     }
 
+    async function handleTestConnection(router: AdminRouter) {
+        setTestingRouterId(router.id);
+        setTestResult(null);
+        setError(null);
+
+        try {
+            const result = await testAdminRouterConnection(router.id);
+            setTestResult({
+                routerName: router.name,
+                result,
+            });
+        } catch (err) {
+            setError(extractErrorDetail(err));
+        } finally {
+            setTestingRouterId(null);
+        }
+    }
+
     return (
         <section className="routers-page">
             <div className="routers-page__header">
@@ -257,6 +284,7 @@ export function RoutersAdminPage() {
             </div>
 
             {error && <pre className="error-box">{error}</pre>}
+            {testResult && <RouterTestResultCard state={testResult} onClose={() => setTestResult(null)} />}
             {loading && <div className="loading">Загрузка...</div>}
 
             <div className="routers-table-wrapper">
@@ -279,6 +307,8 @@ export function RoutersAdminPage() {
                                 item={item}
                                 onEdit={openEditForm}
                                 onToggle={toggleRouter}
+                                onTest={handleTestConnection}
+                                testing={testingRouterId === item.router.id}
                             />
                         ))}
 
@@ -403,9 +433,11 @@ type RouterRowProps = {
     item: AdminRouterStatusItem;
     onEdit: (router: AdminRouter) => void;
     onToggle: (router: AdminRouter, field: "is_enabled" | "poll_enabled" | "sync_enabled") => Promise<void>;
+    onTest: (router: AdminRouter) => Promise<void>;
+    testing: boolean;
 };
 
-function RouterRow({ item, onEdit, onToggle }: RouterRowProps) {
+function RouterRow({ item, onEdit, onToggle, onTest, testing }: RouterRowProps) {
     const router = item.router;
     const poller = findService(item.services, "mikrotik_poller");
     const sync = findService(item.services, "policy_sync");
@@ -446,11 +478,76 @@ function RouterRow({ item, onEdit, onToggle }: RouterRowProps) {
                 />
             </td>
             <td>
-                <button className="secondary-button" type="button" onClick={() => onEdit(router)}>
-                    Редактировать
-                </button>
+                <div className="routers-table__actions">
+                    <button className="secondary-button" type="button" onClick={() => onEdit(router)}>
+                        Редактировать
+                    </button>
+                    <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={testing}
+                        onClick={() => void onTest(router)}
+                    >
+                        {testing ? "Проверка..." : "Проверить"}
+                    </button>
+                </div>
             </td>
         </tr>
+    );
+}
+
+
+type RouterTestResultCardProps = {
+    state: RouterTestResultState;
+    onClose: () => void;
+};
+
+function RouterTestResultCard({ state, onClose }: RouterTestResultCardProps) {
+    const result = state.result;
+    const identityName = getStringField(result.identity, "name");
+    const boardName = getStringField(result.resource, "board-name");
+    const version = getStringField(result.resource, "version");
+
+    return (
+        <div className={result.ok ? "router-test-result router-test-result--ok" : "router-test-result router-test-result--error"}>
+            <div className="router-test-result__header">
+                <div>
+                    <strong>
+                        {result.ok ? "Подключение успешно" : "Подключение не прошло"}
+                    </strong>
+                    <div className="router-test-result__muted">
+                        {state.routerName} - {result.checked_url}
+                    </div>
+                </div>
+                <button type="button" className="mini-button" onClick={onClose}>
+                    Закрыть
+                </button>
+            </div>
+
+            {result.ok ? (
+                <div className="router-test-result__details">
+                    <span>HTTP: {result.status_code ?? "-"}</span>
+                    <span>identity: {identityName ?? "-"}</span>
+                    <span>board: {boardName ?? "-"}</span>
+                    <span>version: {version ?? "-"}</span>
+                </div>
+            ) : (
+                <>
+                    <div className="router-test-result__error-text">
+                        {result.error ?? "Unknown connection error"}
+                    </div>
+                    {result.status_code !== null && (
+                        <div className="router-test-result__muted">HTTP: {result.status_code}</div>
+                    )}
+                    {result.redirect_location && (
+                        <div className="router-test-result__muted">redirect: {result.redirect_location}</div>
+                    )}
+                    {result.response_preview && (
+                        <pre className="router-test-result__preview">{result.response_preview}</pre>
+                    )}
+                </>
+            )}
+        </div>
     );
 }
 
@@ -572,4 +669,9 @@ function formatDateTime(value: string | null | undefined): string {
         minute: "2-digit",
         second: "2-digit",
     });
+}
+
+function getStringField(value: Record<string, unknown> | null, fieldName: string): string | null {
+    const fieldValue = value?.[fieldName];
+    return typeof fieldValue === "string" && fieldValue.trim() !== "" ? fieldValue : null;
 }

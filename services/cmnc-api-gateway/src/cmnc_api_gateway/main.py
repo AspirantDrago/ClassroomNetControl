@@ -1081,6 +1081,196 @@ async def proxy_inventory_admin_request(
         ) from exc
 
 
+def get_required_router_string(router: dict[str, Any], field_name: str) -> str:
+    value = router.get(field_name)
+
+    if not isinstance(value, str) or value.strip() == "":
+        raise HTTPException(
+            status_code=502,
+            detail=f"Inventory service response does not contain {field_name}",
+        )
+
+    return value.strip()
+
+
+def get_required_router_int(router: dict[str, Any], field_name: str) -> int:
+    value = router.get(field_name)
+
+    if not isinstance(value, int):
+        raise HTTPException(
+            status_code=502,
+            detail=f"Inventory service response does not contain {field_name}",
+        )
+
+    return value
+
+
+def get_router_rest_base_url(router: dict[str, Any]) -> str:
+    scheme = "https" if router.get("api_use_ssl") is True else "http"
+    host = get_required_router_string(router, "api_host")
+    port = get_required_router_int(router, "api_port")
+    return f"{scheme}://{host}:{port}/rest"
+
+
+def get_response_preview(response: httpx.Response, limit: int = 500) -> str | None:
+    try:
+        text = response.text.strip()
+    except UnicodeDecodeError:
+        return None
+
+    if not text:
+        return None
+
+    if len(text) <= limit:
+        return text
+
+    return f"{text[:limit]}..."
+
+
+def response_looks_like_html(response: httpx.Response) -> bool:
+    content_type = response.headers.get("content-type", "").lower()
+
+    if "text/html" in content_type:
+        return True
+
+    preview = get_response_preview(response, limit=80)
+    if preview is None:
+        return False
+
+    lowered = preview.lower()
+    return lowered.startswith("<!doctype html") or lowered.startswith("<html")
+
+
+async def test_mikrotik_router_connection(router: dict[str, Any]) -> dict[str, Any]:
+    router_id = router.get("id")
+    base_url = get_router_rest_base_url(router)
+    checked_url = f"{base_url}/system/resource"
+    username = get_required_router_string(router, "api_username")
+    password = get_required_router_string(router, "api_password")
+
+    base_result: dict[str, Any] = {
+        "ok": False,
+        "router_id": router_id if isinstance(router_id, int) else None,
+        "base_url": base_url,
+        "checked_url": checked_url,
+        "status_code": None,
+        "error": None,
+        "redirect_location": None,
+        "response_preview": None,
+        "resource": None,
+        "identity": None,
+    }
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=10.0,
+            verify=False,
+            auth=(username, password),
+            follow_redirects=False,
+        ) as client:
+            response = await client.get(checked_url)
+
+            identity_response: httpx.Response | None = None
+            if response.is_success:
+                try:
+                    identity_response = await client.get(f"{base_url}/system/identity")
+                except httpx.HTTPError:
+                    identity_response = None
+    except httpx.TimeoutException as exc:
+        return {
+            **base_result,
+            "error": f"MikroTik REST API timeout: {exc}",
+        }
+    except httpx.ConnectError as exc:
+        return {
+            **base_result,
+            "error": f"Cannot connect to MikroTik REST API: {exc}",
+        }
+    except httpx.RequestError as exc:
+        return {
+            **base_result,
+            "error": f"MikroTik REST API request failed: {exc}",
+        }
+
+    preview = get_response_preview(response)
+    redirect_location = response.headers.get("location")
+
+    if response.is_redirect:
+        return {
+            **base_result,
+            "status_code": response.status_code,
+            "redirect_location": redirect_location,
+            "response_preview": preview,
+            "error": (
+                "MikroTik REST API returned redirect. "
+                "Usually this means that the configured host/port points to a web UI "
+                "or to a non-REST endpoint instead of RouterOS REST API."
+            ),
+        }
+
+    if response.status_code in {401, 403}:
+        return {
+            **base_result,
+            "status_code": response.status_code,
+            "response_preview": preview,
+            "error": "MikroTik REST API authentication failed. Check username and password.",
+        }
+
+    if response_looks_like_html(response):
+        return {
+            **base_result,
+            "status_code": response.status_code,
+            "response_preview": preview,
+            "error": (
+                "The endpoint returned HTML, not RouterOS REST JSON. "
+                "Check that REST API is enabled and host/port are correct."
+            ),
+        }
+
+    if not response.is_success:
+        return {
+            **base_result,
+            "status_code": response.status_code,
+            "response_preview": preview,
+            "error": f"MikroTik REST API returned HTTP {response.status_code}.",
+        }
+
+    try:
+        resource = response.json()
+    except ValueError:
+        return {
+            **base_result,
+            "status_code": response.status_code,
+            "response_preview": preview,
+            "error": "MikroTik REST API returned non-JSON response.",
+        }
+
+    if not isinstance(resource, dict):
+        return {
+            **base_result,
+            "status_code": response.status_code,
+            "response_preview": preview,
+            "error": "MikroTik REST API resource response is not an object.",
+        }
+
+    identity: dict[str, Any] | None = None
+    if identity_response is not None and identity_response.is_success:
+        try:
+            identity_raw = identity_response.json()
+            if isinstance(identity_raw, dict):
+                identity = identity_raw
+        except ValueError:
+            identity = None
+
+    return {
+        **base_result,
+        "ok": True,
+        "status_code": response.status_code,
+        "resource": resource,
+        "identity": identity,
+    }
+
+
 @app.get("/api/admin/routers")
 async def admin_get_routers(
     request: Request,
@@ -1127,6 +1317,36 @@ async def admin_update_router(
             json=payload,
         )
     )
+
+
+@app.post("/api/admin/routers/{router_id}/test-connection")
+async def admin_test_router_connection(
+    router_id: int,
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    require_permission(principal, PERMISSION_CLASSROOMS_MANAGE)
+
+    try:
+        router = await inventory_client.get_json(
+            f"/internal/routers/{router_id}/connection"
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Inventory service unavailable: {exc}",
+        ) from exc
+
+    if not isinstance(router, dict):
+        raise HTTPException(status_code=502, detail="Invalid inventory service response")
+
+    return await test_mikrotik_router_connection(router)
 
 
 @app.get("/api/admin/routers/status")

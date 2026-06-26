@@ -698,6 +698,19 @@ export type AdminRouterStatusItem = {
     services: AdminRouterServiceStatus[];
 };
 
+export type AdminRouterTestConnectionResponse = {
+    ok: boolean;
+    router_id: number | null;
+    base_url: string;
+    checked_url: string;
+    status_code: number | null;
+    error: string | null;
+    redirect_location: string | null;
+    response_preview: string | null;
+    resource: Record<string, unknown> | null;
+    identity: Record<string, unknown> | null;
+};
+
 export function getAdminRouters(): Promise<AdminRouter[]> {
     return request<AdminRouter[]>("/api/admin/routers");
 }
@@ -727,6 +740,12 @@ export function getAdminRoutersStatus(): Promise<AdminRouterStatusItem[]> {
 
 export function getAdminRouterStatus(routerId: number): Promise<AdminRouterServiceStatus[]> {
     return request<AdminRouterServiceStatus[]>(`/api/admin/routers/${routerId}/status`);
+}
+
+export function testAdminRouterConnection(routerId: number): Promise<AdminRouterTestConnectionResponse> {
+    return request<AdminRouterTestConnectionResponse>(`/api/admin/routers/${routerId}/test-connection`, {
+        method: "POST",
+    });
 }
 
 export type MaintenanceContainerStatus = {
