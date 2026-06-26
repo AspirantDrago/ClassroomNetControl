@@ -2,11 +2,15 @@ import asyncio
 import logging
 import signal
 import uuid
+from time import perf_counter
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Final
+from typing import Any, Final
 
+import httpx
+import uvicorn
+from fastapi import FastAPI, HTTPException
 from pydantic import SecretStr
 
 from cmnc_contracts.events import DhcpLeasesObservedEvent
@@ -27,6 +31,8 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(settings.service_name)
+
+app = FastAPI(title=settings.service_name)
 
 SERVICE_NAME: Final[str] = "mikrotik_poller"
 _shutdown_event: Final[asyncio.Event] = asyncio.Event()
@@ -93,6 +99,190 @@ async def update_status_safely(
             router_id,
             exc_info=True,
         )
+
+
+def get_runtime_inventory_client() -> InventoryClient:
+    inventory_client = getattr(app.state, "inventory_client", None)
+
+    if not isinstance(inventory_client, InventoryClient):
+        raise HTTPException(status_code=503, detail="Poller service is not ready")
+
+    return inventory_client
+
+
+def get_runtime_rabbitmq_client() -> RabbitMqClient:
+    rabbitmq_client = getattr(app.state, "rabbitmq_client", None)
+
+    if not isinstance(rabbitmq_client, RabbitMqClient):
+        raise HTTPException(status_code=503, detail="Poller service is not ready")
+
+    return rabbitmq_client
+
+
+@app.get("/health")
+async def health() -> dict[str, str]:
+    return {
+        "service": settings.service_name,
+        "status": "ok",
+    }
+
+
+@app.post("/internal/routers/{router_id}/poll-now")
+async def internal_poll_router_now(router_id: int) -> dict[str, Any]:
+    return await poll_router_once_manual(
+        router_id=router_id,
+        inventory_client=get_runtime_inventory_client(),
+        rabbitmq_client=get_runtime_rabbitmq_client(),
+    )
+
+
+async def poll_router_once_manual(
+    *,
+    router_id: int,
+    inventory_client: InventoryClient,
+    rabbitmq_client: RabbitMqClient,
+) -> dict[str, Any]:
+    worker_id = f"{settings.service_name}:manual:{router_id}:{uuid.uuid4()}"
+    started_at = now_utc()
+
+    try:
+        router = await inventory_client.get_router_connection(router_id)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Router not found") from exc
+
+        raise HTTPException(status_code=502, detail=exc.response.text) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Inventory service unavailable: {exc}") from exc
+
+    if not router.is_enabled:
+        return {
+            "ok": False,
+            "router_id": router.id,
+            "router_name": router.name,
+            "leases_count": None,
+            "snapshot_published": None,
+            "duration_ms": 0,
+            "error": "Router is disabled",
+            "details": {
+                "manual": True,
+                "api_host": router.api_host,
+                "api_port": router.api_port,
+                "api_use_ssl": router.api_use_ssl,
+            },
+        }
+
+    mikrotik_client = MikroTikClient(
+        base_url=router.base_url,
+        username=router.api_username,
+        password=SecretStr(router.api_password),
+        verify_tls=settings.mikrotik_verify_tls,
+        timeout_seconds=settings.mikrotik_timeout_seconds,
+    )
+
+    last_attempt_at = now_utc()
+    await update_status_safely(
+        inventory_client,
+        router_id=router.id,
+        worker_id=worker_id,
+        status="starting",
+        is_running=router.poll_enabled,
+        heartbeat_at=last_attempt_at,
+        last_started_at=started_at,
+        last_attempt_at=last_attempt_at,
+        consecutive_failures=0,
+        details={
+            "manual": True,
+            "api_host": router.api_host,
+            "api_port": router.api_port,
+            "api_use_ssl": router.api_use_ssl,
+        },
+    )
+
+    started_perf = perf_counter()
+
+    try:
+        result_details = await poll_once(
+            router=router,
+            mikrotik_client=mikrotik_client,
+            rabbitmq_client=rabbitmq_client,
+        )
+    except Exception as exc:
+        finished_at = now_utc()
+        duration_ms = int((perf_counter() - started_perf) * 1000)
+        error_text = f"{type(exc).__name__}: {exc}"
+        details: dict[str, Any] = {
+            "manual": True,
+            "duration_ms": duration_ms,
+            "api_host": router.api_host,
+            "api_port": router.api_port,
+            "api_use_ssl": router.api_use_ssl,
+        }
+
+        logger.exception(
+            "Manual MikroTik polling failed: router_id=%s, router_name=%s",
+            router.id,
+            router.name,
+        )
+
+        await update_status_safely(
+            inventory_client,
+            router_id=router.id,
+            worker_id=worker_id,
+            status="error",
+            is_running=router.poll_enabled,
+            heartbeat_at=finished_at,
+            last_started_at=started_at,
+            last_attempt_at=last_attempt_at,
+            last_error_at=finished_at,
+            last_error=error_text,
+            consecutive_failures=1,
+            details=details,
+        )
+
+        return {
+            "ok": False,
+            "router_id": router.id,
+            "router_name": router.name,
+            "leases_count": None,
+            "snapshot_published": None,
+            "duration_ms": duration_ms,
+            "error": error_text,
+            "details": details,
+        }
+
+    finished_at = now_utc()
+    duration_ms = int((perf_counter() - started_perf) * 1000)
+    details = {
+        **(result_details or {}),
+        "manual": True,
+        "duration_ms": duration_ms,
+    }
+
+    await update_status_safely(
+        inventory_client,
+        router_id=router.id,
+        worker_id=worker_id,
+        status="ok",
+        is_running=router.poll_enabled,
+        heartbeat_at=finished_at,
+        last_started_at=started_at,
+        last_attempt_at=last_attempt_at,
+        last_success_at=finished_at,
+        consecutive_failures=0,
+        details=details,
+    )
+
+    return {
+        "ok": True,
+        "router_id": router.id,
+        "router_name": router.name,
+        "leases_count": details.get("leases_count"),
+        "snapshot_published": details.get("snapshot_published"),
+        "duration_ms": duration_ms,
+        "error": None,
+        "details": details,
+    }
 
 
 async def poll_once(
@@ -406,14 +596,53 @@ async def main() -> None:
     rabbitmq_client = RabbitMqClient(settings.rabbitmq_url)
     await rabbitmq_client.connect()
 
-    logger.info("%s started", settings.service_name)
+    app.state.inventory_client = inventory_client
+    app.state.rabbitmq_client = rabbitmq_client
 
-    try:
-        await supervisor(
+    api_config = uvicorn.Config(
+        app,
+        host=settings.host,
+        port=settings.port,
+        log_level="info",
+    )
+    api_server = uvicorn.Server(api_config)
+    api_task = asyncio.create_task(api_server.serve())
+    supervisor_task = asyncio.create_task(
+        supervisor(
             inventory_client=inventory_client,
             rabbitmq_client=rabbitmq_client,
         )
+    )
+
+    logger.info(
+        "%s started: api=%s:%s",
+        settings.service_name,
+        settings.host,
+        settings.port,
+    )
+
+    try:
+        done, _pending = await asyncio.wait(
+            {api_task, supervisor_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        for task in done:
+            exc = task.exception()
+            if exc is not None:
+                raise exc
     finally:
+        _shutdown_event.set()
+        api_server.should_exit = True
+
+        for task in (supervisor_task, api_task):
+            if not task.done():
+                task.cancel()
+
+        for task in (supervisor_task, api_task):
+            with suppress(asyncio.CancelledError):
+                await task
+
         await rabbitmq_client.close()
 
 

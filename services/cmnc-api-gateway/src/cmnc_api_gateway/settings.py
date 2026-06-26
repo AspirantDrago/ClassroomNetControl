@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     auth_service_url: str = "http://localhost:8001"
     classroom_service_url: str = "http://localhost:8002"
     inventory_service_url: str = "http://localhost:8003"
+    mikrotik_poller_service_url: str = "http://localhost:8006"
     maintenance_service_url: str = "http://localhost:8004"
     camera_service_url: str = "http://localhost:8005"
 

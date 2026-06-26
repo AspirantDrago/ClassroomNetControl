@@ -3,8 +3,10 @@ import {
     createAdminRouter,
     extractErrorDetail,
     getAdminRoutersStatus,
+    pollAdminRouterNow,
     type AdminRouter,
     type AdminRouterCreateRequest,
+    type AdminRouterPollNowResponse,
     type AdminRouterServiceStatus,
     type AdminRouterStatusItem,
     type AdminRouterTestConnectionResponse,
@@ -34,6 +36,11 @@ type RouterTestResultState = {
     result: AdminRouterTestConnectionResponse;
 };
 
+type RouterPollNowResultState = {
+    routerName: string;
+    result: AdminRouterPollNowResponse;
+};
+
 const EMPTY_FORM: RouterFormState = {
     mode: "create",
     router: null,
@@ -57,6 +64,8 @@ export function RoutersAdminPage() {
     const [form, setForm] = useState<RouterFormState | null>(null);
     const [testingRouterId, setTestingRouterId] = useState<number | null>(null);
     const [testResult, setTestResult] = useState<RouterTestResultState | null>(null);
+    const [pollingRouterId, setPollingRouterId] = useState<number | null>(null);
+    const [pollNowResult, setPollNowResult] = useState<RouterPollNowResultState | null>(null);
 
     async function loadStatuses(showLoader = false) {
         if (showLoader) {
@@ -265,6 +274,25 @@ export function RoutersAdminPage() {
         }
     }
 
+    async function handlePollNow(router: AdminRouter) {
+        setPollingRouterId(router.id);
+        setPollNowResult(null);
+        setError(null);
+
+        try {
+            const result = await pollAdminRouterNow(router.id);
+            setPollNowResult({
+                routerName: router.name,
+                result,
+            });
+            await loadStatuses(false);
+        } catch (err) {
+            setError(extractErrorDetail(err));
+        } finally {
+            setPollingRouterId(null);
+        }
+    }
+
     return (
         <section className="routers-page">
             <div className="routers-page__header">
@@ -285,6 +313,7 @@ export function RoutersAdminPage() {
 
             {error && <pre className="error-box">{error}</pre>}
             {testResult && <RouterTestResultCard state={testResult} onClose={() => setTestResult(null)} />}
+            {pollNowResult && <RouterPollNowResultCard state={pollNowResult} onClose={() => setPollNowResult(null)} />}
             {loading && <div className="loading">Загрузка...</div>}
 
             <div className="routers-table-wrapper">
@@ -309,6 +338,8 @@ export function RoutersAdminPage() {
                                 onToggle={toggleRouter}
                                 onTest={handleTestConnection}
                                 testing={testingRouterId === item.router.id}
+                                onPollNow={handlePollNow}
+                                polling={pollingRouterId === item.router.id}
                             />
                         ))}
 
@@ -435,9 +466,11 @@ type RouterRowProps = {
     onToggle: (router: AdminRouter, field: "is_enabled" | "poll_enabled" | "sync_enabled") => Promise<void>;
     onTest: (router: AdminRouter) => Promise<void>;
     testing: boolean;
+    onPollNow: (router: AdminRouter) => Promise<void>;
+    polling: boolean;
 };
 
-function RouterRow({ item, onEdit, onToggle, onTest, testing }: RouterRowProps) {
+function RouterRow({ item, onEdit, onToggle, onTest, testing, onPollNow, polling }: RouterRowProps) {
     const router = item.router;
     const poller = findService(item.services, "mikrotik_poller");
     const sync = findService(item.services, "policy_sync");
@@ -489,6 +522,14 @@ function RouterRow({ item, onEdit, onToggle, onTest, testing }: RouterRowProps) 
                         onClick={() => void onTest(router)}
                     >
                         {testing ? "Проверка..." : "Проверить"}
+                    </button>
+                    <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={polling}
+                        onClick={() => void onPollNow(router)}
+                    >
+                        {polling ? "Опрос..." : "Опросить"}
                     </button>
                 </div>
             </td>
@@ -546,6 +587,46 @@ function RouterTestResultCard({ state, onClose }: RouterTestResultCardProps) {
                         <pre className="router-test-result__preview">{result.response_preview}</pre>
                     )}
                 </>
+            )}
+        </div>
+    );
+}
+
+
+type RouterPollNowResultCardProps = {
+    state: RouterPollNowResultState;
+    onClose: () => void;
+};
+
+function RouterPollNowResultCard({ state, onClose }: RouterPollNowResultCardProps) {
+    const result = state.result;
+
+    return (
+        <div className={result.ok ? "router-test-result router-test-result--ok" : "router-test-result router-test-result--error"}>
+            <div className="router-test-result__header">
+                <div>
+                    <strong>
+                        {result.ok ? "Опрос выполнен" : "Опрос не выполнен"}
+                    </strong>
+                    <div className="router-test-result__muted">
+                        {state.routerName} - router #{result.router_id}
+                    </div>
+                </div>
+                <button type="button" className="mini-button" onClick={onClose}>
+                    Закрыть
+                </button>
+            </div>
+
+            {result.ok ? (
+                <div className="router-test-result__details">
+                    <span>leases: {result.leases_count ?? "-"}</span>
+                    <span>snapshot: {result.snapshot_published === false ? "нет" : "да"}</span>
+                    <span>duration: {result.duration_ms ?? "-"} ms</span>
+                </div>
+            ) : (
+                <div className="router-test-result__error-text">
+                    {result.error ?? "Unknown poll error"}
+                </div>
             )}
         </div>
     );

@@ -51,6 +51,7 @@ app.add_middleware(
 auth_client = ServiceClient(settings.auth_service_url)
 classroom_client = ServiceClient(settings.classroom_service_url)
 inventory_client = ServiceClient(settings.inventory_service_url)
+poller_client = ServiceClient(settings.mikrotik_poller_service_url)
 maintenance_client = ServiceClient(settings.maintenance_service_url)
 camera_client = ServiceClient(settings.camera_service_url)
 
@@ -1347,6 +1348,31 @@ async def admin_test_router_connection(
         raise HTTPException(status_code=502, detail="Invalid inventory service response")
 
     return await test_mikrotik_router_connection(router)
+
+
+@app.post("/api/admin/routers/{router_id}/poll-now")
+async def admin_poll_router_now(
+    router_id: int,
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    require_permission(principal, PERMISSION_CLASSROOMS_MANAGE)
+
+    try:
+        return await poller_client.post_json(
+            f"/internal/routers/{router_id}/poll-now"
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Poller service unavailable: {exc}",
+        ) from exc
 
 
 @app.get("/api/admin/routers/status")
