@@ -1,5 +1,5 @@
 import type { FormEvent } from "react";
-import type { Classroom } from "../../api";
+import type { AdminRouter, Classroom } from "../../api";
 import { ClassroomCamerasAdminPanel } from "../ClassroomCamerasAdminPanel/ClassroomCamerasAdminPanel";
 import "./ClassroomFormModal.css";
 
@@ -7,6 +7,7 @@ export type ClassroomFormState =
     | {
           mode: "create";
           classroom: null;
+          routerId: string;
           name: string;
           subnetCidr: string;
           vlanId: string;
@@ -16,6 +17,7 @@ export type ClassroomFormState =
     | {
           mode: "edit";
           classroom: Classroom;
+          routerId: string;
           name: string;
           subnetCidr: string;
           vlanId: string;
@@ -25,6 +27,7 @@ export type ClassroomFormState =
 
 type ClassroomFormModalProps = {
     form: ClassroomFormState;
+    routers: AdminRouter[];
     busy: boolean;
     onChange: (form: ClassroomFormState) => void;
     onClose: () => void;
@@ -36,6 +39,7 @@ type ClassroomFormModalProps = {
 export function ClassroomFormModal(props: ClassroomFormModalProps) {
     const {
         form,
+        routers,
         busy,
         onChange,
         onClose,
@@ -43,6 +47,11 @@ export function ClassroomFormModal(props: ClassroomFormModalProps) {
         onDeactivate,
         onCamerasChanged,
     } = props;
+
+    const selectedRouterId = Number(form.routerId);
+    const hasSelectedRouterInList = routers.some(
+        (router) => router.id === selectedRouterId,
+    );
 
     return (
         <div className="modal-backdrop" onMouseDown={onClose}>
@@ -60,7 +69,7 @@ export function ClassroomFormModal(props: ClassroomFormModalProps) {
                         <div className="muted">
                             {form.mode === "create"
                                 ? "Аудитория появится в списке вкладок."
-                                : "Можно изменить название, подсеть, VLAN, порядок отображения, служебный статус и камеры."}
+                                : "Можно изменить название, подсеть, VLAN, MikroTik, порядок отображения, служебный статус и камеры."}
                         </div>
                     </div>
 
@@ -101,6 +110,38 @@ export function ClassroomFormModal(props: ClassroomFormModalProps) {
                                 }
                                 placeholder="192.168.100.0/24"
                             />
+                        </label>
+
+                        <label>
+                            MikroTik
+                            <select
+                                value={form.routerId}
+                                onChange={(event) =>
+                                    onChange({
+                                        ...form,
+                                        routerId: event.target.value,
+                                    })
+                                }
+                            >
+                                {!form.routerId && (
+                                    <option value="">
+                                        Выберите MikroTik
+                                    </option>
+                                )}
+
+                                {form.routerId && !hasSelectedRouterInList && (
+                                    <option value={form.routerId}>
+                                        MikroTik #{form.routerId}
+                                    </option>
+                                )}
+
+                                {routers.map((router) => (
+                                    <option key={router.id} value={router.id}>
+                                        {router.name} #{router.id}
+                                        {router.is_enabled ? "" : " - отключён"}
+                                    </option>
+                                ))}
+                            </select>
                         </label>
 
                         <label>

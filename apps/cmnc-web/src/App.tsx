@@ -8,6 +8,7 @@ import {
     clearAccessToken,
     deleteObservedDevice,
     extractErrorDetail,
+    type AdminRouter,
     type BuildInfo,
     type Classroom,
     type ClassroomDashboard,
@@ -15,6 +16,7 @@ import {
     type DashboardDevice,
     type DynamicDevice,
     createClassroom,
+    getAdminRouters,
     getClassroomDashboard,
     getClassrooms,
     getBuildInfo,
@@ -70,6 +72,7 @@ export function App() {
     const [buildInfo, setBuildInfo] = useState<BuildInfo | null>(null);
 
     const [classrooms, setClassrooms] = useState<Classroom[]>([]);
+    const [routers, setRouters] = useState<AdminRouter[]>([]);
     const [selectedClassroomId, setSelectedClassroomId] = useState<number | null>(null);
     const [dashboard, setDashboard] = useState<ClassroomDashboard | null>(null);
     const [loading, setLoading] = useState(false);
@@ -180,6 +183,35 @@ export function App() {
     }, [principal]);
 
     useEffect(() => {
+        if (principal === null || !canManageClassrooms(principal)) {
+            setRouters([]);
+            return;
+        }
+
+        let cancelled = false;
+
+        async function loadRouters() {
+            try {
+                const data = await getAdminRouters();
+
+                if (!cancelled) {
+                    setRouters(data);
+                }
+            } catch {
+                if (!cancelled) {
+                    setRouters([]);
+                }
+            }
+        }
+
+        void loadRouters();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [principal]);
+
+    useEffect(() => {
         if (principal === null || selectedClassroomId === null) {
             return;
         }
@@ -242,6 +274,20 @@ export function App() {
         }
     }
 
+    async function reloadRouters() {
+        if (principal === null || !canManageClassrooms(principal)) {
+            setRouters([]);
+            return;
+        }
+
+        try {
+            const data = await getAdminRouters();
+            setRouters(data);
+        } catch {
+            setRouters([]);
+        }
+    }
+
     async function reloadClassrooms(preferredClassroomId?: number | null) {
         const data = await getClassrooms();
         setClassrooms(data);
@@ -292,6 +338,7 @@ export function App() {
         clearAccessToken();
         setPrincipal(null);
         setClassrooms([]);
+        setRouters([]);
         setSelectedClassroomId(null);
         setDashboard(null);
         setError(null);
@@ -303,16 +350,28 @@ export function App() {
         setCurrentPage("dashboard");
     }
 
+    function getDefaultClassroomRouterId(): number {
+        return (
+            dashboard?.classroom.router_id ??
+            classrooms[0]?.router_id ??
+            routers.find((router) => router.is_enabled)?.id ??
+            routers[0]?.id ??
+            1
+        );
+    }
+
     function openCreateClassroomForm() {
         if (!canManageClassrooms(principal)) {
             return;
         }
 
         setError(null);
+        void reloadRouters();
 
         setClassroomForm({
             mode: "create",
             classroom: null,
+            routerId: getDefaultClassroomRouterId().toString(),
             name: "",
             subnetCidr: "",
             vlanId: "",
@@ -327,10 +386,12 @@ export function App() {
         }
 
         setError(null);
+        void reloadRouters();
 
         setClassroomForm({
             mode: "edit",
             classroom,
+            routerId: classroom.router_id.toString(),
             name: classroom.name,
             subnetCidr: classroom.subnet_cidr,
             vlanId: classroom.vlan_id?.toString() ?? "",
@@ -356,6 +417,9 @@ export function App() {
         try {
             const name = parseRequiredString(classroomForm.name, "Название");
             const subnetCidr = parseRequiredString(classroomForm.subnetCidr, "Подсеть");
+            const routerId = parseOptionalInteger(classroomForm.routerId, "MikroTik", {
+                min: 1,
+            });
             const vlanId = parseOptionalInteger(classroomForm.vlanId, "VLAN", {
                 min: 1,
                 max: 4094,
@@ -364,9 +428,14 @@ export function App() {
                 min: 0,
             }) ?? 0;
 
+            if (routerId === null) {
+                throw new Error("MikroTik должен быть выбран");
+            }
+
             if (classroomForm.mode === "create") {
                 const created = await createClassroom({
                     name,
+                    router_id: routerId,
                     subnet_cidr: subnetCidr,
                     vlan_id: vlanId,
                     display_order: displayOrder,
@@ -381,6 +450,7 @@ export function App() {
 
             const updated = await updateClassroom(classroomForm.classroom.id, {
                 name,
+                router_id: routerId,
                 subnet_cidr: subnetCidr,
                 vlan_id: vlanId,
                 display_order: displayOrder,
@@ -679,6 +749,10 @@ export function App() {
         return buildDeviceGrid(dashboard?.devices ?? []);
     }, [dashboard]);
 
+    const routerNames = useMemo(() => {
+        return new Map(routers.map((router) => [router.id, router.name]));
+    }, [routers]);
+
     const busyPinMac =
         deviceForm?.mode === "pin-observed" && busyForm
             ? deviceForm.device.mac_address
@@ -768,7 +842,10 @@ export function App() {
                                         <div className="muted">
                                             subnet: {dashboard.classroom.subnet_cidr}, VLAN:{" "}
                                             {dashboard.classroom.vlan_id ?? "-"}, MikroTik:{" "}
-                                            {dashboard.classroom.router_id}
+                                            {getRouterDisplayName(
+                                                dashboard.classroom.router_id,
+                                                routerNames,
+                                            )}
                                         </div>
                                     </div>
 
@@ -860,6 +937,7 @@ export function App() {
             {classroomForm && userCanManageClassrooms && (
                 <ClassroomFormModal
                     form={classroomForm}
+                    routers={routers}
                     busy={busyClassroomForm}
                     onChange={setClassroomForm}
                     onClose={closeClassroomForm}
@@ -879,4 +957,17 @@ function getPrincipalName(principal: CurrentPrincipal): string {
         principal.login ||
         String(principal.user_id ?? principal.id ?? "Пользователь")
     );
+}
+
+function getRouterDisplayName(
+    routerId: number,
+    routerNames: Map<number, string>,
+): string {
+    const routerName = routerNames.get(routerId);
+
+    if (routerName) {
+        return `${routerName} (#${routerId})`;
+    }
+
+    return `#${routerId}`;
 }

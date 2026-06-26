@@ -10,7 +10,7 @@
 
 .classroom-form-grid {
     display: grid;
-    grid-template-columns: 2fr 2fr 1fr 1fr;
+    grid-template-columns: 2fr 2fr 1.5fr 1fr 1fr;
     gap: 10px;
     margin-bottom: 16px;
 }
@@ -22,7 +22,8 @@
     font-size: 13px;
 }
 
-.classroom-form-grid input {
+.classroom-form-grid input,
+.classroom-form-grid select {
     width: 100%;
     border: 1px solid #334155;
     border-radius: 8px;
@@ -31,7 +32,8 @@
     color: #e5e7eb;
 }
 
-.classroom-form-grid input:focus {
+.classroom-form-grid input:focus,
+.classroom-form-grid select:focus {
     outline: 1px solid #2563eb;
 }
 
@@ -50,6 +52,12 @@
 
 .classroom-modal-actions .danger-button {
     margin-right: auto;
+}
+
+@media (max-width: 980px) {
+    .classroom-form-grid {
+        grid-template-columns: 1fr 1fr;
+    }
 }
 
 @media (max-width: 760px) {
