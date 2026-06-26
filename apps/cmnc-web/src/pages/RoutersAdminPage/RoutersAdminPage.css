@@ -410,3 +410,32 @@
     color: #fecaca;
     white-space: pre-wrap;
 }
+
+.router-capabilities-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.router-capability {
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 10px;
+    background: rgba(15, 23, 42, 0.72);
+}
+
+.router-capability--ok {
+    border-color: rgba(34, 197, 94, 0.35);
+}
+
+.router-capability--error {
+    border-color: rgba(248, 113, 113, 0.42);
+}
+
+.router-capability__top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}

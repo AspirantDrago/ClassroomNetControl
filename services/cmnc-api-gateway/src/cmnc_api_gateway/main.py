@@ -1152,6 +1152,361 @@ def response_looks_like_html(response: httpx.Response) -> bool:
     return lowered.startswith("<!doctype html") or lowered.startswith("<html")
 
 
+MIKROTIK_CAPABILITY_PROBE_LIST_NAME: str = "cmnc_capability_check"
+MIKROTIK_CAPABILITY_PROBE_ADDRESS: str = "198.51.100.253"
+MIKROTIK_CAPABILITY_PROBE_COMMENT: str = "managed-by=cmnc; capability-check=true;"
+
+
+def get_mikrotik_response_error(
+    response: httpx.Response,
+    *,
+    expected_json_type: type | None,
+) -> tuple[str | None, Any | None]:
+    if response.is_redirect:
+        location = response.headers.get("location") or "unknown"
+        return f"Redirect response {response.status_code}; location={location}", None
+
+    if response.status_code in {401, 403}:
+        return f"Authentication or permission failed: HTTP {response.status_code}", None
+
+    if response_looks_like_html(response):
+        return "Endpoint returned HTML instead of RouterOS REST JSON", None
+
+    if not response.is_success:
+        return f"HTTP {response.status_code}", None
+
+    if expected_json_type is None:
+        return None, None
+
+    try:
+        data = response.json()
+    except ValueError:
+        return "Response is not valid JSON", None
+
+    if not isinstance(data, expected_json_type):
+        return f"Expected JSON {expected_json_type.__name__}, got {type(data).__name__}", data
+
+    return None, data
+
+
+async def check_mikrotik_capability_request(
+    client: httpx.AsyncClient,
+    *,
+    base_url: str,
+    name: str,
+    label: str,
+    method: str,
+    path: str,
+    expected_json_type: type | None,
+    params: dict[str, Any] | None = None,
+    json_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "name": name,
+        "label": label,
+        "ok": False,
+        "method": method,
+        "path": path,
+        "status_code": None,
+        "error": None,
+        "redirect_location": None,
+        "response_preview": None,
+        "item_count": None,
+    }
+
+    try:
+        response = await client.request(
+            method,
+            f"{base_url}{path}",
+            params=params,
+            json=json_payload,
+        )
+    except httpx.TimeoutException as exc:
+        return {
+            **result,
+            "error": f"Timeout: {exc}",
+        }
+    except httpx.RequestError as exc:
+        return {
+            **result,
+            "error": f"Request failed: {exc}",
+        }
+
+    error, data = get_mikrotik_response_error(
+        response,
+        expected_json_type=expected_json_type,
+    )
+
+    if error is not None:
+        return {
+            **result,
+            "status_code": response.status_code,
+            "error": error,
+            "redirect_location": response.headers.get("location"),
+            "response_preview": get_response_preview(response),
+        }
+
+    item_count: int | None = None
+    if isinstance(data, list):
+        item_count = len(data)
+
+    return {
+        **result,
+        "ok": True,
+        "status_code": response.status_code,
+        "item_count": item_count,
+    }
+
+
+async def read_mikrotik_address_list_entries(
+    client: httpx.AsyncClient,
+    *,
+    base_url: str,
+    list_name: str,
+    address: str | None = None,
+) -> list[dict[str, Any]]:
+    params: dict[str, Any] = {"list": list_name}
+    if address is not None:
+        params["address"] = address
+
+    response = await client.get(
+        f"{base_url}/ip/firewall/address-list",
+        params=params,
+    )
+    error, data = get_mikrotik_response_error(response, expected_json_type=list)
+
+    if error is not None:
+        raise RuntimeError(error)
+
+    return [item for item in data if isinstance(item, dict)]
+
+
+async def delete_mikrotik_capability_probe_entries(
+    client: httpx.AsyncClient,
+    *,
+    base_url: str,
+) -> int:
+    entries = await read_mikrotik_address_list_entries(
+        client,
+        base_url=base_url,
+        list_name=MIKROTIK_CAPABILITY_PROBE_LIST_NAME,
+        address=MIKROTIK_CAPABILITY_PROBE_ADDRESS,
+    )
+
+    deleted = 0
+    for entry in entries:
+        if entry.get("comment") != MIKROTIK_CAPABILITY_PROBE_COMMENT:
+            continue
+
+        routeros_id = entry.get(".id")
+        if not routeros_id:
+            continue
+
+        response = await client.delete(
+            f"{base_url}/ip/firewall/address-list/{routeros_id}"
+        )
+        error, _data = get_mikrotik_response_error(
+            response,
+            expected_json_type=None,
+        )
+        if error is not None:
+            raise RuntimeError(error)
+
+        deleted += 1
+
+    return deleted
+
+
+async def check_mikrotik_address_list_write_capability(
+    client: httpx.AsyncClient,
+    *,
+    base_url: str,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "name": "address_list_write",
+        "label": "Firewall address-list write",
+        "ok": False,
+        "method": "PUT/DELETE",
+        "path": "/ip/firewall/address-list",
+        "status_code": None,
+        "error": None,
+        "redirect_location": None,
+        "response_preview": None,
+        "item_count": None,
+    }
+
+    try:
+        await delete_mikrotik_capability_probe_entries(client, base_url=base_url)
+
+        response = await client.put(
+            f"{base_url}/ip/firewall/address-list",
+            json={
+                "list": MIKROTIK_CAPABILITY_PROBE_LIST_NAME,
+                "address": MIKROTIK_CAPABILITY_PROBE_ADDRESS,
+                "comment": MIKROTIK_CAPABILITY_PROBE_COMMENT,
+                "disabled": "true",
+            },
+        )
+        error, _data = get_mikrotik_response_error(
+            response,
+            expected_json_type=None,
+        )
+        if error is not None:
+            return {
+                **result,
+                "status_code": response.status_code,
+                "error": error,
+                "redirect_location": response.headers.get("location"),
+                "response_preview": get_response_preview(response),
+            }
+
+        entries = await read_mikrotik_address_list_entries(
+            client,
+            base_url=base_url,
+            list_name=MIKROTIK_CAPABILITY_PROBE_LIST_NAME,
+            address=MIKROTIK_CAPABILITY_PROBE_ADDRESS,
+        )
+        exists = any(
+            entry.get("comment") == MIKROTIK_CAPABILITY_PROBE_COMMENT
+            for entry in entries
+        )
+
+        if not exists:
+            return {
+                **result,
+                "status_code": response.status_code,
+                "error": "Probe address-list entry was not created",
+            }
+
+        return {
+            **result,
+            "ok": True,
+            "status_code": response.status_code,
+            "item_count": 1,
+        }
+    except httpx.TimeoutException as exc:
+        return {
+            **result,
+            "error": f"Timeout: {exc}",
+        }
+    except httpx.RequestError as exc:
+        return {
+            **result,
+            "error": f"Request failed: {exc}",
+        }
+    except Exception as exc:
+        return {
+            **result,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    finally:
+        try:
+            await delete_mikrotik_capability_probe_entries(client, base_url=base_url)
+        except Exception:
+            pass
+
+
+async def check_mikrotik_router_capabilities(router: dict[str, Any]) -> dict[str, Any]:
+    router_id = router.get("id")
+    base_url = get_router_rest_base_url(router)
+    username = get_required_router_string(router, "api_username")
+    password = get_required_router_string(router, "api_password")
+    verify_tls = get_router_bool(router, "api_verify_tls")
+
+    async with httpx.AsyncClient(
+        timeout=10.0,
+        verify=verify_tls,
+        auth=(username, password),
+        follow_redirects=False,
+    ) as client:
+        capabilities = [
+            await check_mikrotik_capability_request(
+                client,
+                base_url=base_url,
+                name="system_resource",
+                label="System resource read",
+                method="GET",
+                path="/system/resource",
+                expected_json_type=dict,
+            ),
+            await check_mikrotik_capability_request(
+                client,
+                base_url=base_url,
+                name="system_identity",
+                label="System identity read",
+                method="GET",
+                path="/system/identity",
+                expected_json_type=dict,
+            ),
+            await check_mikrotik_capability_request(
+                client,
+                base_url=base_url,
+                name="dhcp_leases_read",
+                label="DHCP leases read",
+                method="GET",
+                path="/ip/dhcp-server/lease",
+                expected_json_type=list,
+            ),
+            await check_mikrotik_capability_request(
+                client,
+                base_url=base_url,
+                name="address_list_read",
+                label="Firewall address-list read",
+                method="GET",
+                path="/ip/firewall/address-list",
+                params={"list": MIKROTIK_CAPABILITY_PROBE_LIST_NAME},
+                expected_json_type=list,
+            ),
+            await check_mikrotik_address_list_write_capability(
+                client,
+                base_url=base_url,
+            ),
+            await check_mikrotik_capability_request(
+                client,
+                base_url=base_url,
+                name="connections_read",
+                label="Firewall connections read",
+                method="POST",
+                path="/ip/firewall/connection/print",
+                json_payload={
+                    ".proplist": [".id", "src-address"],
+                    ".query": ["src-address=127.0.0.1"],
+                },
+                expected_json_type=list,
+            ),
+        ]
+
+    return {
+        "ok": all(bool(item.get("ok")) for item in capabilities),
+        "router_id": router_id if isinstance(router_id, int) else None,
+        "base_url": base_url,
+        "verify_tls": verify_tls,
+        "capabilities": capabilities,
+    }
+
+
+async def get_router_connection_from_inventory(router_id: int) -> dict[str, Any]:
+    try:
+        router = await inventory_client.get_json(
+            f"/internal/routers/{router_id}/connection"
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Inventory service unavailable: {exc}",
+        ) from exc
+
+    if not isinstance(router, dict):
+        raise HTTPException(status_code=502, detail="Invalid inventory service response")
+
+    return router
+
+
 async def test_mikrotik_router_connection(router: dict[str, Any]) -> dict[str, Any]:
     router_id = router.get("id")
     base_url = get_router_rest_base_url(router)
@@ -1341,25 +1696,23 @@ async def admin_test_router_connection(
     principal = await get_current_principal(request, authorization)
     require_permission(principal, PERMISSION_CLASSROOMS_MANAGE)
 
-    try:
-        router = await inventory_client.get_json(
-            f"/internal/routers/{router_id}/connection"
-        )
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(
-            status_code=exc.response.status_code,
-            detail=exc.response.text,
-        ) from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Inventory service unavailable: {exc}",
-        ) from exc
-
-    if not isinstance(router, dict):
-        raise HTTPException(status_code=502, detail="Invalid inventory service response")
+    router = await get_router_connection_from_inventory(router_id)
 
     return await test_mikrotik_router_connection(router)
+
+
+@app.post("/api/admin/routers/{router_id}/check-capabilities")
+async def admin_check_router_capabilities(
+    router_id: int,
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    require_permission(principal, PERMISSION_CLASSROOMS_MANAGE)
+
+    router = await get_router_connection_from_inventory(router_id)
+
+    return await check_mikrotik_router_capabilities(router)
 
 
 @app.post("/api/admin/routers/{router_id}/poll-now")

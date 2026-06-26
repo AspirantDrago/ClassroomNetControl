@@ -740,6 +740,27 @@ export type AdminRouterSyncNowResponse = {
     details: Record<string, unknown> | null;
 };
 
+export type AdminRouterCapabilityResult = {
+    name: string;
+    label: string;
+    ok: boolean;
+    method: string;
+    path: string;
+    status_code: number | null;
+    error: string | null;
+    redirect_location: string | null;
+    response_preview: string | null;
+    item_count: number | null;
+};
+
+export type AdminRouterCapabilitiesResponse = {
+    ok: boolean;
+    router_id: number | null;
+    base_url: string;
+    verify_tls: boolean;
+    capabilities: AdminRouterCapabilityResult[];
+};
+
 export function getAdminRouters(): Promise<AdminRouter[]> {
     return request<AdminRouter[]>("/api/admin/routers");
 }
@@ -773,6 +794,12 @@ export function getAdminRouterStatus(routerId: number): Promise<AdminRouterServi
 
 export function testAdminRouterConnection(routerId: number): Promise<AdminRouterTestConnectionResponse> {
     return request<AdminRouterTestConnectionResponse>(`/api/admin/routers/${routerId}/test-connection`, {
+        method: "POST",
+    });
+}
+
+export function checkAdminRouterCapabilities(routerId: number): Promise<AdminRouterCapabilitiesResponse> {
+    return request<AdminRouterCapabilitiesResponse>(`/api/admin/routers/${routerId}/check-capabilities`, {
         method: "POST",
     });
 }

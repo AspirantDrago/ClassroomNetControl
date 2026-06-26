@@ -1,11 +1,13 @@
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from "react";
 import {
+    checkAdminRouterCapabilities,
     createAdminRouter,
     extractErrorDetail,
     getAdminRoutersStatus,
     pollAdminRouterNow,
     syncAdminRouterNow,
     type AdminRouter,
+    type AdminRouterCapabilitiesResponse,
     type AdminRouterCreateRequest,
     type AdminRouterPollNowResponse,
     type AdminRouterSyncNowResponse,
@@ -49,6 +51,11 @@ type RouterSyncNowResultState = {
     result: AdminRouterSyncNowResponse;
 };
 
+type RouterCapabilitiesResultState = {
+    routerName: string;
+    result: AdminRouterCapabilitiesResponse;
+};
+
 const EMPTY_FORM: RouterFormState = {
     mode: "create",
     router: null,
@@ -77,6 +84,8 @@ export function RoutersAdminPage() {
     const [pollNowResult, setPollNowResult] = useState<RouterPollNowResultState | null>(null);
     const [syncingRouterId, setSyncingRouterId] = useState<number | null>(null);
     const [syncNowResult, setSyncNowResult] = useState<RouterSyncNowResultState | null>(null);
+    const [checkingCapabilitiesRouterId, setCheckingCapabilitiesRouterId] = useState<number | null>(null);
+    const [capabilitiesResult, setCapabilitiesResult] = useState<RouterCapabilitiesResultState | null>(null);
 
     async function loadStatuses(showLoader = false) {
         if (showLoader) {
@@ -288,6 +297,25 @@ export function RoutersAdminPage() {
         }
     }
 
+    async function handleCheckCapabilities(router: AdminRouter) {
+        setCheckingCapabilitiesRouterId(router.id);
+        setCapabilitiesResult(null);
+        setError(null);
+
+        try {
+            const result = await checkAdminRouterCapabilities(router.id);
+            setCapabilitiesResult({
+                routerName: router.name,
+                result,
+            });
+        } catch (err) {
+            setError(extractErrorDetail(err));
+        } finally {
+            setCheckingCapabilitiesRouterId(null);
+        }
+    }
+
+
     async function handlePollNow(router: AdminRouter) {
         setPollingRouterId(router.id);
         setPollNowResult(null);
@@ -347,6 +375,7 @@ export function RoutersAdminPage() {
 
             {error && <pre className="error-box">{error}</pre>}
             {testResult && <RouterTestResultCard state={testResult} onClose={() => setTestResult(null)} />}
+            {capabilitiesResult && <RouterCapabilitiesResultCard state={capabilitiesResult} onClose={() => setCapabilitiesResult(null)} />}
             {pollNowResult && <RouterPollNowResultCard state={pollNowResult} onClose={() => setPollNowResult(null)} />}
             {syncNowResult && <RouterSyncNowResultCard state={syncNowResult} onClose={() => setSyncNowResult(null)} />}
             {loading && <div className="loading">Загрузка...</div>}
@@ -373,6 +402,8 @@ export function RoutersAdminPage() {
                                 onToggle={toggleRouter}
                                 onTest={handleTestConnection}
                                 testing={testingRouterId === item.router.id}
+                                onCheckCapabilities={handleCheckCapabilities}
+                                checkingCapabilities={checkingCapabilitiesRouterId === item.router.id}
                                 onPollNow={handlePollNow}
                                 polling={pollingRouterId === item.router.id}
                                 onSyncNow={handleSyncNow}
@@ -508,13 +539,27 @@ type RouterRowProps = {
     onToggle: (router: AdminRouter, field: "is_enabled" | "poll_enabled" | "sync_enabled") => Promise<void>;
     onTest: (router: AdminRouter) => Promise<void>;
     testing: boolean;
+    onCheckCapabilities: (router: AdminRouter) => Promise<void>;
+    checkingCapabilities: boolean;
     onPollNow: (router: AdminRouter) => Promise<void>;
     polling: boolean;
     onSyncNow: (router: AdminRouter) => Promise<void>;
     syncing: boolean;
 };
 
-function RouterRow({ item, onEdit, onToggle, onTest, testing, onPollNow, polling, onSyncNow, syncing }: RouterRowProps) {
+function RouterRow({
+    item,
+    onEdit,
+    onToggle,
+    onTest,
+    testing,
+    onCheckCapabilities,
+    checkingCapabilities,
+    onPollNow,
+    polling,
+    onSyncNow,
+    syncing,
+}: RouterRowProps) {
     const router = item.router;
     const poller = findService(item.services, "mikrotik_poller");
     const sync = findService(item.services, "policy_sync");
@@ -567,6 +612,14 @@ function RouterRow({ item, onEdit, onToggle, onTest, testing, onPollNow, polling
                         onClick={() => void onTest(router)}
                     >
                         {testing ? "Проверка..." : "Проверить"}
+                    </button>
+                    <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={checkingCapabilities}
+                        onClick={() => void onCheckCapabilities(router)}
+                    >
+                        {checkingCapabilities ? "Проверка прав..." : "Проверить права"}
                     </button>
                     <button
                         className="secondary-button"
@@ -641,6 +694,67 @@ function RouterTestResultCard({ state, onClose }: RouterTestResultCardProps) {
                     )}
                 </>
             )}
+        </div>
+    );
+}
+
+
+type RouterCapabilitiesResultCardProps = {
+    state: RouterCapabilitiesResultState;
+    onClose: () => void;
+};
+
+function RouterCapabilitiesResultCard({ state, onClose }: RouterCapabilitiesResultCardProps) {
+    const result = state.result;
+
+    return (
+        <div className={result.ok ? "router-action-result router-action-result--ok" : "router-action-result router-action-result--error"}>
+            <div className="router-action-result__header">
+                <div>
+                    <strong>
+                        {result.ok ? "Права MikroTik достаточны" : "Не все права MikroTik доступны"}
+                    </strong>
+                    <div className="router-action-result__muted">
+                        {state.routerName} - {result.base_url} - TLS: {result.verify_tls ? "проверяется" : "не проверяется"}
+                    </div>
+                </div>
+                <button type="button" className="mini-button" onClick={onClose}>
+                    Закрыть
+                </button>
+            </div>
+
+            <div className="router-capabilities-list">
+                {result.capabilities.map((capability) => (
+                    <div
+                        key={capability.name}
+                        className={capability.ok ? "router-capability router-capability--ok" : "router-capability router-capability--error"}
+                    >
+                        <div className="router-capability__top">
+                            <span className={capability.ok ? "status-pill status-pill--ok" : "status-pill status-pill--error"}>
+                                {capability.ok ? "ok" : "error"}
+                            </span>
+                            <strong>{capability.label}</strong>
+                        </div>
+                        <div className="router-action-result__muted">
+                            {capability.method} {capability.path} - HTTP: {capability.status_code ?? "-"}
+                            {capability.item_count !== null ? ` - items: ${capability.item_count}` : ""}
+                        </div>
+                        {capability.error && (
+                            <div className="router-action-result__error-text">
+                                {capability.error}
+                            </div>
+                        )}
+                        {capability.redirect_location && (
+                            <div className="router-action-result__muted">
+                                redirect: {capability.redirect_location}
+                            </div>
+                        )}
+                        {capability.response_preview && (
+                            <pre className="router-test-result__preview">{capability.response_preview}</pre>
+                        )}
+                    </div>
+                ))}
+            </div>
         </div>
     );
 }
