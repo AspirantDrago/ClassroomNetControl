@@ -4,6 +4,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     service_name: str = "cmnc-policy-sync-service"
+    host: str = "0.0.0.0"
+    port: int = 8007
 
     rabbitmq_url: str = "amqp://cmnc:cmnc_password@localhost:5672/cmnc"
     classroom_service_url: str = "http://localhost:8002"

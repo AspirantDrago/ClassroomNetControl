@@ -722,6 +722,21 @@ export type AdminRouterPollNowResponse = {
     details: Record<string, unknown> | null;
 };
 
+export type AdminRouterSyncNowResponse = {
+    ok: boolean;
+    router_id: number;
+    router_name: string;
+    policy_generation: number | null;
+    desired_count: number | null;
+    added_count: number | null;
+    removed_count: number | null;
+    updated_count: number | null;
+    connections_killed_count: number | null;
+    duration_ms: number | null;
+    error: string | null;
+    details: Record<string, unknown> | null;
+};
+
 export function getAdminRouters(): Promise<AdminRouter[]> {
     return request<AdminRouter[]>("/api/admin/routers");
 }
@@ -761,6 +776,12 @@ export function testAdminRouterConnection(routerId: number): Promise<AdminRouter
 
 export function pollAdminRouterNow(routerId: number): Promise<AdminRouterPollNowResponse> {
     return request<AdminRouterPollNowResponse>(`/api/admin/routers/${routerId}/poll-now`, {
+        method: "POST",
+    });
+}
+
+export function syncAdminRouterNow(routerId: number): Promise<AdminRouterSyncNowResponse> {
+    return request<AdminRouterSyncNowResponse>(`/api/admin/routers/${routerId}/sync-now`, {
         method: "POST",
     });
 }

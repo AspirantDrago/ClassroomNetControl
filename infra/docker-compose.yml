@@ -106,6 +106,8 @@ services:
     container_name: cmnc-policy-sync-service
     restart: unless-stopped
     environment:
+      CMNC_POLICY_SYNC_HOST: 0.0.0.0
+      CMNC_POLICY_SYNC_PORT: 8007
       CMNC_POLICY_SYNC_RABBITMQ_URL: amqp://${CMNC_RABBITMQ_USER:-cmnc}:${CMNC_RABBITMQ_PASSWORD:-cmnc_password}@cmnc-rabbitmq:5672/${CMNC_RABBITMQ_VHOST:-cmnc}
       CMNC_POLICY_SYNC_CLASSROOM_SERVICE_URL: http://cmnc-classroom-service:8002
       CMNC_POLICY_SYNC_INVENTORY_SERVICE_URL: http://cmnc-inventory-service:8003
@@ -120,8 +122,15 @@ services:
         condition: service_healthy
       cmnc-inventory-service:
         condition: service_healthy
+    expose:
+      - "8007"
     networks:
       - cmnc-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8007/health').read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
 
   cmnc-inventory-service:
     build:
@@ -240,6 +249,7 @@ services:
       CMNC_API_GATEWAY_CLASSROOM_SERVICE_URL: http://cmnc-classroom-service:8002
       CMNC_API_GATEWAY_INVENTORY_SERVICE_URL: http://cmnc-inventory-service:8003
       CMNC_API_GATEWAY_MIKROTIK_POLLER_SERVICE_URL: http://cmnc-mikrotik-poller-service:8006
+      CMNC_API_GATEWAY_POLICY_SYNC_SERVICE_URL: http://cmnc-policy-sync-service:8007
       CMNC_API_GATEWAY_MAINTENANCE_SERVICE_URL: http://cmnc-maintenance-service:8004
       CMNC_API_GATEWAY_CAMERA_SERVICE_URL: http://cmnc-camera-service:8005
       CMNC_API_GATEWAY_DEFAULT_ROUTER_ID: 1
@@ -253,6 +263,8 @@ services:
       cmnc-classroom-service:
         condition: service_healthy
       cmnc-inventory-service:
+        condition: service_healthy
+      cmnc-policy-sync-service:
         condition: service_healthy
       cmnc-maintenance-service:
         condition: service_healthy

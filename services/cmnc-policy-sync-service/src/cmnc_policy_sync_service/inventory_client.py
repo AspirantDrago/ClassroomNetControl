@@ -70,6 +70,19 @@ class InventoryClient:
 
         return routers
 
+    async def get_router_connection(self, router_id: int) -> RouterConnection:
+        async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
+            response = await client.get(
+                f"{self._base_url}/internal/routers/{router_id}/connection"
+            )
+            response.raise_for_status()
+
+        data = response.json()
+        if not isinstance(data, dict):
+            raise TypeError("Inventory router connection response is not an object")
+
+        return parse_router_connection(data)
+
     async def update_router_service_status(
         self,
         *,

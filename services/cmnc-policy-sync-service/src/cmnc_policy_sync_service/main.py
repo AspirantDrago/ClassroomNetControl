@@ -6,9 +6,12 @@ from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from time import perf_counter
-from typing import Final
+from typing import Any, Final
 
 from aio_pika import IncomingMessage
+import httpx
+import uvicorn
+from fastapi import FastAPI, HTTPException
 from pydantic import SecretStr
 
 from cmnc_contracts.events import (
@@ -40,6 +43,8 @@ logging.basicConfig(
 
 logger = logging.getLogger(settings.service_name)
 
+app = FastAPI(title=settings.service_name)
+
 SERVICE_NAME: Final[str] = "policy_sync"
 _shutdown_event: Final[asyncio.Event] = asyncio.Event()
 
@@ -66,6 +71,205 @@ def configure_signal_handlers() -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         with suppress(NotImplementedError):
             loop.add_signal_handler(sig, request_shutdown)
+
+
+def get_runtime_inventory_client() -> InventoryClient:
+    inventory_client = getattr(app.state, "inventory_client", None)
+
+    if not isinstance(inventory_client, InventoryClient):
+        raise HTTPException(status_code=503, detail="Policy sync service is not ready")
+
+    return inventory_client
+
+
+def get_runtime_classroom_client() -> ClassroomServiceClient:
+    classroom_client = getattr(app.state, "classroom_client", None)
+
+    if not isinstance(classroom_client, ClassroomServiceClient):
+        raise HTTPException(status_code=503, detail="Policy sync service is not ready")
+
+    return classroom_client
+
+
+def get_runtime_rabbitmq_client() -> RabbitMqClient:
+    rabbitmq = getattr(app.state, "rabbitmq", None)
+
+    if not isinstance(rabbitmq, RabbitMqClient):
+        raise HTTPException(status_code=503, detail="Policy sync service is not ready")
+
+    return rabbitmq
+
+
+@app.get("/health")
+async def health() -> dict[str, str]:
+    return {
+        "service": settings.service_name,
+        "status": "ok",
+    }
+
+
+@app.post("/internal/routers/{router_id}/sync-now")
+async def internal_sync_router_now(router_id: int) -> dict[str, Any]:
+    return await sync_router_policy_manual(
+        router_id=router_id,
+        inventory_client=get_runtime_inventory_client(),
+        classroom_client=get_runtime_classroom_client(),
+        rabbitmq=get_runtime_rabbitmq_client(),
+    )
+
+
+async def sync_router_policy_manual(
+    *,
+    router_id: int,
+    inventory_client: InventoryClient,
+    classroom_client: ClassroomServiceClient,
+    rabbitmq: RabbitMqClient,
+) -> dict[str, Any]:
+    worker_id = f"{settings.service_name}:manual:{router_id}:{uuid.uuid4()}"
+    started_at = now_utc()
+
+    try:
+        router = await inventory_client.get_router_connection(router_id)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Router not found") from exc
+
+        raise HTTPException(status_code=502, detail=exc.response.text) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Inventory service unavailable: {exc}") from exc
+
+    base_details: dict[str, Any] = {
+        "manual": True,
+        "api_host": router.api_host,
+        "api_port": router.api_port,
+        "api_use_ssl": router.api_use_ssl,
+    }
+
+    if not router.is_enabled:
+        return {
+            "ok": False,
+            "router_id": router.id,
+            "router_name": router.name,
+            "policy_generation": None,
+            "desired_count": None,
+            "added_count": None,
+            "removed_count": None,
+            "updated_count": None,
+            "connections_killed_count": None,
+            "duration_ms": 0,
+            "error": "Router is disabled",
+            "details": base_details,
+        }
+
+    mikrotik_client = MikroTikClient(
+        base_url=router.base_url,
+        username=router.api_username,
+        password=SecretStr(router.api_password),
+        verify_tls=settings.mikrotik_verify_tls,
+        timeout_seconds=settings.mikrotik_timeout_seconds,
+        managed_comment_prefix=settings.managed_comment_prefix,
+    )
+
+    last_attempt_at = now_utc()
+    await update_status_safely(
+        inventory_client,
+        router_id=router.id,
+        worker_id=worker_id,
+        status="starting",
+        is_running=router.sync_enabled,
+        heartbeat_at=last_attempt_at,
+        last_started_at=started_at,
+        last_attempt_at=last_attempt_at,
+        consecutive_failures=0,
+        details=base_details,
+    )
+
+    try:
+        result_details = await sync_router_policy(
+            router=router,
+            classroom_client=classroom_client,
+            mikrotik_client=mikrotik_client,
+            rabbitmq=rabbitmq,
+        )
+    except Exception as exc:
+        finished_at = now_utc()
+        duration_ms = int((finished_at - last_attempt_at).total_seconds() * 1000)
+        error_text = f"{type(exc).__name__}: {exc}"
+        details: dict[str, Any] = {
+            **base_details,
+            "duration_ms": duration_ms,
+        }
+
+        logger.exception(
+            "Manual policy sync failed: router_id=%s, router_name=%s",
+            router.id,
+            router.name,
+        )
+
+        await update_status_safely(
+            inventory_client,
+            router_id=router.id,
+            worker_id=worker_id,
+            status="error",
+            is_running=router.sync_enabled,
+            heartbeat_at=finished_at,
+            last_started_at=started_at,
+            last_attempt_at=last_attempt_at,
+            last_error_at=finished_at,
+            last_error=error_text,
+            consecutive_failures=1,
+            details=details,
+        )
+
+        return {
+            "ok": False,
+            "router_id": router.id,
+            "router_name": router.name,
+            "policy_generation": details.get("policy_generation"),
+            "desired_count": details.get("desired_count"),
+            "added_count": details.get("added_count"),
+            "removed_count": details.get("removed_count"),
+            "updated_count": details.get("updated_count"),
+            "connections_killed_count": details.get("connections_killed_count"),
+            "duration_ms": duration_ms,
+            "error": error_text,
+            "details": details,
+        }
+
+    finished_at = now_utc()
+    details = {
+        **result_details,
+        "manual": True,
+    }
+
+    await update_status_safely(
+        inventory_client,
+        router_id=router.id,
+        worker_id=worker_id,
+        status="ok",
+        is_running=router.sync_enabled,
+        heartbeat_at=finished_at,
+        last_started_at=started_at,
+        last_attempt_at=last_attempt_at,
+        last_success_at=finished_at,
+        consecutive_failures=0,
+        details=details,
+    )
+
+    return {
+        "ok": True,
+        "router_id": router.id,
+        "router_name": router.name,
+        "policy_generation": details.get("policy_generation"),
+        "desired_count": details.get("desired_count"),
+        "added_count": details.get("added_count"),
+        "removed_count": details.get("removed_count"),
+        "updated_count": details.get("updated_count"),
+        "connections_killed_count": details.get("connections_killed_count"),
+        "duration_ms": details.get("duration_ms"),
+        "error": None,
+        "details": details,
+    }
 
 
 async def update_status_safely(
@@ -577,16 +781,56 @@ async def main() -> None:
 
     await queue.consume(lambda message: handle_wan_policy_changed(message, workers))
 
-    logger.info("%s started", settings.service_name)
+    app.state.inventory_client = inventory_client
+    app.state.classroom_client = classroom_client
+    app.state.rabbitmq = rabbitmq
 
-    try:
-        await supervisor(
+    api_config = uvicorn.Config(
+        app,
+        host=settings.host,
+        port=settings.port,
+        log_level="info",
+    )
+    api_server = uvicorn.Server(api_config)
+    api_task = asyncio.create_task(api_server.serve())
+    supervisor_task = asyncio.create_task(
+        supervisor(
             inventory_client=inventory_client,
             classroom_client=classroom_client,
             rabbitmq=rabbitmq,
             workers=workers,
         )
+    )
+
+    logger.info(
+        "%s started: api=%s:%s",
+        settings.service_name,
+        settings.host,
+        settings.port,
+    )
+
+    try:
+        done, _pending = await asyncio.wait(
+            {api_task, supervisor_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        for task in done:
+            exc = task.exception()
+            if exc is not None:
+                raise exc
     finally:
+        _shutdown_event.set()
+        api_server.should_exit = True
+
+        for task in (supervisor_task, api_task):
+            if not task.done():
+                task.cancel()
+
+        for task in (supervisor_task, api_task):
+            with suppress(asyncio.CancelledError):
+                await task
+
         await rabbitmq.close()
 
 

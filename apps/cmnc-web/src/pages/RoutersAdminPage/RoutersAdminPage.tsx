@@ -4,9 +4,11 @@ import {
     extractErrorDetail,
     getAdminRoutersStatus,
     pollAdminRouterNow,
+    syncAdminRouterNow,
     type AdminRouter,
     type AdminRouterCreateRequest,
     type AdminRouterPollNowResponse,
+    type AdminRouterSyncNowResponse,
     type AdminRouterServiceStatus,
     type AdminRouterStatusItem,
     type AdminRouterTestConnectionResponse,
@@ -41,6 +43,11 @@ type RouterPollNowResultState = {
     result: AdminRouterPollNowResponse;
 };
 
+type RouterSyncNowResultState = {
+    routerName: string;
+    result: AdminRouterSyncNowResponse;
+};
+
 const EMPTY_FORM: RouterFormState = {
     mode: "create",
     router: null,
@@ -66,6 +73,8 @@ export function RoutersAdminPage() {
     const [testResult, setTestResult] = useState<RouterTestResultState | null>(null);
     const [pollingRouterId, setPollingRouterId] = useState<number | null>(null);
     const [pollNowResult, setPollNowResult] = useState<RouterPollNowResultState | null>(null);
+    const [syncingRouterId, setSyncingRouterId] = useState<number | null>(null);
+    const [syncNowResult, setSyncNowResult] = useState<RouterSyncNowResultState | null>(null);
 
     async function loadStatuses(showLoader = false) {
         if (showLoader) {
@@ -293,6 +302,26 @@ export function RoutersAdminPage() {
         }
     }
 
+
+    async function handleSyncNow(router: AdminRouter) {
+        setSyncingRouterId(router.id);
+        setSyncNowResult(null);
+        setError(null);
+
+        try {
+            const result = await syncAdminRouterNow(router.id);
+            setSyncNowResult({
+                routerName: router.name,
+                result,
+            });
+            await loadStatuses(false);
+        } catch (err) {
+            setError(extractErrorDetail(err));
+        } finally {
+            setSyncingRouterId(null);
+        }
+    }
+
     return (
         <section className="routers-page">
             <div className="routers-page__header">
@@ -314,6 +343,7 @@ export function RoutersAdminPage() {
             {error && <pre className="error-box">{error}</pre>}
             {testResult && <RouterTestResultCard state={testResult} onClose={() => setTestResult(null)} />}
             {pollNowResult && <RouterPollNowResultCard state={pollNowResult} onClose={() => setPollNowResult(null)} />}
+            {syncNowResult && <RouterSyncNowResultCard state={syncNowResult} onClose={() => setSyncNowResult(null)} />}
             {loading && <div className="loading">Загрузка...</div>}
 
             <div className="routers-table-wrapper">
@@ -340,6 +370,8 @@ export function RoutersAdminPage() {
                                 testing={testingRouterId === item.router.id}
                                 onPollNow={handlePollNow}
                                 polling={pollingRouterId === item.router.id}
+                                onSyncNow={handleSyncNow}
+                                syncing={syncingRouterId === item.router.id}
                             />
                         ))}
 
@@ -468,9 +500,11 @@ type RouterRowProps = {
     testing: boolean;
     onPollNow: (router: AdminRouter) => Promise<void>;
     polling: boolean;
+    onSyncNow: (router: AdminRouter) => Promise<void>;
+    syncing: boolean;
 };
 
-function RouterRow({ item, onEdit, onToggle, onTest, testing, onPollNow, polling }: RouterRowProps) {
+function RouterRow({ item, onEdit, onToggle, onTest, testing, onPollNow, polling, onSyncNow, syncing }: RouterRowProps) {
     const router = item.router;
     const poller = findService(item.services, "mikrotik_poller");
     const sync = findService(item.services, "policy_sync");
@@ -530,6 +564,14 @@ function RouterRow({ item, onEdit, onToggle, onTest, testing, onPollNow, polling
                         onClick={() => void onPollNow(router)}
                     >
                         {polling ? "Опрос..." : "Опросить"}
+                    </button>
+                    <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={syncing}
+                        onClick={() => void onSyncNow(router)}
+                    >
+                        {syncing ? "Синхронизация..." : "Синхронизировать"}
                     </button>
                 </div>
             </td>
@@ -632,6 +674,48 @@ function RouterPollNowResultCard({ state, onClose }: RouterPollNowResultCardProp
     );
 }
 
+type RouterSyncNowResultCardProps = {
+    state: RouterSyncNowResultState;
+    onClose: () => void;
+};
+
+function RouterSyncNowResultCard({ state, onClose }: RouterSyncNowResultCardProps) {
+    const result = state.result;
+
+    return (
+        <div className={result.ok ? "router-action-result router-action-result--ok" : "router-action-result router-action-result--error"}>
+            <div className="router-action-result__header">
+                <div>
+                    <strong>
+                        {result.ok ? "Синхронизация выполнена" : "Синхронизация не выполнена"}
+                    </strong>
+                    <div className="router-action-result__muted">
+                        {state.routerName} - policy generation: {result.policy_generation ?? "-"}
+                    </div>
+                </div>
+                <button type="button" className="mini-button" onClick={onClose}>
+                    Закрыть
+                </button>
+            </div>
+
+            <div className="router-action-result__details">
+                <span>desired: {result.desired_count ?? "-"}</span>
+                <span>added: {result.added_count ?? "-"}</span>
+                <span>removed: {result.removed_count ?? "-"}</span>
+                <span>updated: {result.updated_count ?? "-"}</span>
+                <span>connections killed: {result.connections_killed_count ?? "-"}</span>
+                <span>duration: {result.duration_ms ?? "-"} ms</span>
+            </div>
+
+            {!result.ok && (
+                <div className="router-action-result__error-text">
+                    {result.error ?? "Unknown sync error"}
+                </div>
+            )}
+        </div>
+    );
+}
+
 type ServiceStatusBlockProps = {
     title: string;
     enabled: boolean;
@@ -643,7 +727,7 @@ function ServiceStatusBlock({ title, enabled, status, onToggle }: ServiceStatusB
     return (
         <div className="service-status-block">
             <div className="service-status-block__top">
-                <span className={`router-status-pill router-status-pill--${status?.status ?? "unknown"}`}>
+                <span className={`status-pill status-pill--${status?.status ?? "unknown"}`}>
                     {status?.status ?? "unknown"}
                 </span>
                 <button type="button" className="mini-button" onClick={onToggle}>
