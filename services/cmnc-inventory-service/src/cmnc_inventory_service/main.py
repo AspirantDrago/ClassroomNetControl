@@ -1,6 +1,6 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import logging
 
 import uvicorn
@@ -35,6 +35,11 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 
+MIKROTIK_POLLER_SERVICE_NAME = "mikrotik_poller"
+POLICY_SYNC_SERVICE_NAME = "policy_sync"
+DISABLED_STATUS = "disabled"
+STALE_STATUS = "stale"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
@@ -58,6 +63,103 @@ app = FastAPI(
     title=settings.service_name,
     lifespan=lifespan,
 )
+
+
+def ensure_aware_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+
+    return value.astimezone(timezone.utc)
+
+
+def get_stale_threshold_seconds(router: Router, service_name: str) -> int:
+    if service_name == MIKROTIK_POLLER_SERVICE_NAME:
+        return max(
+            router.poll_interval_seconds * settings.router_status_poller_stale_multiplier,
+            settings.router_status_poller_min_stale_seconds,
+        )
+
+    if service_name == POLICY_SYNC_SERVICE_NAME:
+        return settings.router_status_policy_sync_stale_seconds
+
+    return settings.router_status_default_stale_seconds
+
+
+def should_skip_stale_check(router: Router, status: RouterServiceStatus) -> bool:
+    if status.status == DISABLED_STATUS:
+        return True
+
+    if not router.is_enabled:
+        return True
+
+    if status.service_name == MIKROTIK_POLLER_SERVICE_NAME and not router.poll_enabled:
+        return True
+
+    if status.service_name == POLICY_SYNC_SERVICE_NAME and not router.sync_enabled:
+        return True
+
+    return False
+
+
+def serialize_router_service_status(
+    router: Router,
+    status: RouterServiceStatus,
+    now: datetime,
+) -> RouterServiceStatusRead:
+    status_read = RouterServiceStatusRead.model_validate(status)
+
+    if should_skip_stale_check(router, status):
+        return status_read
+
+    threshold_seconds = get_stale_threshold_seconds(router, status.service_name)
+    heartbeat_at = status.heartbeat_at
+
+    if heartbeat_at is None:
+        details = dict(status_read.details)
+        details["stale_reason"] = "heartbeat_at is missing"
+        details["stale_threshold_seconds"] = threshold_seconds
+
+        return status_read.model_copy(
+            update={
+                "status": STALE_STATUS,
+                "is_running": False,
+                "details": details,
+            }
+        )
+
+    heartbeat_at_utc = ensure_aware_utc(heartbeat_at)
+    age_seconds = int(max((now - heartbeat_at_utc).total_seconds(), 0))
+
+    if heartbeat_at_utc >= now - timedelta(seconds=threshold_seconds):
+        return status_read
+
+    details = dict(status_read.details)
+    details["stale_reason"] = "heartbeat_at is older than stale threshold"
+    details["stale_threshold_seconds"] = threshold_seconds
+    details["heartbeat_age_seconds"] = age_seconds
+
+    return status_read.model_copy(
+        update={
+            "status": STALE_STATUS,
+            "is_running": False,
+            "details": details,
+        }
+    )
+
+
+def serialize_router_service_statuses(
+    router: Router,
+    statuses: list[RouterServiceStatus],
+    now: datetime,
+) -> list[RouterServiceStatusRead]:
+    return [
+        serialize_router_service_status(
+            router=router,
+            status=status,
+            now=now,
+        )
+        for status in statuses
+    ]
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -109,13 +211,16 @@ async def get_routers_status(
     for status in statuses:
         statuses_by_router.setdefault(status.router_id, []).append(status)
 
+    now = datetime.now(timezone.utc)
+
     return [
         RouterStatusItem(
             router=RouterRead.model_validate(router),
-            services=[
-                RouterServiceStatusRead.model_validate(status)
-                for status in statuses_by_router.get(router.id, [])
-            ],
+            services=serialize_router_service_statuses(
+                router=router,
+                statuses=statuses_by_router.get(router.id, []),
+                now=now,
+            ),
         )
         for router in routers
     ]
@@ -141,7 +246,11 @@ async def get_router_status(
     )
     statuses = list(result.scalars().all())
 
-    return [RouterServiceStatusRead.model_validate(status) for status in statuses]
+    return serialize_router_service_statuses(
+        router=router,
+        statuses=statuses,
+        now=datetime.now(timezone.utc),
+    )
 
 
 @app.get("/internal/routers/{router_id}", response_model=RouterRead)
@@ -283,7 +392,11 @@ async def upsert_router_service_status(
     await session.commit()
     await session.refresh(status)
 
-    return RouterServiceStatusRead.model_validate(status)
+    return serialize_router_service_status(
+        router=router,
+        status=status,
+        now=datetime.now(timezone.utc),
+    )
 
 
 @app.get(
