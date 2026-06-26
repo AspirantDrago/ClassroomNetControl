@@ -1060,6 +1060,102 @@ async def allow_device_wan(
         ) from exc
 
 
+
+
+async def proxy_inventory_admin_request(
+    call,
+    *,
+    unavailable_detail: str = "Inventory service unavailable",
+) -> Any:
+    try:
+        return await call()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"{unavailable_detail}: {exc}",
+        ) from exc
+
+
+@app.get("/api/admin/routers")
+async def admin_get_routers(
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    require_permission(principal, PERMISSION_CLASSROOMS_MANAGE)
+
+    return await proxy_inventory_admin_request(
+        lambda: inventory_client.get_json("/internal/routers")
+    )
+
+
+@app.post("/api/admin/routers")
+async def admin_create_router(
+    payload: dict[str, Any],
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    require_permission(principal, PERMISSION_CLASSROOMS_MANAGE)
+
+    return await proxy_inventory_admin_request(
+        lambda: inventory_client.post_json(
+            "/internal/routers",
+            json=payload,
+        )
+    )
+
+
+@app.patch("/api/admin/routers/{router_id}")
+async def admin_update_router(
+    router_id: int,
+    payload: dict[str, Any],
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    require_permission(principal, PERMISSION_CLASSROOMS_MANAGE)
+
+    return await proxy_inventory_admin_request(
+        lambda: inventory_client.patch_json(
+            f"/internal/routers/{router_id}",
+            json=payload,
+        )
+    )
+
+
+@app.get("/api/admin/routers/status")
+async def admin_get_routers_status(
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    require_permission(principal, PERMISSION_CLASSROOMS_MANAGE)
+
+    return await proxy_inventory_admin_request(
+        lambda: inventory_client.get_json("/internal/routers/status")
+    )
+
+
+@app.get("/api/admin/routers/{router_id}/status")
+async def admin_get_router_status(
+    router_id: int,
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    require_permission(principal, PERMISSION_CLASSROOMS_MANAGE)
+
+    return await proxy_inventory_admin_request(
+        lambda: inventory_client.get_json(f"/internal/routers/{router_id}/status")
+    )
+
+
 @app.post("/api/admin/classrooms")
 async def admin_create_classroom(
     payload: dict[str, Any],
