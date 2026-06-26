@@ -25,6 +25,7 @@ type RouterFormState = {
     apiHost: string;
     apiPort: string;
     apiUseSsl: boolean;
+    apiVerifyTls: boolean;
     apiUsername: string;
     apiPassword: string;
     isEnabled: boolean;
@@ -55,6 +56,7 @@ const EMPTY_FORM: RouterFormState = {
     apiHost: "",
     apiPort: "80",
     apiUseSsl: false,
+    apiVerifyTls: false,
     apiUsername: "cmnc_service",
     apiPassword: "",
     isEnabled: true,
@@ -157,6 +159,7 @@ export function RoutersAdminPage() {
             apiHost: router.api_host,
             apiPort: router.api_port.toString(),
             apiUseSsl: router.api_use_ssl,
+            apiVerifyTls: router.api_verify_tls,
             apiUsername: router.api_username,
             apiPassword: "",
             isEnabled: router.is_enabled,
@@ -174,7 +177,7 @@ export function RoutersAdminPage() {
         setForm((current) => (current === null ? current : { ...current, [field]: value }));
     }
 
-    function updateFormBoolean(field: "apiUseSsl" | "isEnabled" | "pollEnabled" | "syncEnabled", value: boolean) {
+    function updateFormBoolean(field: "apiUseSsl" | "apiVerifyTls" | "isEnabled" | "pollEnabled" | "syncEnabled", value: boolean) {
         setForm((current) => (current === null ? current : { ...current, [field]: value }));
     }
 
@@ -207,6 +210,7 @@ export function RoutersAdminPage() {
                     api_host: apiHost,
                     api_port: apiPort,
                     api_use_ssl: form.apiUseSsl,
+                    api_verify_tls: form.apiVerifyTls,
                     api_username: apiUsername,
                     api_password: apiPassword,
                     is_enabled: form.isEnabled,
@@ -230,6 +234,7 @@ export function RoutersAdminPage() {
                 api_host: apiHost,
                 api_port: apiPort,
                 api_use_ssl: form.apiUseSsl,
+                api_verify_tls: form.apiVerifyTls,
                 api_username: apiUsername,
                 is_enabled: form.isEnabled,
                 poll_enabled: form.pollEnabled,
@@ -460,6 +465,11 @@ export function RoutersAdminPage() {
                                     onChange={(value) => updateFormBoolean("apiUseSsl", value)}
                                 />
                                 <BooleanCheckbox
+                                    label="Проверять TLS"
+                                    checked={form.apiVerifyTls}
+                                    onChange={(value) => updateFormBoolean("apiVerifyTls", value)}
+                                />
+                                <BooleanCheckbox
                                     label="MikroTik включён"
                                     checked={form.isEnabled}
                                     onChange={(value) => updateFormBoolean("isEnabled", value)}
@@ -518,6 +528,7 @@ function RouterRow({ item, onEdit, onToggle, onTest, testing, onPollNow, polling
             </td>
             <td>
                 <div>{router.api_use_ssl ? "https" : "http"}://{router.api_host}:{router.api_port}/rest</div>
+                <div className="routers-table__muted">TLS: {router.api_verify_tls ? "проверять" : "не проверять"}</div>
                 <div className="routers-table__muted">poll: {router.poll_interval_seconds} сек.</div>
             </td>
             <td>
@@ -599,7 +610,7 @@ function RouterTestResultCard({ state, onClose }: RouterTestResultCardProps) {
                         {result.ok ? "Подключение успешно" : "Подключение не прошло"}
                     </strong>
                     <div className="router-test-result__muted">
-                        {state.routerName} - {result.checked_url}
+                        {state.routerName} - {result.checked_url} - TLS: {result.verify_tls ? "проверяется" : "не проверяется"}
                     </div>
                 </div>
                 <button type="button" className="mini-button" onClick={onClose}>

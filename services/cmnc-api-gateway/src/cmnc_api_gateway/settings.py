@@ -14,7 +14,6 @@ class Settings(BaseSettings):
     maintenance_service_url: str = "http://localhost:8004"
     camera_service_url: str = "http://localhost:8005"
 
-    default_router_id: int = 1
 
     model_config = SettingsConfigDict(
         env_prefix="CMNC_API_GATEWAY_",

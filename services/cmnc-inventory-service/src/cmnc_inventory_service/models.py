@@ -22,6 +22,12 @@ class Router(Base):
         server_default=text("false"),
         default=False,
     )
+    api_verify_tls: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("false"),
+        default=False,
+    )
     api_username: Mapped[str] = mapped_column(String(255), nullable=False)
     api_password: Mapped[str] = mapped_column(Text, nullable=False)
     is_enabled: Mapped[bool] = mapped_column(

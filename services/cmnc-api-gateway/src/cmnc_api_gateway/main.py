@@ -1107,6 +1107,15 @@ def get_required_router_int(router: dict[str, Any], field_name: str) -> int:
     return value
 
 
+def get_router_bool(router: dict[str, Any], field_name: str, default: bool = False) -> bool:
+    value = router.get(field_name, default)
+
+    if isinstance(value, bool):
+        return value
+
+    return default
+
+
 def get_router_rest_base_url(router: dict[str, Any]) -> str:
     scheme = "https" if router.get("api_use_ssl") is True else "http"
     host = get_required_router_string(router, "api_host")
@@ -1149,12 +1158,14 @@ async def test_mikrotik_router_connection(router: dict[str, Any]) -> dict[str, A
     checked_url = f"{base_url}/system/resource"
     username = get_required_router_string(router, "api_username")
     password = get_required_router_string(router, "api_password")
+    verify_tls = get_router_bool(router, "api_verify_tls")
 
     base_result: dict[str, Any] = {
         "ok": False,
         "router_id": router_id if isinstance(router_id, int) else None,
         "base_url": base_url,
         "checked_url": checked_url,
+        "verify_tls": verify_tls,
         "status_code": None,
         "error": None,
         "redirect_location": None,
@@ -1166,7 +1177,7 @@ async def test_mikrotik_router_connection(router: dict[str, Any]) -> dict[str, A
     try:
         async with httpx.AsyncClient(
             timeout=10.0,
-            verify=False,
+            verify=verify_tls,
             auth=(username, password),
             follow_redirects=False,
         ) as client:

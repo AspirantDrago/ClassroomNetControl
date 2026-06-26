@@ -176,7 +176,7 @@ async def poll_router_once_manual(
         base_url=router.base_url,
         username=router.api_username,
         password=SecretStr(router.api_password),
-        verify_tls=settings.mikrotik_verify_tls,
+        verify_tls=router.api_verify_tls,
         timeout_seconds=settings.mikrotik_timeout_seconds,
     )
 
@@ -196,6 +196,7 @@ async def poll_router_once_manual(
             "api_host": router.api_host,
             "api_port": router.api_port,
             "api_use_ssl": router.api_use_ssl,
+            "api_verify_tls": router.api_verify_tls,
         },
     )
 
@@ -217,6 +218,7 @@ async def poll_router_once_manual(
             "api_host": router.api_host,
             "api_port": router.api_port,
             "api_use_ssl": router.api_use_ssl,
+            "api_verify_tls": router.api_verify_tls,
         }
 
         logger.exception(
@@ -326,6 +328,7 @@ async def poll_once(
         "api_host": router.api_host,
         "api_port": router.api_port,
         "api_use_ssl": router.api_use_ssl,
+        "api_verify_tls": router.api_verify_tls,
     }
 
 
@@ -346,13 +349,14 @@ async def poll_router_worker(
         "api_host": router.api_host,
         "api_port": router.api_port,
         "api_use_ssl": router.api_use_ssl,
+        "api_verify_tls": router.api_verify_tls,
     }
 
     mikrotik_client = MikroTikClient(
         base_url=router.base_url,
         username=router.api_username,
         password=SecretStr(router.api_password),
-        verify_tls=settings.mikrotik_verify_tls,
+        verify_tls=router.api_verify_tls,
         timeout_seconds=settings.mikrotik_timeout_seconds,
     )
 

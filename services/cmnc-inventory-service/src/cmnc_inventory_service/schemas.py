@@ -17,6 +17,7 @@ class RouterRead(BaseModel):
     api_host: str
     api_port: int
     api_use_ssl: bool
+    api_verify_tls: bool
     api_username: str
     is_enabled: bool
     poll_enabled: bool
@@ -35,6 +36,7 @@ class RouterCreate(BaseModel):
     api_host: str = Field(min_length=1, max_length=255)
     api_port: int = Field(default=8728, ge=1, le=65535)
     api_use_ssl: bool = False
+    api_verify_tls: bool = False
     api_username: str = Field(min_length=1, max_length=255)
     api_password: str = Field(min_length=1, max_length=4096)
     is_enabled: bool = True
@@ -48,6 +50,7 @@ class RouterUpdate(BaseModel):
     api_host: str | None = Field(default=None, min_length=1, max_length=255)
     api_port: int | None = Field(default=None, ge=1, le=65535)
     api_use_ssl: bool | None = None
+    api_verify_tls: bool | None = None
     api_username: str | None = Field(default=None, min_length=1, max_length=255)
     api_password: str | None = Field(default=None, min_length=1, max_length=4096)
     is_enabled: bool | None = None

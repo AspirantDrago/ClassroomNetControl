@@ -651,6 +651,7 @@ export type AdminRouter = {
     api_host: string;
     api_port: number;
     api_use_ssl: boolean;
+    api_verify_tls: boolean;
     api_username: string;
     is_enabled: boolean;
     poll_enabled: boolean;
@@ -665,6 +666,7 @@ export type AdminRouterCreateRequest = {
     api_host: string;
     api_port: number;
     api_use_ssl: boolean;
+    api_verify_tls: boolean;
     api_username: string;
     api_password: string;
     is_enabled: boolean;
@@ -703,6 +705,7 @@ export type AdminRouterTestConnectionResponse = {
     router_id: number | null;
     base_url: string;
     checked_url: string;
+    verify_tls: boolean;
     status_code: number | null;
     error: string | null;
     redirect_location: string | null;

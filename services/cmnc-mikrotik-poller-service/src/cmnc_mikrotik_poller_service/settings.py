@@ -8,8 +8,6 @@ class Settings(BaseSettings):
 
     rabbitmq_url: str = "amqp://cmnc:cmnc_password@localhost:5672/cmnc"
     inventory_service_url: str = "http://localhost:8003"
-
-    mikrotik_verify_tls: bool = False
     mikrotik_timeout_seconds: float = 10.0
 
     supervisor_interval_seconds: float = 10.0

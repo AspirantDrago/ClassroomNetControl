@@ -180,6 +180,7 @@ async def create_router(
         api_host=payload.api_host.strip(),
         api_port=payload.api_port,
         api_use_ssl=payload.api_use_ssl,
+        api_verify_tls=payload.api_verify_tls,
         api_username=payload.api_username.strip(),
         api_password=payload.api_password,
         is_enabled=payload.is_enabled,

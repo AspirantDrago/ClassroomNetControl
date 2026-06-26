@@ -121,7 +121,7 @@ class ErrorResponse(BaseModel):
 
 
 class ClassroomCreate(BaseModel):
-    router_id: int = Field(default=1, ge=1)
+    router_id: int = Field(ge=1)
     name: str = Field(min_length=1, max_length=255)
     subnet_cidr: str = Field(min_length=1, max_length=64)
     vlan_id: int | None = None
@@ -172,3 +172,4 @@ class DevicePinRequest(BaseModel):
     row_index: int | None = None
     column_index: int | None = None
     hostname: str | None = None
+    wan_protected: bool = False

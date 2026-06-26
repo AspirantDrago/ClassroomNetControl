@@ -14,6 +14,7 @@ class RouterConnection:
     api_host: str
     api_port: int
     api_use_ssl: bool
+    api_verify_tls: bool
     api_username: str
     api_password: str
     is_enabled: bool
@@ -34,6 +35,7 @@ def parse_router_connection(data: dict[str, Any]) -> RouterConnection:
         api_host=str(data["api_host"]),
         api_port=int(data["api_port"]),
         api_use_ssl=bool(data["api_use_ssl"]),
+        api_verify_tls=bool(data.get("api_verify_tls", False)),
         api_username=str(data["api_username"]),
         api_password=str(data["api_password"]),
         is_enabled=bool(data["is_enabled"]),

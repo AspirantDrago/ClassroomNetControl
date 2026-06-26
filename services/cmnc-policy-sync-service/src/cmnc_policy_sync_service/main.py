@@ -143,6 +143,7 @@ async def sync_router_policy_manual(
         "api_host": router.api_host,
         "api_port": router.api_port,
         "api_use_ssl": router.api_use_ssl,
+        "api_verify_tls": router.api_verify_tls,
     }
 
     if not router.is_enabled:
@@ -165,7 +166,7 @@ async def sync_router_policy_manual(
         base_url=router.base_url,
         username=router.api_username,
         password=SecretStr(router.api_password),
-        verify_tls=settings.mikrotik_verify_tls,
+        verify_tls=router.api_verify_tls,
         timeout_seconds=settings.mikrotik_timeout_seconds,
         managed_comment_prefix=settings.managed_comment_prefix,
     )
@@ -394,6 +395,7 @@ async def sync_router_policy(
         "api_host": router.api_host,
         "api_port": router.api_port,
         "api_use_ssl": router.api_use_ssl,
+        "api_verify_tls": router.api_verify_tls,
     }
 
     if result.errors:
@@ -468,13 +470,14 @@ async def sync_router_worker(
         "api_host": router.api_host,
         "api_port": router.api_port,
         "api_use_ssl": router.api_use_ssl,
+        "api_verify_tls": router.api_verify_tls,
     }
 
     mikrotik_client = MikroTikClient(
         base_url=router.base_url,
         username=router.api_username,
         password=SecretStr(router.api_password),
-        verify_tls=settings.mikrotik_verify_tls,
+        verify_tls=router.api_verify_tls,
         timeout_seconds=settings.mikrotik_timeout_seconds,
         managed_comment_prefix=settings.managed_comment_prefix,
     )

@@ -16,11 +16,6 @@ class Settings(BaseSettings):
         default="cmnc_wan_blocked",
         validation_alias="CMNC_POLICY_SYNC_ADDRESS_LIST_NAME",
     )
-
-    mikrotik_verify_tls: bool = Field(
-        default=False,
-        validation_alias="CMNC_MIKROTIK_VERIFY_TLS",
-    )
     mikrotik_timeout_seconds: float = 10.0
 
     supervisor_interval_seconds: float = 10.0
