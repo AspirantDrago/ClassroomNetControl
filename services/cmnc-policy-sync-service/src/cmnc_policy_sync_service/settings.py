@@ -1,4 +1,4 @@
-from pydantic import Field, SecretStr
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -7,31 +7,23 @@ class Settings(BaseSettings):
 
     rabbitmq_url: str = "amqp://cmnc:cmnc_password@localhost:5672/cmnc"
     classroom_service_url: str = "http://localhost:8002"
+    inventory_service_url: str = "http://localhost:8003"
     wan_policy_changed_queue: str = "cmnc.policy_sync.wan_policy_changed"
-    default_router_id: int = 1
 
     address_list_name: str = Field(
         default="cmnc_wan_blocked",
         validation_alias="CMNC_POLICY_SYNC_ADDRESS_LIST_NAME",
     )
 
-    mikrotik_base_url: str = Field(
-        default="http://192.168.0.1/rest",
-        validation_alias="CMNC_MIKROTIK_BASE_URL",
-    )
-    mikrotik_username: str = Field(
-        default="cmnc_service",
-        validation_alias="CMNC_MIKROTIK_USERNAME",
-    )
-    mikrotik_password: SecretStr = Field(
-        default=SecretStr("change_me"),
-        validation_alias="CMNC_MIKROTIK_PASSWORD",
-    )
     mikrotik_verify_tls: bool = Field(
         default=False,
         validation_alias="CMNC_MIKROTIK_VERIFY_TLS",
     )
     mikrotik_timeout_seconds: float = 10.0
+
+    supervisor_interval_seconds: float = 10.0
+    reconcile_interval_seconds: float = 30.0
+    router_event_queue_max_size: int = 1000
 
     managed_comment_prefix: str = "managed-by=cmnc;"
     kill_connections_on_block: bool = True

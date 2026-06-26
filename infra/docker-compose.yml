@@ -108,18 +108,17 @@ services:
     environment:
       CMNC_POLICY_SYNC_RABBITMQ_URL: amqp://${CMNC_RABBITMQ_USER:-cmnc}:${CMNC_RABBITMQ_PASSWORD:-cmnc_password}@cmnc-rabbitmq:5672/${CMNC_RABBITMQ_VHOST:-cmnc}
       CMNC_POLICY_SYNC_CLASSROOM_SERVICE_URL: http://cmnc-classroom-service:8002
+      CMNC_POLICY_SYNC_INVENTORY_SERVICE_URL: http://cmnc-inventory-service:8003
       CMNC_POLICY_SYNC_WAN_POLICY_CHANGED_QUEUE: cmnc.policy_sync.wan_policy_changed
-      CMNC_POLICY_SYNC_DEFAULT_ROUTER_ID: 1
       CMNC_POLICY_SYNC_KILL_CONNECTIONS_ON_BLOCK: "true"
       CMNC_POLICY_SYNC_ADDRESS_LIST_NAME: ${CMNC_POLICY_SYNC_ADDRESS_LIST_NAME:-cmnc_wan_blocked}
-      CMNC_MIKROTIK_BASE_URL: ${CMNC_MIKROTIK_BASE_URL}
-      CMNC_MIKROTIK_USERNAME: ${CMNC_MIKROTIK_USERNAME}
-      CMNC_MIKROTIK_PASSWORD: ${CMNC_MIKROTIK_PASSWORD}
       CMNC_MIKROTIK_VERIFY_TLS: ${CMNC_MIKROTIK_VERIFY_TLS:-false}
     depends_on:
       cmnc-rabbitmq:
         condition: service_healthy
       cmnc-classroom-service:
+        condition: service_healthy
+      cmnc-inventory-service:
         condition: service_healthy
     networks:
       - cmnc-network
@@ -159,16 +158,15 @@ services:
     restart: unless-stopped
     environment:
       CMNC_MIKROTIK_POLLER_RABBITMQ_URL: amqp://${CMNC_RABBITMQ_USER:-cmnc}:${CMNC_RABBITMQ_PASSWORD:-cmnc_password}@cmnc-rabbitmq:5672/${CMNC_RABBITMQ_VHOST:-cmnc}
-      CMNC_MIKROTIK_POLLER_ROUTER_ID: 1
-      CMNC_MIKROTIK_POLLER_MIKROTIK_BASE_URL: ${CMNC_MIKROTIK_BASE_URL}
-      CMNC_MIKROTIK_POLLER_MIKROTIK_USERNAME: ${CMNC_MIKROTIK_USERNAME}
-      CMNC_MIKROTIK_POLLER_MIKROTIK_PASSWORD: ${CMNC_MIKROTIK_PASSWORD}
+      CMNC_MIKROTIK_POLLER_INVENTORY_SERVICE_URL: http://cmnc-inventory-service:8003
       CMNC_MIKROTIK_POLLER_MIKROTIK_VERIFY_TLS: ${CMNC_MIKROTIK_VERIFY_TLS:-false}
       CMNC_MIKROTIK_POLLER_MIKROTIK_TIMEOUT_SECONDS: 10
-      CMNC_MIKROTIK_POLLER_POLL_INTERVAL_SECONDS: 5
+      CMNC_MIKROTIK_POLLER_SUPERVISOR_INTERVAL_SECONDS: 10
       CMNC_MIKROTIK_POLLER_PUBLISH_EMPTY_SNAPSHOTS: "true"
     depends_on:
       cmnc-rabbitmq:
+        condition: service_healthy
+      cmnc-inventory-service:
         condition: service_healthy
     networks:
       - cmnc-network
