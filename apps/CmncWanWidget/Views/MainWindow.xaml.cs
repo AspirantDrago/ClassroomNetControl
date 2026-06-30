@@ -49,8 +49,13 @@ public partial class MainWindow
 
         Activated += (_, _) =>
         {
-            if (!_isMoveMode)
-                DesktopWidgetHost.SendToBottom(this);
+            if (_isMoveMode)
+                return;
+
+            if (WindowMinimizeGuard.IsTemporarilyKeepingVisible(this))
+                return;
+
+            DesktopWidgetHost.SendToBottom(this);
         };
 
         _config = LoadConfig();

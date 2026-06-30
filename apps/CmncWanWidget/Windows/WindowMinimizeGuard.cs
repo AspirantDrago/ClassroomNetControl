@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
@@ -26,6 +27,8 @@ public static class WindowMinimizeGuard
     private const uint SWP_NOACTIVATE = 0x0010;
     private const uint SWP_SHOWWINDOW = 0x0040;
 
+    private static readonly Dictionary<IntPtr, GuardState> States = new();
+
     public static void Attach(
         Window window,
         Func<bool> isMoveMode,
@@ -38,6 +41,7 @@ public static class WindowMinimizeGuard
             return;
 
         var state = new GuardState();
+        States[hwnd] = state;
 
         HwndSourceHook hook = (
             IntPtr windowHandle,
@@ -100,6 +104,14 @@ public static class WindowMinimizeGuard
 
             if (state.IsTemporarilyTopmost && !isMoveMode())
             {
+                var foreground = GetForegroundWindow();
+
+                if (foreground == currentHwnd)
+                    return;
+
+                if (foreground == IntPtr.Zero)
+                    return;
+
                 SetNotTopmost(currentHwnd);
                 state.IsTemporarilyTopmost = false;
                 sendToBottom();
@@ -112,6 +124,7 @@ public static class WindowMinimizeGuard
         {
             timer.Stop();
             source?.RemoveHook(hook);
+            States.Remove(hwnd);
         };
     }
 
@@ -222,4 +235,14 @@ public static class WindowMinimizeGuard
         StringBuilder lpClassName,
         int nMaxCount
     );
+
+    public static bool IsTemporarilyKeepingVisible(Window window)
+    {
+        var hwnd = new WindowInteropHelper(window).Handle;
+
+        if (hwnd == IntPtr.Zero)
+            return false;
+
+        return States.TryGetValue(hwnd, out var state) && state.IsTemporarilyTopmost;
+    }
 }
