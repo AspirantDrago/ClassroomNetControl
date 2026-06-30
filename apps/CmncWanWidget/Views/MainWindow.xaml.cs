@@ -18,6 +18,7 @@ public partial class MainWindow
     private bool _isMoveMode;
     private bool _allowClose;
     private bool _busy;
+    private WanWidgetState _state = WanWidgetState.NoAccess;
 
     public MainWindow()
     {
@@ -140,6 +141,7 @@ public partial class MainWindow
     {
         ClassroomText.Text = classroomText;
         StatusText.Text = statusText;
+        _state = state;
 
         StatusBorder.Background = state switch
         {
@@ -151,43 +153,37 @@ public partial class MainWindow
         };
     }
 
-    private async void BlockButton_Click(object sender, RoutedEventArgs e)
+    private async void Toggle_Click()
     {
         if (_classroom == null)
             return;
-
+        if (_busy)
+            return;
+        if (_state == WanWidgetState.NoAccess)
+        {
+            await RefreshStateAsync();
+            return;
+        }
         _busy = true;
+        bool target_wan_block = _state switch
+        {
+            WanWidgetState.AllWanEnabled => true,
+            WanWidgetState.AllBlockableStaticWanDisabled => false,
+            WanWidgetState.Mixed => false
+        };
 
         try
         {
-            await _api.BlockWanAsync(_classroom.Id);
+            if (target_wan_block)
+                await _api.BlockWanAsync(_classroom.Id);
+            else
+                await _api.UnblockWanAsync(_classroom.Id);
             await RefreshStateAsync();
         }
         catch
         {
-            SetState(WanWidgetState.NoAccess, "Аудитория: недоступна", "Ошибка выключения WAN");
-        }
-        finally
-        {
-            _busy = false;
-        }
-    }
-
-    private async void UnblockButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_classroom == null)
-            return;
-
-        _busy = true;
-
-        try
-        {
-            await _api.UnblockWanAsync(_classroom.Id);
-            await RefreshStateAsync();
-        }
-        catch
-        {
-            SetState(WanWidgetState.NoAccess, "Аудитория: недоступна", "Ошибка включения WAN");
+            SetState(WanWidgetState.NoAccess, "Аудитория: недоступна",
+                target_wan_block ? "Ошибка включения WAN" : "Ошибка выключения WAN");
         }
         finally
         {
@@ -213,8 +209,11 @@ public partial class MainWindow
     private void RootBorder_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (!_isMoveMode)
+        {
+            Toggle_Click();
             return;
-
+        }
+        
         if (e.LeftButton != MouseButtonState.Pressed)
             return;
 
