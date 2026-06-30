@@ -17,10 +17,13 @@ public partial class MainWindow
     private ClassroomInfo? _classroom;
     private bool _isMoveMode;
     private bool _allowClose;
+    private bool _busy;
 
     public MainWindow()
     {
         InitializeComponent();
+
+        WidgetPositionStore.Restore(this);
 
         Closing += MainWindow_Closing;
 
@@ -71,7 +74,7 @@ public partial class MainWindow
 
     private async Task RefreshStateAsync()
     {
-        SetBusy(true);
+        _busy = true;
 
         try
         {
@@ -123,7 +126,7 @@ public partial class MainWindow
         }
         finally
         {
-            SetBusy(false);
+            _busy = false;
         }
     }
 
@@ -142,23 +145,12 @@ public partial class MainWindow
         };
     }
 
-    private void SetBusy(bool isBusy)
-    {
-        BlockButton.IsEnabled = !isBusy && _classroom != null;
-        UnblockButton.IsEnabled = !isBusy && _classroom != null;
-    }
-
-    private async void RefreshButton_Click(object sender, RoutedEventArgs e)
-    {
-        await RefreshStateAsync();
-    }
-
     private async void BlockButton_Click(object sender, RoutedEventArgs e)
     {
         if (_classroom == null)
             return;
 
-        SetBusy(true);
+        _busy = true;
 
         try
         {
@@ -171,7 +163,7 @@ public partial class MainWindow
         }
         finally
         {
-            SetBusy(false);
+            _busy = false;
         }
     }
 
@@ -180,7 +172,7 @@ public partial class MainWindow
         if (_classroom == null)
             return;
 
-        SetBusy(true);
+        _busy = true;
 
         try
         {
@@ -193,16 +185,13 @@ public partial class MainWindow
         }
         finally
         {
-            SetBusy(false);
+            _busy = false;
         }
     }
 
     private async void RefreshMenuItem_Click(object sender, RoutedEventArgs e)
     {
         await RefreshStateAsync();
-
-        if (!_isMoveMode)
-            DesktopWidgetHost.SendToBottom(this);
     }
 
     private void MoveLockMenuItem_Click(object sender, RoutedEventArgs e)
@@ -247,7 +236,10 @@ public partial class MainWindow
             : null;
 
         if (!enabled)
+        {
+            WidgetPositionStore.Save(this);
             DesktopWidgetHost.SendToBottom(this);
+        }
     }
 
     private void ConfirmAndClose()

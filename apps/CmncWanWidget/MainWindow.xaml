@@ -42,6 +42,7 @@
                        Text="Аудитория: ..."
                        FontSize="18"
                        FontWeight="SemiBold"
+											 TextAlignment="Center"
                        TextWrapping="Wrap"/>
 
             <Border x:Name="StatusBorder"
@@ -72,11 +73,6 @@
                         Margin="5,0,0,0"
                         Click="UnblockButton_Click"/>
             </UniformGrid>
-
-            <Button Grid.Row="3"
-                    Content="Обновить"
-                    Height="32"
-                    Click="RefreshButton_Click"/>
         </Grid>
     </Border>
 </Window>
