@@ -10,6 +10,7 @@
         Top="30"
         WindowStyle="None"
         ShowInTaskbar="False"
+				ShowActivated="False"
         Topmost="False">
 	    <Border x:Name="RootBorder"
 			    Padding="18"

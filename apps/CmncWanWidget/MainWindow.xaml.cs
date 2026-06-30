@@ -30,6 +30,12 @@ public partial class MainWindow
         SourceInitialized += (_, _) =>
         {
             DesktopWidgetHost.Attach(this);
+
+            WindowMinimizeGuard.Attach(
+                this,
+                () => _isMoveMode,
+                () => DesktopWidgetHost.SendToBottom(this)
+            );
         };
 
         Loaded += async (_, _) =>
