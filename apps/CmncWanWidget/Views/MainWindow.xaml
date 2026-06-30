@@ -16,19 +16,30 @@
 			    Padding="18"
 			    PreviewMouseLeftButtonDown="RootBorder_PreviewMouseLeftButtonDown">
 		    <Border.ContextMenu>
-			    <ContextMenu>
-				    <MenuItem Header="Обновить"
-									    Click="RefreshMenuItem_Click"/>
+					<ContextMenu Opened="ContextMenu_Opened">
+						<MenuItem Header="Обновить"
+											Click="RefreshMenuItem_Click"/>
 
-				    <MenuItem x:Name="MoveLockMenuItem"
-									    Header="Переместить"
-									    Click="MoveLockMenuItem_Click"/>
+						<MenuItem Header="Открыть сайт"
+											Click="OpenSiteMenuItem_Click"/>
 
-				    <Separator/>
+						<Separator/>
 
-				    <MenuItem Header="Закрыть"
-									    Click="CloseMenuItem_Click"/>
-			    </ContextMenu>
+						<MenuItem x:Name="MoveLockMenuItem"
+											Header="Переместить"
+											Click="MoveLockMenuItem_Click"/>
+
+						<Separator/>
+
+						<MenuItem x:Name="StartupMenuItem"
+											Header="Добавить в автозагрузку"
+											Click="StartupMenuItem_Click"/>
+
+						<Separator/>
+
+						<MenuItem Header="Закрыть"
+											Click="CloseMenuItem_Click"/>
+					</ContextMenu>
 		    </Border.ContextMenu>
         <Grid>
             <Grid.RowDefinitions>

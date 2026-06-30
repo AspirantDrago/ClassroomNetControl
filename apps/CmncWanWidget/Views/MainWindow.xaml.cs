@@ -1,10 +1,12 @@
-﻿using System.IO;
+﻿using System;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
-using System.ComponentModel;
-using System.Windows.Input;
 
 namespace CmncWanWidget;
 
@@ -23,6 +25,8 @@ public partial class MainWindow
     public MainWindow()
     {
         InitializeComponent();
+
+        UpdateStartupMenuItem();
 
         WidgetPositionStore.Restore(this);
 
@@ -199,6 +203,90 @@ public partial class MainWindow
     private async void RefreshMenuItem_Click(object sender, RoutedEventArgs e)
     {
         await RefreshStateAsync();
+    }
+
+    private void ContextMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        UpdateStartupMenuItem();
+    }
+
+    private void OpenSiteMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        var url = NormalizeUrl(_config.ApiBaseUrl);
+
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            MessageBox.Show(
+                this,
+                "В настройках не указан ApiBaseUrl.",
+                "Ошибка",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning
+            );
+
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                this,
+                $"Не удалось открыть сайт: {ex.Message}",
+                "Ошибка",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error
+            );
+        }
+    }
+
+    private void StartupMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            StartupManager.Toggle();
+            UpdateStartupMenuItem();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                this,
+                $"Не удалось изменить автозагрузку: {ex.Message}",
+                "Ошибка",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error
+            );
+        }
+    }
+
+    private void UpdateStartupMenuItem()
+    {
+        StartupMenuItem.Header = StartupManager.IsEnabled()
+            ? "Убрать из автозагрузки"
+            : "Добавить в автозагрузку";
+    }
+
+    private static string NormalizeUrl(string value)
+    {
+        var url = value.Trim();
+
+        if (string.IsNullOrWhiteSpace(url))
+            return "";
+
+        if (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return url;
+        }
+
+        return "http://" + url;
     }
 
     private void MoveLockMenuItem_Click(object sender, RoutedEventArgs e)
