@@ -7,9 +7,9 @@
   "RefreshSeconds": 10,
 
   "AuthLoginPath": "/api/auth/login",
-  "ClassroomsPath": "/api/admin/classrooms",
-  "DevicesPath": "/api/admin/devices?classroom_id={classroomId}",
+  "ClassroomsPath": "/api/classrooms",
+  "DevicesPath": "/api/classrooms/{classroomId}/dashboard",
 
-  "WanBlockPath": "/api/admin/classrooms/{classroomId}/wan/block",
-  "WanUnblockPath": "/api/admin/classrooms/{classroomId}/wan/unblock"
+  "WanBlockPath": "/api/classrooms/{classroomId}/wan/block-all",
+  "WanUnblockPath": "/api/classrooms/{classroomId}/wan/allow-all"
 }

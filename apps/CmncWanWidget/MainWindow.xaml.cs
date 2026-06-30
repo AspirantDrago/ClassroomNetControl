@@ -94,9 +94,13 @@ public partial class MainWindow
                 SetState(WanWidgetState.Mixed, $"Аудитория: {_classroom.Name}", "WAN включен не у всех");
             }
         }
-        catch
+        catch (Exception ex)
         {
-            SetState(WanWidgetState.NoAccess, "Аудитория: недоступна", "Нет доступа");
+            SetState(
+                WanWidgetState.NoAccess,
+                "Аудитория: недоступна",
+                $"Нет доступа: {ex.Message}"
+            );
         }
         finally
         {

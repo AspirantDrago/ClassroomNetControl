@@ -39,7 +39,7 @@ public sealed class ApiClient
         using var content = new StringContent(payload, Encoding.UTF8, "application/json");
         using var response = await _http.PostAsync(NormalizePath(_config.AuthLoginPath), content);
 
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response);
 
         var json = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(json);
@@ -60,7 +60,7 @@ public sealed class ApiClient
 
         Console.WriteLine(NormalizePath(_config.ClassroomsPath));
         using var response = await _http.GetAsync(NormalizePath(_config.ClassroomsPath));
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response);
 
         var json = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(json);
@@ -86,36 +86,61 @@ public sealed class ApiClient
         var path = _config.DevicesPath.Replace("{classroomId}", Uri.EscapeDataString(classroomId));
 
         using var response = await _http.GetAsync(NormalizePath(path));
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response);
 
         var json = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(json);
 
         var items = JsonHelpers.ExtractArray(doc.RootElement, "items", "devices", "data");
 
-        return items.Select(x => new DeviceInfo
+        return items.Select(x =>
         {
-            Id = JsonHelpers.GetString(x, "id", "device_id", "deviceId"),
-            Name = JsonHelpers.GetString(x, "name", "host_name", "hostname", "display_name", "displayName"),
-            IsStatic = JsonHelpers.GetBool(x, false, "is_static", "isStatic", "static", "isStaticLease"),
-            IsProtectedFromBlocking = JsonHelpers.GetBool(x, false,
-                "is_protected_from_blocking",
-                "isProtectedFromBlocking",
-                "is_block_protected",
-                "isBlockProtected",
-                "block_protected",
-                "blockProtected",
-                "wan_block_protected",
-                "wanBlockProtected"),
-            WanEnabled = JsonHelpers.GetBool(x, true,
-                "wan_enabled",
-                "wanEnabled",
-                "wan_allowed",
-                "wanAllowed",
-                "internet_enabled",
-                "internetEnabled",
-                "has_wan_access",
-                "hasWanAccess")
+            var staticIp = JsonHelpers.GetString(x, "static_ip", "staticIp");
+
+            return new DeviceInfo
+            {
+                Id = JsonHelpers.GetString(x, "id", "device_id", "deviceId"),
+                Name = JsonHelpers.GetString(
+                    x,
+                    "inventory_name",
+                    "inventoryName",
+                    "name",
+                    "host_name",
+                    "hostname",
+                    "display_name",
+                    "displayName"
+                ),
+
+                IsStatic = !string.IsNullOrWhiteSpace(staticIp),
+
+                IsProtectedFromBlocking = JsonHelpers.GetBool(
+                    x,
+                    false,
+                    "wan_protected",
+                    "wanProtected",
+                    "is_protected_from_blocking",
+                    "isProtectedFromBlocking",
+                    "is_block_protected",
+                    "isBlockProtected",
+                    "block_protected",
+                    "blockProtected",
+                    "wan_block_protected",
+                    "wanBlockProtected"
+                ),
+
+                WanEnabled = JsonHelpers.GetBool(
+                    x,
+                    true,
+                    "wan_allowed",
+                    "wanAllowed",
+                    "wan_enabled",
+                    "wanEnabled",
+                    "internet_enabled",
+                    "internetEnabled",
+                    "has_wan_access",
+                    "hasWanAccess"
+                )
+            };
         }).ToList();
     }
 
@@ -126,7 +151,7 @@ public sealed class ApiClient
         var path = _config.WanBlockPath.Replace("{classroomId}", Uri.EscapeDataString(classroomId));
 
         using var response = await _http.PostAsync(NormalizePath(path), new StringContent("", Encoding.UTF8, "application/json"));
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response);
     }
 
     public async Task UnblockWanAsync(string classroomId)
@@ -136,11 +161,23 @@ public sealed class ApiClient
         var path = _config.WanUnblockPath.Replace("{classroomId}", Uri.EscapeDataString(classroomId));
 
         using var response = await _http.PostAsync(NormalizePath(path), new StringContent("", Encoding.UTF8, "application/json"));
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response);
     }
 
     private static string NormalizePath(string path)
     {
         return path.TrimStart('/');
+    }
+
+    private static async Task EnsureSuccessAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode)
+            return;
+
+        var body = await response.Content.ReadAsStringAsync();
+
+        throw new HttpRequestException(
+            $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}: {body}"
+        );
     }
 }
