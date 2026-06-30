@@ -5,8 +5,12 @@
         Width="380"
         Height="230"
         ResizeMode="NoResize"
-        WindowStartupLocation="CenterScreen"
-        Topmost="True">
+        WindowStartupLocation="Manual"
+        Left="30"
+        Top="30"
+        WindowStyle="None"
+        ShowInTaskbar="False"
+        Topmost="False">
     <Border Padding="18">
         <Grid>
             <Grid.RowDefinitions>

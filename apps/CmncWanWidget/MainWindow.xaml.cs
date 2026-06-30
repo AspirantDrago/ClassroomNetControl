@@ -18,6 +18,24 @@ public partial class MainWindow
     {
         InitializeComponent();
 
+        SourceInitialized += (_, _) =>
+        {
+            DesktopWidgetHost.Attach(this);
+        };
+
+        Loaded += async (_, _) =>
+        {
+            DesktopWidgetHost.SendToBottom(this);
+
+            await RefreshStateAsync();
+            _timer.Start();
+        };
+
+        Activated += (_, _) =>
+        {
+            DesktopWidgetHost.SendToBottom(this);
+        };
+
         _config = LoadConfig();
         _api = new ApiClient(_config);
 
@@ -27,12 +45,6 @@ public partial class MainWindow
         };
 
         _timer.Tick += async (_, _) => await RefreshStateAsync();
-
-        Loaded += async (_, _) =>
-        {
-            await RefreshStateAsync();
-            _timer.Start();
-        };
     }
 
     private static AppConfig LoadConfig()
