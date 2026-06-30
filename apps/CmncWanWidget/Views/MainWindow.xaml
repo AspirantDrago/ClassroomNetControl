@@ -12,7 +12,7 @@
         ShowInTaskbar="False"
 				ShowActivated="False"
         Topmost="False">
-	    <Border x:Name="RootBorder"
+	    <Border x:Name="StatusBorder"
 			    Padding="18"
 			    PreviewMouseLeftButtonDown="RootBorder_PreviewMouseLeftButtonDown">
 		    <Border.ContextMenu>
@@ -38,28 +38,21 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <TextBlock x:Name="ClassroomText"
-                       Grid.Row="0"
-                       Text="Аудитория: ..."
-                       FontSize="18"
-                       FontWeight="SemiBold"
-											 TextAlignment="Center"
-                       TextWrapping="Wrap"/>
-
-            <Border x:Name="StatusBorder"
-                    Grid.Row="1"
-                    Margin="0,18,0,18"
-                    CornerRadius="12"
-                    Padding="12"
-                    Background="#FFE0E0E0">
-                <TextBlock x:Name="StatusText"
-                           Text="Загрузка..."
-                           FontSize="17"
-                           FontWeight="Bold"
-                           TextAlignment="Center"
-                           VerticalAlignment="Center"
-                           TextWrapping="Wrap"/>
-            </Border>
+					<TextBlock x:Name="ClassroomText"
+										 Grid.Row="0"
+										 Text="Аудитория: ..."
+										 FontSize="18"
+										 FontWeight="SemiBold"
+										 TextAlignment="Center"
+										 TextWrapping="Wrap"/>
+					<TextBlock x:Name="StatusText"
+										 Grid.Row="1"
+										 Text="Загрузка..."
+										 FontSize="17"
+										 FontWeight="Bold"
+										 TextAlignment="Center"
+										 VerticalAlignment="Center"
+										 TextWrapping="Wrap"/>
 
             <UniformGrid Grid.Row="2" Columns="2" Margin="0,0,0,10">
                 <Button x:Name="BlockButton"
