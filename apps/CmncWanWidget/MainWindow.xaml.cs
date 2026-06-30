@@ -3,6 +3,8 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
+using System.ComponentModel;
+using System.Windows.Input;
 
 namespace CmncWanWidget;
 
@@ -13,10 +15,14 @@ public partial class MainWindow
     private readonly DispatcherTimer _timer;
 
     private ClassroomInfo? _classroom;
+    private bool _isMoveMode;
+    private bool _allowClose;
 
     public MainWindow()
     {
         InitializeComponent();
+
+        Closing += MainWindow_Closing;
 
         SourceInitialized += (_, _) =>
         {
@@ -33,7 +39,8 @@ public partial class MainWindow
 
         Activated += (_, _) =>
         {
-            DesktopWidgetHost.SendToBottom(this);
+            if (!_isMoveMode)
+                DesktopWidgetHost.SendToBottom(this);
         };
 
         _config = LoadConfig();
@@ -188,5 +195,86 @@ public partial class MainWindow
         {
             SetBusy(false);
         }
+    }
+
+    private async void RefreshMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        await RefreshStateAsync();
+
+        if (!_isMoveMode)
+            DesktopWidgetHost.SendToBottom(this);
+    }
+
+    private void MoveLockMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        SetMoveMode(!_isMoveMode);
+    }
+
+    private void CloseMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        ConfirmAndClose();
+    }
+
+    private void RootBorder_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!_isMoveMode)
+            return;
+
+        if (e.LeftButton != MouseButtonState.Pressed)
+            return;
+
+        try
+        {
+            DragMove();
+            e.Handled = true;
+        }
+        catch (InvalidOperationException)
+        {
+            // DragMove может упасть, если кнопка мыши уже отпущена.
+        }
+    }
+
+    private void SetMoveMode(bool enabled)
+    {
+        _isMoveMode = enabled;
+
+        MoveLockMenuItem.Header = enabled
+            ? "Зафиксировать"
+            : "Переместить";
+
+        Cursor = enabled
+            ? Cursors.SizeAll
+            : null;
+
+        if (!enabled)
+            DesktopWidgetHost.SendToBottom(this);
+    }
+
+    private void ConfirmAndClose()
+    {
+        var result = MessageBox.Show(
+            this,
+            "Закрыть виджет управления WAN?",
+            "Подтверждение",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question,
+            MessageBoxResult.No
+        );
+
+        if (result != MessageBoxResult.Yes)
+            return;
+
+        _allowClose = true;
+        _timer.Stop();
+        Close();
+    }
+
+    private void MainWindow_Closing(object? sender, CancelEventArgs e)
+    {
+        if (_allowClose)
+            return;
+
+        e.Cancel = true;
+        ConfirmAndClose();
     }
 }

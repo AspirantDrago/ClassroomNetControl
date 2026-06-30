@@ -11,7 +11,24 @@
         WindowStyle="None"
         ShowInTaskbar="False"
         Topmost="False">
-    <Border Padding="18">
+	    <Border x:Name="RootBorder"
+			    Padding="18"
+			    PreviewMouseLeftButtonDown="RootBorder_PreviewMouseLeftButtonDown">
+		    <Border.ContextMenu>
+			    <ContextMenu>
+				    <MenuItem Header="Обновить"
+									    Click="RefreshMenuItem_Click"/>
+
+				    <MenuItem x:Name="MoveLockMenuItem"
+									    Header="Переместить"
+									    Click="MoveLockMenuItem_Click"/>
+
+				    <Separator/>
+
+				    <MenuItem Header="Закрыть"
+									    Click="CloseMenuItem_Click"/>
+			    </ContextMenu>
+		    </Border.ContextMenu>
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
