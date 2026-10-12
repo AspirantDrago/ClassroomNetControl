@@ -2,16 +2,16 @@
 name = "cmnc-inventory-service"
 version = "0.1.0"
 description = "Inventory service for ClassroomMikrotikNetControl"
-requires-python = ">=3.14"
+requires-python = "==3.14.8"
 dependencies = [
-    "fastapi>=0.139.0",
-    "uvicorn[standard]>=0.51.0",
-    "pydantic>=2.13.4",
-    "pydantic-settings>=2.14.2",
-    "sqlalchemy>=2.0.51",
-    "asyncpg>=0.31.0",
-    "aio-pika>=10.0.1",
-    "alembic>=1.18.5",
+    "fastapi==0.143.0",
+    "uvicorn[standard]==0.54.0",
+    "pydantic==2.14.1",
+    "pydantic-settings==2.15.0",
+    "sqlalchemy[asyncio]==2.1.4",
+    "asyncpg==0.32.0",
+    "aio-pika==10.1.1",
+    "alembic==1.20.0",
     "cmnc-contracts",
 ]
 
@@ -22,5 +22,5 @@ cmnc-contracts = { workspace = true }
 cmnc-inventory-service = "cmnc_inventory_service.main:run"
 
 [build-system]
-requires = ["uv_build>=0.9.0,<0.12.0"]
+requires = ["uv_build>=0.13.0,<0.14.0"]
 build-backend = "uv_build"
