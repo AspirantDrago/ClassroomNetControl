@@ -22,10 +22,17 @@ class ContainerStatus(BaseModel):
     memory_limit_bytes: int | None = None
     memory_percent: float | None = None
     started_at: datetime | None = None
+    restart_error: str | None = None
 
 
 class ContainersStatusResponse(BaseModel):
     containers: list[ContainerStatus]
+
+
+class ContainerRestartResponse(BaseModel):
+    container_id: str
+    container_name: str
+    accepted: bool
 
 
 class ContainerLogsResponse(BaseModel):

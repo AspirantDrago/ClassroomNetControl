@@ -829,6 +829,7 @@ export type MaintenanceContainerStatus = {
     memory_limit_bytes: number | null;
     memory_percent: number | null;
     started_at: string | null;
+    restart_error?: string | null;
 };
 
 export type MaintenanceContainersResponse = {
@@ -837,6 +838,16 @@ export type MaintenanceContainersResponse = {
 
 export function getMaintenanceContainers(): Promise<MaintenanceContainersResponse> {
     return request<MaintenanceContainersResponse>("/api/admin/maintenance/containers");
+}
+
+export function restartMaintenanceContainer(containerId: string): Promise<{
+    container_id: string;
+    container_name: string;
+    accepted: boolean;
+}> {
+    return request(`/api/admin/maintenance/containers/${encodeURIComponent(containerId)}/restart`, {
+        method: "POST",
+    });
 }
 
 export type MaintenanceContainerLogsResponse = {

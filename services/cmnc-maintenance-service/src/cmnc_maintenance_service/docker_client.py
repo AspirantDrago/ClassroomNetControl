@@ -62,6 +62,40 @@ class DockerClient:
         result.sort(key=lambda container: container.name)
         return result
 
+    async def get_restart_target(self, container_id: str) -> tuple[str, str, str]:
+        async with self._create_client() as client:
+            data = await self._request_json(
+                client=client, method="GET", path=f"/containers/{container_id}/json",
+            )
+        if not isinstance(data, dict):
+            raise TypeError("Invalid Docker inspect response")
+        name = str(data.get("Name") or "").lstrip("/")
+        if not name or not self._should_include_container(name):
+            raise PermissionError("Этот контейнер не относится к CMNC.")
+        state = data.get("State")
+        if not isinstance(state, dict):
+            raise ValueError("Не удалось определить состояние контейнера.")
+        status = str(state.get("Status") or "")
+        health = self._extract_health(data, "")
+        if (status == "running" and health == "starting") or status not in {"running", "exited", "dead", "paused"}:
+            raise ValueError("Контейнер в текущем состоянии нельзя перезапустить.")
+        canonical_id = str(data.get("Id") or "")
+        if not canonical_id:
+            raise TypeError("Docker inspect response has no container id")
+        return canonical_id, name, status
+
+    async def restart_container(self, container_id: str) -> None:
+        # Recheck the state immediately before performing the queued action.
+        canonical_id, _, state = await self.get_restart_target(container_id)
+        async with self._create_client(timeout_seconds=60.0) as client:
+            if state == "paused":
+                response = await client.post(f"/containers/{canonical_id}/unpause")
+                response.raise_for_status()
+            response = await client.post(
+                f"/containers/{canonical_id}/restart", params={"t": "10"},
+            )
+            response.raise_for_status()
+
     async def get_container_logs(
         self,
         container_id: str,

@@ -1,15 +1,18 @@
+import asyncio
 import logging
 import re
 from datetime import datetime, timezone
 from typing import Literal
 
+import httpx
 import uvicorn
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import Response
 
 from cmnc_maintenance_service.docker_client import DockerClient
 from cmnc_maintenance_service.schemas import (
     ContainerLogsResponse,
+    ContainerRestartResponse,
     ContainersStatusResponse,
     DatabaseRestoreResponse,
     HealthResponse,
@@ -57,6 +60,8 @@ async def health() -> HealthResponse:
     response_model=ContainersStatusResponse,
 )
 async def get_containers_status() -> ContainersStatusResponse:
+    pending_at_start = set(pending_restarts)
+    generations_at_start = restart_generations.copy()
     try:
         containers = await docker_client.get_containers_status()
     except Exception as exc:
@@ -65,7 +70,70 @@ async def get_containers_status() -> ContainersStatusResponse:
             detail=f"Docker Engine unavailable: {exc}",
         ) from exc
 
+    pending_ids = {container_id[:12] for container_id in pending_at_start | pending_restarts}
+    pending_ids.update(
+        container_id for container_id, generation in restart_generations.items()
+        if generations_at_start.get(container_id) != generation
+    )
+    for container in containers:
+        container.restart_error = restart_errors.get(container.id)
+        if container.id in pending_ids:
+            container.state = "restarting"
+            container.state_label = "запускается"
+            container.health = "starting"
     return ContainersStatusResponse(containers=containers)
+
+
+pending_restarts: set[str] = set()
+restart_errors: dict[str, str] = {}
+restart_generations: dict[str, int] = {}
+logger = logging.getLogger(__name__)
+
+
+async def perform_container_restart(container_id: str) -> None:
+    try:
+        # Allow the response to reach the browser before restarting a control service.
+        await asyncio.sleep(1.0)
+        await docker_client.restart_container(container_id)
+        restart_errors.pop(container_id[:12], None)
+    except Exception as exc:
+        restart_errors[container_id[:12]] = f"Не удалось перезапустить контейнер: {exc}"
+        logger.exception("Container restart failed: %s", container_id)
+    finally:
+        pending_restarts.discard(container_id)
+
+
+@app.post(
+    "/internal/maintenance/containers/{container_id}/restart",
+    response_model=ContainerRestartResponse,
+    status_code=202,
+)
+async def restart_container(
+    container_id: str,
+    background_tasks: BackgroundTasks,
+) -> ContainerRestartResponse:
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", container_id):
+        raise HTTPException(status_code=422, detail="Invalid container id")
+    try:
+        canonical_id, name, _ = await docker_client.get_restart_target(container_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except httpx.HTTPStatusError as exc:
+        status = 404 if exc.response.status_code == 404 else 502
+        raise HTTPException(status_code=status, detail="Не удалось найти контейнер в Docker.") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Docker Engine unavailable: {exc}") from exc
+
+    if canonical_id in pending_restarts:
+        raise HTTPException(status_code=409, detail="Перезапуск контейнера уже запрошен.")
+    pending_restarts.add(canonical_id)
+    short_id = canonical_id[:12]
+    restart_generations[short_id] = restart_generations.get(short_id, 0) + 1
+    restart_errors.pop(canonical_id[:12], None)
+    background_tasks.add_task(perform_container_restart, canonical_id)
+    return ContainerRestartResponse(container_id=container_id, container_name=name, accepted=True)
 
 
 @app.get(

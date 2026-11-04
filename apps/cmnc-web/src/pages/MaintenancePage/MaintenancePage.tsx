@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
     downloadMaintenanceDatabaseBackup,
     extractErrorDetail,
     getMaintenanceContainerLogs,
     getMaintenanceContainers,
+    restartMaintenanceContainer,
     uploadMaintenanceDatabaseBackup,
     type MaintenanceContainerStatus,
 } from "../../api";
@@ -22,6 +23,13 @@ type LogsDialogState = {
     error: string | null;
 };
 
+type RestartDialogState = {
+    container: MaintenanceContainerStatus;
+    busy: boolean;
+    error: string | null;
+    phase: string | null;
+};
+
 export function MaintenancePage() {
     const [containers, setContainers] = useState<MaintenanceContainerStatus[]>([]);
     const [loading, setLoading] = useState(false);
@@ -31,21 +39,79 @@ export function MaintenancePage() {
     const [backupLoading, setBackupLoading] = useState(false);
     const [backupMessage, setBackupMessage] = useState<string | null>(null);
     const [backupError, setBackupError] = useState<string | null>(null);
+    const [restartDialog, setRestartDialog] = useState<RestartDialogState | null>(null);
+    const [restartMessage, setRestartMessage] = useState<string | null>(null);
+    const pendingRestartStatusesRef = useRef(new Map<string, PendingContainerRestart>());
+    const containerStatusRequestRef = useRef(0);
+    const restartConfirmRef = useRef(false);
     const logsRequestRef = useRef(0);
     const logsContentRef = useRef<HTMLPreElement | null>(null);
     const backupInputRef = useRef<HTMLInputElement | null>(null);
 
     async function loadContainers() {
+        const requestId = ++containerStatusRequestRef.current;
         setLoading(true);
         setError(null);
 
         try {
             const data = await getMaintenanceContainers();
-            setContainers(data.containers);
+            if (requestId === containerStatusRequestRef.current) {
+                setContainers(mergeRestartStatuses(data.containers, pendingRestartStatusesRef.current));
+            }
         } catch (err) {
             setError(extractErrorDetail(err));
         } finally {
             setLoading(false);
+        }
+    }
+
+    function openRestartDialog(container: MaintenanceContainerStatus) {
+        if (canRestartContainer(container) && !pendingRestartStatusesRef.current.has(container.id)) {
+            setRestartDialog({ container, busy: false, error: null, phase: null });
+        }
+    }
+
+    async function handleRestartContainer(downloadLogs: boolean) {
+        if (!restartDialog || restartConfirmRef.current) {
+            return;
+        }
+        const container = restartDialog.container;
+        restartConfirmRef.current = true;
+        setRestartDialog({ ...restartDialog, busy: true, error: null,
+            phase: downloadLogs ? "Сохранение всех логов..." : "Отправка запроса..." });
+        setRestartMessage(null);
+        setError(null);
+
+        try {
+            if (downloadLogs) {
+                const data = await getMaintenanceContainerLogs(container.id, "all");
+                downloadContainerLogs(container.name, data.logs, "all");
+            }
+
+            pendingRestartStatusesRef.current.set(container.id, {
+                startedAt: container.started_at, accepted: false,
+            });
+            ++containerStatusRequestRef.current;
+            setContainers((current) => mergeRestartStatuses(current, pendingRestartStatusesRef.current));
+            setRestartDialog((current) => current && ({ ...current, phase: "Отправка запроса..." }));
+            await restartMaintenanceContainer(container.id);
+            const pending = pendingRestartStatusesRef.current.get(container.id);
+            if (pending) {
+                pending.accepted = true;
+            }
+            ++containerStatusRequestRef.current;
+            setRestartDialog(null);
+            setRestartMessage(`Запрос перезапуска «${container.name}» принят. Состояние обновится автоматически.`);
+        } catch (err) {
+            const wasPending = pendingRestartStatusesRef.current.delete(container.id);
+            if (wasPending) {
+                ++containerStatusRequestRef.current;
+                setContainers((current) => current.map((item) => item.id === container.id ? container : item));
+            }
+            setRestartDialog((current) => current && ({ ...current, busy: false,
+                phase: null, error: extractErrorDetail(err) }));
+        } finally {
+            restartConfirmRef.current = false;
         }
     }
 
@@ -127,17 +193,7 @@ export function MaintenancePage() {
             if (action === "copy") {
                 await copyLogsToClipboard(logs);
             } else {
-                const name = dialog.container.name.replace(/[^a-zA-Z0-9_.-]/g, "_");
-                const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-                const filename = `${name}_${all ? "all" : `last-${dialog.tail}`}_${timestamp}.log`;
-                const url = window.URL.createObjectURL(new Blob([logs], { type: "text/plain;charset=utf-8" }));
-                const link = document.createElement("a");
-                link.href = url;
-                link.download = filename;
-                document.body.appendChild(link);
-                link.click();
-                link.remove();
-                window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+                downloadContainerLogs(dialog.container.name, logs, all ? "all" : `last-${dialog.tail}`);
             }
 
             if (logsRequestRef.current === requestId) {
@@ -234,14 +290,15 @@ export function MaintenancePage() {
         let cancelled = false;
 
         async function loadInitial() {
+            const requestId = ++containerStatusRequestRef.current;
             setLoading(true);
             setError(null);
 
             try {
                 const data = await getMaintenanceContainers();
 
-                if (!cancelled) {
-                    setContainers(data.containers);
+                if (!cancelled && requestId === containerStatusRequestRef.current) {
+                    setContainers(mergeRestartStatuses(data.containers, pendingRestartStatusesRef.current));
                 }
             } catch (err) {
                 if (!cancelled) {
@@ -261,10 +318,11 @@ export function MaintenancePage() {
                 return;
             }
 
+            const requestId = ++containerStatusRequestRef.current;
             getMaintenanceContainers()
                 .then((data) => {
-                    if (!cancelled) {
-                        setContainers(data.containers);
+                    if (!cancelled && requestId === containerStatusRequestRef.current) {
+                        setContainers(mergeRestartStatuses(data.containers, pendingRestartStatusesRef.current));
                     }
                 })
                 .catch(() => {
@@ -442,6 +500,7 @@ export function MaintenancePage() {
                 </div>
             </div>
 
+            {restartMessage && <div className="maintenance-restart-message" role="status">{restartMessage}</div>}
             {error && <pre className="error-box">{error}</pre>}
 
             <div className="maintenance-table-wrap">
@@ -449,6 +508,7 @@ export function MaintenancePage() {
                     <thead>
                         <tr>
                             <th>Контейнер</th>
+                            <th className="maintenance-restart-cell" aria-label="Перезапуск" />
                             <th>Состояние</th>
                             <th>Health</th>
                             <th>CPU</th>
@@ -473,8 +533,31 @@ export function MaintenancePage() {
                                         </button>
                                         <div className="maintenance-container-name">
                                             {container.name}
+                                            {container.restart_error && (
+                                                <div className="maintenance-restart-error" role="alert">
+                                                    {container.restart_error}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
+                                </td>
+                                <td className="maintenance-restart-cell">
+                                    {canRestartContainer(container) && (
+                                        <button
+                                            className="maintenance-restart-button"
+                                            type="button"
+                                            title={`Перезапустить ${container.name}`}
+                                            aria-label={`Перезапустить контейнер ${container.name}`}
+                                            onClick={() => openRestartDialog(container)}
+                                        >
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                                stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                                                strokeLinejoin="round" aria-hidden="true">
+                                                <path d="M20 7v5h-5" />
+                                                <path d="M20 12a8 8 0 1 0-2.3 5.7M20 12l-3-3" />
+                                            </svg>
+                                        </button>
+                                    )}
                                 </td>
                                 <td>
                                     <span className={getStateBadgeClassName(container)}>
@@ -497,7 +580,7 @@ export function MaintenancePage() {
 
                         {containers.length === 0 && !loading && (
                             <tr>
-                                <td colSpan={7} className="maintenance-empty">
+                                <td colSpan={8} className="maintenance-empty">
                                     Контейнеры не найдены.
                                 </td>
                             </tr>
@@ -505,6 +588,12 @@ export function MaintenancePage() {
                     </tbody>
                 </table>
             </div>
+
+            {restartDialog && (
+                <RestartContainerDialog dialog={restartDialog}
+                    onConfirm={(downloadLogs) => void handleRestartContainer(downloadLogs)}
+                    onCancel={() => setRestartDialog(null)} />
+            )}
 
             {logsDialog && (
                 <div className="maintenance-logs-backdrop" onClick={closeLogs}>
@@ -672,6 +761,119 @@ async function copyLogsToClipboard(logs: string): Promise<void> {
             focusedElement.focus({ preventScroll: true });
         }
     }
+}
+
+type PendingContainerRestart = { startedAt: string | null; accepted: boolean };
+
+function mergeRestartStatuses(
+    containers: MaintenanceContainerStatus[],
+    pendingRestarts: Map<string, PendingContainerRestart>,
+): MaintenanceContainerStatus[] {
+    return containers.map((container) => {
+        const pending = pendingRestarts.get(container.id);
+        if (!pending) {
+            return container;
+        }
+        const newStart = container.started_at !== null && container.started_at !== pending.startedAt;
+        if (pending.accepted && (container.restart_error || newStart)) {
+            pendingRestarts.delete(container.id);
+            return container;
+        }
+        return { ...container, state: "restarting", state_label: "запускается",
+            health: "starting", docker_status: "Перезапуск...", restart_error: null };
+    });
+}
+
+function downloadContainerLogs(containerName: string, logs: string, scope: string): void {
+    const name = containerName.replace(/[^a-zA-Z0-9_.-]/g, "_");
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const url = window.URL.createObjectURL(new Blob([logs], { type: "text/plain;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${name}_${scope}_${timestamp}.log`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+}
+
+function RestartContainerDialog({ dialog, onConfirm, onCancel }: {
+    dialog: RestartDialogState;
+    onConfirm: (downloadLogs: boolean) => void;
+    onCancel: () => void;
+}) {
+    const dialogRef = useRef<HTMLDivElement | null>(null);
+    const cancelRef = useRef<HTMLButtonElement | null>(null);
+    const busyRef = useRef(dialog.busy);
+    const cancelCallbackRef = useRef(onCancel);
+    useLayoutEffect(() => {
+        busyRef.current = dialog.busy;
+        cancelCallbackRef.current = onCancel;
+    }, [dialog.busy, onCancel]);
+
+    useEffect(() => {
+        const previousFocus = document.activeElement;
+        cancelRef.current?.focus();
+        function handleKeyDown(event: KeyboardEvent) {
+            if (event.key === "Escape") {
+                event.preventDefault();
+                if (!busyRef.current) cancelCallbackRef.current();
+            }
+            if (event.key === "Tab") {
+                const buttons = dialogRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)");
+                if (!buttons?.length) {
+                    event.preventDefault();
+                    return;
+                }
+                const first = buttons[0];
+                const last = buttons[buttons.length - 1];
+                if (event.shiftKey && document.activeElement === first) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
+                }
+            }
+        }
+        document.addEventListener("keydown", handleKeyDown);
+        return () => {
+            document.removeEventListener("keydown", handleKeyDown);
+            if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
+                previousFocus.focus({ preventScroll: true });
+            }
+        };
+    }, []);
+
+    return (
+        <div className="maintenance-restart-backdrop" onClick={() => !dialog.busy && onCancel()}>
+            <div ref={dialogRef} className="maintenance-restart-dialog" role="alertdialog"
+                aria-modal="true" aria-labelledby="restart-dialog-title"
+                aria-describedby="restart-dialog-description" aria-busy={dialog.busy}
+                onClick={(event) => event.stopPropagation()}>
+                <h3 id="restart-dialog-title">Перезапуск контейнера</h3>
+                <p id="restart-dialog-description">
+                    Перезапустить <strong>{dialog.container.name}</strong>?
+                    Перед перезапуском можно сохранить все доступные логи контейнера.
+                </p>
+                {dialog.error && <div className="error-box" role="alert">{dialog.error}</div>}
+                <div className="maintenance-restart-dialog__progress" role="status">{dialog.phase}</div>
+                <div className="maintenance-restart-dialog__actions">
+                    <button className="maintenance-restart-confirm" type="button"
+                        disabled={dialog.busy} onClick={() => onConfirm(false)}>Перезапустить</button>
+                    <button className="secondary-button" type="button" disabled={dialog.busy}
+                        onClick={() => onConfirm(true)}>Перезапустить и скачать все логи</button>
+                    <button ref={cancelRef} className="secondary-button" type="button"
+                        disabled={dialog.busy} onClick={onCancel}>Отмена</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function canRestartContainer(container: MaintenanceContainerStatus): boolean {
+    return (container.state !== "running" || container.health !== "starting")
+        && ["running", "exited", "dead", "paused"].includes(container.state);
 }
 
 function getStateBadgeClassName(container: MaintenanceContainerStatus): string {

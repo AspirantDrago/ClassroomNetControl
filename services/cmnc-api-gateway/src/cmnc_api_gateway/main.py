@@ -2596,6 +2596,28 @@ async def admin_get_maintenance_containers(
         ) from exc
 
 
+@app.post("/api/admin/maintenance/containers/{container_id}/restart", status_code=202)
+async def admin_restart_maintenance_container(
+    container_id: str,
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    require_maintenance_access(principal)
+    try:
+        return await maintenance_client.post_json(
+            f"/internal/maintenance/containers/{container_id}/restart"
+        )
+    except httpx.HTTPStatusError as exc:
+        try:
+            detail = exc.response.json().get("detail", exc.response.text)
+        except (ValueError, AttributeError):
+            detail = exc.response.text
+        raise HTTPException(status_code=exc.response.status_code, detail=detail) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Maintenance service unavailable: {exc}") from exc
+
+
 @app.get("/api/admin/maintenance/containers/{container_id}/logs")
 async def admin_get_maintenance_container_logs(
     container_id: str,
