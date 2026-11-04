@@ -2,16 +2,16 @@
 name = "cmnc-classroom-service"
 version = "0.1.0"
 description = "Classroom configuration service for ClassroomMikrotikNetControl"
-requires-python = "==3.14.8"
+requires-python = "==3.15.2"
 dependencies = [
-    "fastapi==0.143.0",
+    "fastapi==0.162.0",
     "uvicorn[standard]==0.54.0",
-    "pydantic==2.14.1",
-    "pydantic-settings==2.15.0",
-    "sqlalchemy[asyncio]==2.1.4",
+    "pydantic==2.14.2",
+    "pydantic-settings==2.16.2",
+    "sqlalchemy[asyncio]==2.1.8",
     "asyncpg==0.32.0",
-    "aio-pika==10.1.1",
-    "alembic==1.20.0",
+    "aio-pika==10.2.2",
+    "alembic==1.20.1",
     "cmnc-contracts",
 ]
 

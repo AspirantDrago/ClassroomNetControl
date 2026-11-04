@@ -1,0 +1,41 @@
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+
+# Environment
+.env
+.env.*
+!.env.example
+**/.env.*
+**/!.env.example
+
+# Docker
+.dockerignore
+Dockerfile
+
+# Node.js
+**/node_modules/
+**/dist/
+**/build/
+**/.angular/
+**/.vite/
+
+# Python
+**/.venv/
+**/venv/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+
+# Logs
+**/*.log
+
+# OS
+.DS_Store
+Thumbs.db

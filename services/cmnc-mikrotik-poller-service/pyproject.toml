@@ -2,14 +2,14 @@
 name = "cmnc-mikrotik-poller-service"
 version = "0.1.0"
 description = "MikroTik poller service for ClassroomMikrotikNetControl"
-requires-python = "==3.14.8"
+requires-python = "==3.15.2"
 dependencies = [
-    "fastapi==0.143.0",
+    "fastapi==0.162.0",
     "uvicorn[standard]==0.54.0",
-    "pydantic==2.14.1",
-    "pydantic-settings==2.15.0",
+    "pydantic==2.14.2",
+    "pydantic-settings==2.16.2",
     "httpx==0.28.1",
-    "aio-pika==10.1.1",
+    "aio-pika==10.2.2",
     "cmnc-contracts",
 ]
 

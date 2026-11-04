@@ -21,7 +21,7 @@ services:
       retries: 5
 
   cmnc-rabbitmq:
-    image: rabbitmq:4.3.6-management
+    image: rabbitmq:4.4.0-management-alpine
     container_name: cmnc-rabbitmq
     restart: unless-stopped
     environment:

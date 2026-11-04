@@ -1,4 +1,4 @@
-FROM node:24-alpine AS build
+FROM node:26-alpine3.24 AS build
 
 WORKDIR /app
 
@@ -22,7 +22,7 @@ ENV VITE_STATISTICS_REFRESH_INTERVAL_MS=${VITE_STATISTICS_REFRESH_INTERVAL_MS}
 RUN npm run build
 
 
-FROM nginx:1.29-alpine
+FROM nginx:1.31.8-alpine3.24-slim
 
 COPY apps/cmnc-web/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html
