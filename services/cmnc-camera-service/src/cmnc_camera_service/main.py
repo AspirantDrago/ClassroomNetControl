@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import logging
+import re
 import shutil
 import shlex
 from collections.abc import AsyncIterator
@@ -38,6 +39,7 @@ class SharedCameraStream:
     created_at: datetime
     viewer_session_ids: set[str] = field(default_factory=set)
     process: asyncio.subprocess.Process | None = None
+    restart_task: asyncio.Task[None] | None = None
     last_viewer_left_at: datetime | None = None
 
 
@@ -228,12 +230,13 @@ async def get_or_start_shared_stream(rtsp_url: str, quality: str) -> SharedCamer
         logger.info(
             "Starting shared ffmpeg[%s]: %s",
             stream.id,
-            " ".join(shlex.quote(arg) for arg in ffmpeg_command),
+            sanitize_rtsp_urls(" ".join(shlex.quote(arg) for arg in ffmpeg_command)),
         )
 
         try:
             process = await asyncio.create_subprocess_exec(
                 *ffmpeg_command,
+                stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -244,7 +247,7 @@ async def get_or_start_shared_stream(rtsp_url: str, quality: str) -> SharedCamer
         stream.process = process
         shared_streams[stream.key] = stream
         asyncio.create_task(log_ffmpeg_stderr(stream.id, process))
-        asyncio.create_task(watch_ffmpeg_process(stream.key, stream.id, process))
+        stream.restart_task = asyncio.create_task(watch_ffmpeg_process(stream.key, stream.id, process))
         return stream
 
 
@@ -262,6 +265,8 @@ def build_ffmpeg_command(stream: SharedCameraStream) -> list[str]:
         "warning",
         "-rtsp_transport",
         settings.rtsp_transport,
+        "-timeout",
+        str(int(settings.rtsp_timeout_seconds * 1_000_000)),
         "-fflags",
         "+discardcorrupt+genpts",
         "-use_wallclock_as_timestamps",
@@ -362,7 +367,7 @@ def build_ffmpeg_command(stream: SharedCameraStream) -> list[str]:
         "-hls_segment_type",
         "mpegts",
         "-hls_flags",
-        "delete_segments+omit_endlist+independent_segments+temp_file",
+        "delete_segments+omit_endlist+independent_segments+temp_file+append_list",
         "-hls_allow_cache",
         "0",
         "-hls_segment_filename",
@@ -403,6 +408,8 @@ def add_audio_options(command: list[str]) -> None:
         return
 
     command.extend([
+        "-af",
+        "aresample=async=1:first_pts=0",
         "-c:a",
         "aac",
         "-b:a",
@@ -470,10 +477,22 @@ async def wait_for_file(path: Path) -> None:
 
 
 def is_stream_process_running(stream: SharedCameraStream) -> bool:
-    return stream.process is not None and stream.process.returncode is None
+    return (
+        stream.process is not None and stream.process.returncode is None
+    ) or (
+        bool(stream.viewer_session_ids)
+        and stream.restart_task is not None
+        and not stream.restart_task.done()
+    )
 
 
 async def stop_stream_process(stream: SharedCameraStream) -> None:
+    restart_task = stream.restart_task
+    stream.restart_task = None
+    if restart_task is not None:
+        restart_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await restart_task
     process = stream.process
     stream.process = None
 
@@ -508,25 +527,68 @@ async def log_ffmpeg_stderr(stream_id: str, process: asyncio.subprocess.Process)
 
         message = line.decode("utf-8", errors="replace").strip()
         if message:
-            logger.warning("ffmpeg[%s]: %s", stream_id, message)
+            logger.warning("ffmpeg[%s]: %s", stream_id, sanitize_rtsp_urls(message))
 
 
 async def watch_ffmpeg_process(stream_key: str, stream_id: str, process: asyncio.subprocess.Process) -> None:
-    returncode = await process.wait()
-
-    async with shared_streams_lock:
-        stream = shared_streams.get(stream_key)
-
-        if stream is not None and stream.id == stream_id and stream.process is process:
+    while True:
+        returncode = await process.wait()
+        async with shared_streams_lock:
+            stream = shared_streams.get(stream_key)
+            if stream is None or stream.process is not process:
+                return
             stream.process = None
-
             if not stream.viewer_session_ids:
                 stream.last_viewer_left_at = datetime.now(timezone.utc)
+                return
 
-    if returncode == 0:
-        logger.info("ffmpeg[%s] exited with code 0", stream_id)
-    else:
-        logger.warning("ffmpeg[%s] exited with code %s", stream_id, returncode)
+        # A live RTSP connection may close with exit code 0 as well as an error.
+        # Keep the session and playlist so every attached viewer can continue.
+        logger.warning("ffmpeg[%s] exited with code %s; reconnecting", stream_id, returncode)
+        prune_old_hls_segments(stream)
+        delay = settings.rtsp_reconnect_delay_seconds
+        while True:
+            await asyncio.sleep(delay)
+            async with shared_streams_lock:
+                current = shared_streams.get(stream_key)
+                if current is not stream or not stream.viewer_session_ids:
+                    return
+                try:
+                    process = await asyncio.create_subprocess_exec(
+                        *build_ffmpeg_command(stream),
+                        stdin=asyncio.subprocess.DEVNULL,
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                except OSError as exc:
+                    logger.warning("Could not restart ffmpeg[%s]: %s", stream_id, exc)
+                else:
+                    stream.process = process
+                    asyncio.create_task(log_ffmpeg_stderr(stream.id, process))
+                    logger.info("Reconnected shared camera stream[%s]", stream_id)
+                    break
+            delay = min(delay * 2, 10.0)
+
+
+def prune_old_hls_segments(stream: SharedCameraStream) -> None:
+    # FFmpeg cannot reliably track deleted segments across worker restarts.
+    # Keep a grace period for clients still downloading an older playlist.
+    retention = max(30.0, settings.hls_time_seconds * (settings.hls_list_size + 2))
+    cutoff = datetime.now(timezone.utc).timestamp() - retention
+    try:
+        playlist = stream.hls_dir / "index.m3u8"
+        if not playlist.exists():
+            return
+        referenced = set(playlist.read_text(encoding="utf-8").splitlines())
+        for path in stream.hls_dir.glob("segment_*.ts"):
+            if path.name not in referenced and path.stat().st_mtime < cutoff:
+                path.unlink(missing_ok=True)
+    except OSError:
+        logger.warning("Could not prune HLS segments for stream[%s]", stream.id)
+
+
+def sanitize_rtsp_urls(message: str) -> str:
+    return re.sub(r"(rtsps?://)[^/\s]+@", r"\1***@", message)
 
 
 def remove_stream_dir(stream: SharedCameraStream) -> None:

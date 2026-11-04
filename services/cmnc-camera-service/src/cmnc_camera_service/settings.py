@@ -14,6 +14,8 @@ class Settings(BaseSettings):
 
     ffmpeg_path: str = "ffmpeg"
     rtsp_transport: str = "tcp"
+    rtsp_timeout_seconds: float = Field(default=10.0, ge=1.0)
+    rtsp_reconnect_delay_seconds: float = Field(default=0.5, ge=0.1, le=10.0)
     stop_timeout_seconds: float = Field(default=5.0, ge=1.0)
 
     hls_root_dir: str = "/tmp/cmnc-camera-hls"
