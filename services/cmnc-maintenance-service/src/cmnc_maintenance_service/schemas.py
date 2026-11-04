@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -30,7 +31,7 @@ class ContainersStatusResponse(BaseModel):
 class ContainerLogsResponse(BaseModel):
     container_id: str
     container_name: str | None = None
-    tail: int
+    tail: int | Literal["all"]
     logs: str
 
 

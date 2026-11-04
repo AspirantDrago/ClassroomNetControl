@@ -3,7 +3,7 @@ import ipaddress
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 import uvicorn
@@ -2600,18 +2600,19 @@ async def admin_get_maintenance_containers(
 async def admin_get_maintenance_container_logs(
     container_id: str,
     request: Request,
-    tail: int = 100,
+    tail: int | Literal["all"] = 100,
     authorization: str | None = Header(default=None),
 ) -> Any:
     principal = await get_current_principal(request, authorization)
     require_maintenance_access(principal)
 
-    if tail not in {100, 1000, 10000}:
-        raise HTTPException(status_code=422, detail="tail must be one of: 100, 1000, 10000")
+    if tail not in {100, 1000, 10000, "all"}:
+        raise HTTPException(status_code=422, detail="tail must be one of: 100, 1000, 10000, all")
 
     try:
         return await maintenance_client.get_json(
-            f"/internal/maintenance/containers/{container_id}/logs?tail={tail}"
+            f"/internal/maintenance/containers/{container_id}/logs?tail={tail}",
+            timeout_seconds=120.0 if tail == "all" else 10.0,
         )
     except httpx.HTTPStatusError as exc:
         raise HTTPException(

@@ -283,6 +283,47 @@
     padding: 7px 10px;
 }
 
+.maintenance-logs-dialog__actions,
+.maintenance-logs-dialog__action-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.maintenance-logs-dialog__actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.maintenance-logs-dialog__action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 42px;
+}
+
+.maintenance-logs-dialog__action svg {
+    flex-shrink: 0;
+}
+
+.maintenance-logs-dialog__separator {
+    width: 1px;
+    height: 28px;
+    margin: 0 4px;
+    background: #374151;
+    flex-shrink: 0;
+}
+
+.maintenance-logs-dialog__feedback {
+    color: #9ca3af;
+    font-size: 13px;
+}
+
+.maintenance-logs-dialog__feedback:empty {
+    display: none;
+}
+
 .maintenance-logs-content {
     min-height: 420px;
     max-height: 58vh;

@@ -842,13 +842,13 @@ export function getMaintenanceContainers(): Promise<MaintenanceContainersRespons
 export type MaintenanceContainerLogsResponse = {
     container_id: string;
     container_name: string | null;
-    tail: number;
+    tail: number | "all";
     logs: string;
 };
 
 export function getMaintenanceContainerLogs(
     containerId: string,
-    tail: 100 | 1000 | 10000,
+    tail: 100 | 1000 | 10000 | "all",
 ): Promise<MaintenanceContainerLogsResponse> {
     return request<MaintenanceContainerLogsResponse>(
         `/api/admin/maintenance/containers/${encodeURIComponent(containerId)}/logs?tail=${tail}`,

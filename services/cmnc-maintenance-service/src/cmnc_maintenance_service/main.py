@@ -1,6 +1,7 @@
 import logging
 import re
 from datetime import datetime, timezone
+from typing import Literal
 
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -73,10 +74,10 @@ async def get_containers_status() -> ContainersStatusResponse:
 )
 async def get_container_logs(
     container_id: str,
-    tail: int = 100,
+    tail: int | Literal["all"] = 100,
 ) -> ContainerLogsResponse:
-    if tail not in {100, 1000, 10000}:
-        raise HTTPException(status_code=422, detail="tail must be one of: 100, 1000, 10000")
+    if tail not in {100, 1000, 10000, "all"}:
+        raise HTTPException(status_code=422, detail="tail must be one of: 100, 1000, 10000, all")
 
     if not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", container_id):
         raise HTTPException(status_code=422, detail="Invalid container id")

@@ -3,7 +3,7 @@ import io
 import json
 import tarfile
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 
@@ -65,9 +65,10 @@ class DockerClient:
     async def get_container_logs(
         self,
         container_id: str,
-        tail: int,
+        tail: int | Literal["all"],
     ) -> tuple[str | None, str]:
-        async with self._create_client() as client:
+        timeout = 120.0 if tail == "all" else None
+        async with self._create_client(timeout_seconds=timeout) as client:
             inspect_data = await self._safe_inspect_container(client, container_id)
             container_name = None
 

@@ -17,6 +17,8 @@ type LogsDialogState = {
     tail: LogsTail;
     logs: string;
     loading: boolean;
+    exporting: boolean;
+    message: string | null;
     error: string | null;
 };
 
@@ -29,6 +31,7 @@ export function MaintenancePage() {
     const [backupLoading, setBackupLoading] = useState(false);
     const [backupMessage, setBackupMessage] = useState<string | null>(null);
     const [backupError, setBackupError] = useState<string | null>(null);
+    const logsRequestRef = useRef(0);
     const logsContentRef = useRef<HTMLPreElement | null>(null);
     const backupInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -47,11 +50,14 @@ export function MaintenancePage() {
     }
 
     async function openLogs(container: MaintenanceContainerStatus, tail: LogsTail = 100) {
+        const requestId = ++logsRequestRef.current;
         setLogsDialog({
             container,
             tail,
             logs: "",
             loading: true,
+            exporting: false,
+            message: null,
             error: null,
         });
 
@@ -59,7 +65,7 @@ export function MaintenancePage() {
             const data = await getMaintenanceContainerLogs(container.id, tail);
 
             setLogsDialog((current) => {
-                if (current?.container.id !== container.id) {
+                if (logsRequestRef.current !== requestId || current?.container.id !== container.id) {
                     return current;
                 }
 
@@ -73,7 +79,7 @@ export function MaintenancePage() {
             });
         } catch (err) {
             setLogsDialog((current) => {
-                if (current?.container.id !== container.id) {
+                if (logsRequestRef.current !== requestId || current?.container.id !== container.id) {
                     return current;
                 }
 
@@ -88,6 +94,7 @@ export function MaintenancePage() {
     }
 
     function closeLogs() {
+        ++logsRequestRef.current;
         setLogsDialog(null);
     }
 
@@ -97,6 +104,59 @@ export function MaintenancePage() {
         }
 
         void openLogs(logsDialog.container, tail);
+    }
+
+    async function handleExportLogs(action: "copy" | "download", all: boolean) {
+        if (!logsDialog || logsDialog.loading || logsDialog.exporting) {
+            return;
+        }
+
+        const dialog = logsDialog;
+        const requestId = logsRequestRef.current;
+        setLogsDialog({ ...dialog, exporting: true, message: null, error: null });
+
+        try {
+            const logs = all
+                ? (await getMaintenanceContainerLogs(dialog.container.id, "all")).logs
+                : dialog.logs;
+
+            if (logsRequestRef.current !== requestId) {
+                return;
+            }
+
+            if (action === "copy") {
+                await copyLogsToClipboard(logs);
+            } else {
+                const name = dialog.container.name.replace(/[^a-zA-Z0-9_.-]/g, "_");
+                const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+                const filename = `${name}_${all ? "all" : `last-${dialog.tail}`}_${timestamp}.log`;
+                const url = window.URL.createObjectURL(new Blob([logs], { type: "text/plain;charset=utf-8" }));
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+            }
+
+            if (logsRequestRef.current === requestId) {
+                setLogsDialog((current) => current && ({
+                    ...current,
+                    message: action === "copy"
+                        ? (all ? "Все логи скопированы." : "Показанные логи скопированы.")
+                        : (all ? "Все логи сохранены." : "Показанные логи сохранены."),
+                }));
+            }
+        } catch (err) {
+            if (logsRequestRef.current === requestId) {
+                setLogsDialog((current) => current && ({ ...current, error: extractErrorDetail(err) }));
+            }
+        } finally {
+            if (logsRequestRef.current === requestId) {
+                setLogsDialog((current) => current && ({ ...current, exporting: false }));
+            }
+        }
     }
 
     function handleBackupFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -476,7 +536,7 @@ export function MaintenancePage() {
                                 <select
                                     value={logsDialog.tail}
                                     onChange={(event) => handleLogsTailChange(Number(event.target.value) as LogsTail)}
-                                    disabled={logsDialog.loading}
+                                    disabled={logsDialog.loading || logsDialog.exporting}
                                 >
                                     <option value={100}>100</option>
                                     <option value={1000}>1000</option>
@@ -484,16 +544,69 @@ export function MaintenancePage() {
                                 </select>
                             </label>
 
-                            <button
-                                className="secondary-button"
-                                type="button"
-                                onClick={() => void openLogs(logsDialog.container, logsDialog.tail)}
-                                disabled={logsDialog.loading}
-                            >
-                                {logsDialog.loading ? "Загрузка..." : "Обновить логи"}
-                            </button>
+                            <div className="maintenance-logs-dialog__actions">
+                                <div className="maintenance-logs-dialog__action-group">
+                                    <button
+                                        className="secondary-button maintenance-logs-dialog__action"
+                                        type="button"
+                                        title="Копировать показанные логи"
+                                        aria-label="Копировать показанные логи"
+                                        onClick={() => void handleExportLogs("copy", false)}
+                                        disabled={logsDialog.loading || logsDialog.exporting}
+                                    >
+                                        <LogsActionIcon action="copy" />
+                                    </button>
+                                    <button
+                                        className="secondary-button maintenance-logs-dialog__action"
+                                        type="button"
+                                        title="Копировать все доступные логи контейнера"
+                                        aria-label="Копировать все логи контейнера"
+                                        onClick={() => void handleExportLogs("copy", true)}
+                                        disabled={logsDialog.loading || logsDialog.exporting}
+                                    >
+                                        <LogsActionIcon action="copy" />
+                                        <span>всё</span>
+                                    </button>
+                                </div>
+                                <span className="maintenance-logs-dialog__separator" aria-hidden="true" />
+                                <div className="maintenance-logs-dialog__action-group">
+                                    <button
+                                        className="secondary-button maintenance-logs-dialog__action"
+                                        type="button"
+                                        title="Скачать показанные логи"
+                                        aria-label="Скачать показанные логи"
+                                        onClick={() => void handleExportLogs("download", false)}
+                                        disabled={logsDialog.loading || logsDialog.exporting}
+                                    >
+                                        <LogsActionIcon action="download" />
+                                    </button>
+                                    <button
+                                        className="secondary-button maintenance-logs-dialog__action"
+                                        type="button"
+                                        title="Скачать все доступные логи контейнера"
+                                        aria-label="Скачать все логи контейнера"
+                                        onClick={() => void handleExportLogs("download", true)}
+                                        disabled={logsDialog.loading || logsDialog.exporting}
+                                    >
+                                        <LogsActionIcon action="download" />
+                                        <span>всё</span>
+                                    </button>
+                                </div>
+                                <span className="maintenance-logs-dialog__separator" aria-hidden="true" />
+                                <button
+                                    className="secondary-button"
+                                    type="button"
+                                    onClick={() => void openLogs(logsDialog.container, logsDialog.tail)}
+                                    disabled={logsDialog.loading || logsDialog.exporting}
+                                >
+                                    {logsDialog.loading ? "Загрузка..." : "Обновить логи"}
+                                </button>
+                            </div>
                         </div>
 
+                        <div className="maintenance-logs-dialog__feedback" role="status" aria-live="polite">
+                            {logsDialog.exporting ? "Подготовка логов..." : logsDialog.message}
+                        </div>
                         {logsDialog.error && <pre className="error-box">{logsDialog.error}</pre>}
 
                         <pre
@@ -509,6 +622,56 @@ export function MaintenancePage() {
             )}
         </section>
     );
+}
+
+function LogsActionIcon({ action }: { action: "copy" | "download" }) {
+    return (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            {action === "copy" ? (
+                <>
+                    <rect x="9" y="9" width="12" height="12" rx="2" />
+                    <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
+                </>
+            ) : (
+                <>
+                    <path d="M12 3v12m-5-5 5 5 5-5" />
+                    <path d="M4 15v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5" />
+                </>
+            )}
+        </svg>
+    );
+}
+
+async function copyLogsToClipboard(logs: string): Promise<void> {
+    if (navigator.clipboard?.writeText) {
+        try {
+            await navigator.clipboard.writeText(logs);
+            return;
+        } catch {
+            // Use the fallback when clipboard access is unavailable or denied.
+        }
+    }
+
+    const focusedElement = document.activeElement;
+    const textarea = document.createElement("textarea");
+    textarea.value = logs;
+    textarea.readOnly = true;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+
+    try {
+        textarea.select();
+        if (!document.execCommand("copy")) {
+            throw new Error("Не удалось скопировать логи. Скачайте их в файл.");
+        }
+    } finally {
+        textarea.remove();
+        if (focusedElement instanceof HTMLElement) {
+            focusedElement.focus({ preventScroll: true });
+        }
+    }
 }
 
 function getStateBadgeClassName(container: MaintenanceContainerStatus): string {
