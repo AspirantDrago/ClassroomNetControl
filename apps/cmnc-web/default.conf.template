@@ -1,6 +1,14 @@
+# Keep health probes out of access logs while retaining other requests.
+map "$request_method:$uri" $cmnc_log_request {
+    default 1;
+    "GET:/health" 0;
+}
+
 server {
     listen ${CMNC_WEB_PORT};
     server_name _;
+
+    access_log /var/log/nginx/access.log main if=$cmnc_log_request;
 
     root /usr/share/nginx/html;
     index index.html;

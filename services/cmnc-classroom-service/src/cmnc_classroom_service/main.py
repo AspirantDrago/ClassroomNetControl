@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -43,6 +44,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     yield
 
     await rabbitmq_client.close()
+
+
+class HealthCheckAccessFilter(logging.Filter):
+    """Omit GET /health probes from Uvicorn access logs."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if not isinstance(args, tuple) or len(args) != 5:
+            return True
+        _, method, path, _, _ = args
+        return not (
+            method == "GET"
+            and isinstance(path, str)
+            and path.partition("?")[0] == "/health"
+        )
+
+
+logging.getLogger("uvicorn.access").addFilter(HealthCheckAccessFilter())
 
 
 app = FastAPI(

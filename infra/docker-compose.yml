@@ -285,6 +285,8 @@ services:
     environment:
       CMNC_WEB_PORT: ${CMNC_WEB_PORT:-8080}
       CMNC_API_GATEWAY_PORT: ${CMNC_API_GATEWAY_PORT:-8000}
+    ports:
+      - "${CMNC_WEB_PORT:-8080}:${CMNC_WEB_PORT:-8080}"
     depends_on:
       cmnc-api-gateway:
         condition: service_healthy

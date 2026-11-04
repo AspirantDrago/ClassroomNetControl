@@ -1,3 +1,4 @@
+import logging
 import re
 from datetime import datetime, timezone
 
@@ -13,6 +14,24 @@ from cmnc_maintenance_service.schemas import (
     HealthResponse,
 )
 from cmnc_maintenance_service.settings import settings
+
+class HealthCheckAccessFilter(logging.Filter):
+    """Omit GET /health probes from Uvicorn access logs."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if not isinstance(args, tuple) or len(args) != 5:
+            return True
+        _, method, path, _, _ = args
+        return not (
+            method == "GET"
+            and isinstance(path, str)
+            and path.partition("?")[0] == "/health"
+        )
+
+
+logging.getLogger("uvicorn.access").addFilter(HealthCheckAccessFilter())
+
 
 app = FastAPI(title=settings.service_name)
 
