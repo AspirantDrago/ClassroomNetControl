@@ -63,8 +63,17 @@
     gap: 8px;
 }
 
+.classroom-cameras-admin-panel__table .classroom-cameras-admin-panel__editor-row > td {
+    padding: 0 0 12px;
+}
+
+.classroom-cameras-admin-panel__editor-row .classroom-camera-form {
+    margin-top: 8px;
+}
+
 .classroom-camera-form {
     margin-top: 14px;
+    scroll-margin-top: 16px;
     padding: 14px;
     border: 1px solid #1f2937;
     border-radius: 12px;

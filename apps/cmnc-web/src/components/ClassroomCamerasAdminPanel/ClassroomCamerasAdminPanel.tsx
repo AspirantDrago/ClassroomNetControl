@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { Fragment, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
     type AdminClassroomCamera,
@@ -108,6 +108,32 @@ export function ClassroomCamerasAdminPanel({
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [form, setForm] = useState<CameraFormState | null>(null);
+    const [formScrollRequest, setFormScrollRequest] = useState(0);
+    const formRef = useRef<HTMLFormElement | null>(null);
+
+    useEffect(() => {
+        if (formScrollRequest === 0) {
+            return;
+        }
+        const frame = window.requestAnimationFrame(() => {
+            const element = formRef.current;
+            if (!element) {
+                return;
+            }
+            const modal = element.closest<HTMLElement>(".classroom-modal-card");
+            const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+                ? "instant" : "smooth";
+            if (modal) {
+                const top = modal.scrollTop + element.getBoundingClientRect().top
+                    - modal.getBoundingClientRect().top - modal.clientTop - 16;
+                modal.scrollTo({ top: Math.max(0, top), behavior });
+            } else {
+                element.scrollIntoView({ behavior, block: "start" });
+            }
+            element.querySelector<HTMLInputElement>("input")?.focus({ preventScroll: true });
+        });
+        return () => window.cancelAnimationFrame(frame);
+    }, [formScrollRequest]);
 
     const sortedCameras = useMemo(() => {
         return [...cameras].sort((left, right) => {
@@ -158,6 +184,7 @@ export function ClassroomCamerasAdminPanel({
     }
 
     function openCreateForm() {
+        setFormScrollRequest((current) => current + 1);
         setError(null);
         setForm({
             mode: "create",
@@ -172,6 +199,7 @@ export function ClassroomCamerasAdminPanel({
     }
 
     function openEditForm(camera: AdminClassroomCamera) {
+        setFormScrollRequest((current) => current + 1);
         setError(null);
         setForm({
             mode: "edit",
@@ -244,6 +272,130 @@ export function ClassroomCamerasAdminPanel({
         }
     }
 
+    const cameraForm = form && (
+        <form
+            ref={formRef}
+            className="classroom-camera-form"
+            onSubmit={handleSubmit}
+        >
+            <div className="classroom-camera-form__header">
+                <h4>
+                    {form.mode === "create"
+                        ? "Новая камера"
+                        : "Редактировать камеру"}
+                </h4>
+                <div className="muted">RTSP-ссылки видны только администраторам.</div>
+            </div>
+
+            <div className="classroom-camera-form-grid">
+                <label>
+                    Название
+                    <input
+                        value={form.name}
+                        onChange={(event) =>
+                            setForm({
+                                ...form,
+                                name: event.target.value,
+                            })
+                        }
+                        placeholder="Камера у доски"
+                    />
+                </label>
+
+                <label>
+                    Порядок
+                    <input
+                        type="number"
+                        min="0"
+                        value={form.sortOrder}
+                        onChange={(event) =>
+                            setForm({
+                                ...form,
+                                sortOrder: event.target.value,
+                            })
+                        }
+                        placeholder="10"
+                    />
+                </label>
+
+                <label>
+                    Качество по умолчанию
+                    <select
+                        value={form.defaultQuality}
+                        onChange={(event) =>
+                            setForm({
+                                ...form,
+                                defaultQuality: event.target.value as CameraQuality,
+                            })
+                        }
+                    >
+                        <option value="sub">Низкое</option>
+                        <option value="main">Высокое</option>
+                    </select>
+                </label>
+            </div>
+
+            <div className="classroom-camera-rtsp-grid">
+                <label>
+                    RTSP основной поток
+                    <input
+                        value={form.rtspMainStream}
+                        onChange={(event) =>
+                            setForm({
+                                ...form,
+                                rtspMainStream: event.target.value,
+                            })
+                        }
+                        placeholder="rtsp://user:password@camera/stream1"
+                    />
+                </label>
+
+                <label>
+                    RTSP дополнительный поток
+                    <input
+                        value={form.rtspSubStream}
+                        onChange={(event) =>
+                            setForm({
+                                ...form,
+                                rtspSubStream: event.target.value,
+                            })
+                        }
+                        placeholder="rtsp://user:password@camera/stream2"
+                    />
+                </label>
+            </div>
+
+            <label className="classroom-camera-enabled-checkbox">
+                <input
+                    type="checkbox"
+                    checked={form.isEnabled}
+                    onChange={(event) =>
+                        setForm({
+                            ...form,
+                            isEnabled: event.target.checked,
+                        })
+                    }
+                />
+                <span>Камера включена</span>
+            </label>
+
+            <div className="modal-actions classroom-camera-form-actions">
+                <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={busy}
+                    onClick={closeForm}
+                >
+                    Отмена
+                </button>
+
+                <button type="submit" className="primary-button" disabled={busy}>
+                    {form.mode === "create" ? "Создать" : "Сохранить"}
+                </button>
+            </div>
+        </form>
+    );
+
     return (
         <section className="classroom-cameras-admin-panel">
             <div className="classroom-cameras-admin-panel__header">
@@ -285,161 +437,47 @@ export function ClassroomCamerasAdminPanel({
                         </thead>
                         <tbody>
                             {sortedCameras.map((camera) => (
-                                <tr key={camera.id}>
-                                    <td>{camera.name}</td>
-                                    <td>{camera.sort_order}</td>
-                                    <td>{camera.is_enabled ? "Включена" : "Выключена"}</td>
-                                    <td>{getStreamSummary(camera)}</td>
-                                    <td>{getQualityLabel(camera.default_quality)}</td>
-                                    <td>
-                                        <div className="classroom-cameras-admin-panel__row-actions">
-                                            <button
-                                                type="button"
-                                                className="secondary-button"
-                                                disabled={busy}
-                                                onClick={() => openEditForm(camera)}
-                                            >
-                                                Изменить
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="danger-button"
-                                                disabled={busy}
-                                                onClick={() => void handleDelete(camera)}
-                                            >
-                                                Удалить
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
+                                <Fragment key={camera.id}>
+                                    <tr>
+                                        <td>{camera.name}</td>
+                                        <td>{camera.sort_order}</td>
+                                        <td>{camera.is_enabled ? "Включена" : "Выключена"}</td>
+                                        <td>{getStreamSummary(camera)}</td>
+                                        <td>{getQualityLabel(camera.default_quality)}</td>
+                                        <td>
+                                            <div className="classroom-cameras-admin-panel__row-actions">
+                                                <button
+                                                    type="button"
+                                                    className="secondary-button"
+                                                    disabled={busy}
+                                                    onClick={() => openEditForm(camera)}
+                                                >
+                                                    Изменить
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="danger-button"
+                                                    disabled={busy}
+                                                    onClick={() => void handleDelete(camera)}
+                                                >
+                                                    Удалить
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {form?.mode === "edit" && form.camera?.id === camera.id && (
+                                        <tr className="classroom-cameras-admin-panel__editor-row">
+                                            <td colSpan={6}>{cameraForm}</td>
+                                        </tr>
+                                    )}
+                                </Fragment>
                             ))}
                         </tbody>
                     </table>
                 </div>
             )}
 
-            {form && (
-                <form
-                    className="classroom-camera-form"
-                    onSubmit={handleSubmit}
-                >
-                    <div className="classroom-camera-form__header">
-                        <h4>
-                            {form.mode === "create"
-                                ? "Новая камера"
-                                : "Редактировать камеру"}
-                        </h4>
-                        <div className="muted">RTSP-ссылки видны только администраторам.</div>
-                    </div>
-
-                    <div className="classroom-camera-form-grid">
-                        <label>
-                            Название
-                            <input
-                                value={form.name}
-                                onChange={(event) =>
-                                    setForm({
-                                        ...form,
-                                        name: event.target.value,
-                                    })
-                                }
-                                placeholder="Камера у доски"
-                            />
-                        </label>
-
-                        <label>
-                            Порядок
-                            <input
-                                type="number"
-                                min="0"
-                                value={form.sortOrder}
-                                onChange={(event) =>
-                                    setForm({
-                                        ...form,
-                                        sortOrder: event.target.value,
-                                    })
-                                }
-                                placeholder="10"
-                            />
-                        </label>
-
-                        <label>
-                            Качество по умолчанию
-                            <select
-                                value={form.defaultQuality}
-                                onChange={(event) =>
-                                    setForm({
-                                        ...form,
-                                        defaultQuality: event.target.value as CameraQuality,
-                                    })
-                                }
-                            >
-                                <option value="sub">Низкое</option>
-                                <option value="main">Высокое</option>
-                            </select>
-                        </label>
-                    </div>
-
-                    <div className="classroom-camera-rtsp-grid">
-                        <label>
-                            RTSP основной поток
-                            <input
-                                value={form.rtspMainStream}
-                                onChange={(event) =>
-                                    setForm({
-                                        ...form,
-                                        rtspMainStream: event.target.value,
-                                    })
-                                }
-                                placeholder="rtsp://user:password@camera/stream1"
-                            />
-                        </label>
-
-                        <label>
-                            RTSP дополнительный поток
-                            <input
-                                value={form.rtspSubStream}
-                                onChange={(event) =>
-                                    setForm({
-                                        ...form,
-                                        rtspSubStream: event.target.value,
-                                    })
-                                }
-                                placeholder="rtsp://user:password@camera/stream2"
-                            />
-                        </label>
-                    </div>
-
-                    <label className="classroom-camera-enabled-checkbox">
-                        <input
-                            type="checkbox"
-                            checked={form.isEnabled}
-                            onChange={(event) =>
-                                setForm({
-                                    ...form,
-                                    isEnabled: event.target.checked,
-                                })
-                            }
-                        />
-                        <span>Камера включена</span>
-                    </label>
-
-                    <div className="modal-actions classroom-camera-form-actions">
-                        <button
-                            type="button"
-                            className="secondary-button"
-                            disabled={busy}
-                            onClick={closeForm}
-                        >
-                            Отмена
-                        </button>
-
-                        <button type="submit" className="primary-button" disabled={busy}>
-                            {form.mode === "create" ? "Создать" : "Сохранить"}
-                        </button>
-                    </div>
-                </form>
-            )}
+            {form?.mode === "create" && cameraForm}
         </section>
     );
 }
