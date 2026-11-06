@@ -187,3 +187,13 @@
         grid-template-columns: minmax(0, 1fr);
     }
 }
+
+.readonly-field-positive {
+    background: #142a25;
+    border-color: #305347;
+}
+
+.readonly-field-negative {
+    background: #2c1d27;
+    border-color: #593744;
+}

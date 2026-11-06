@@ -115,19 +115,23 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                         <ReadonlyField
                             label={form.device.wan_allowed ? "Время включения Интернета" : "Время отключения Интернета"}
                             value={formatStateTime(form.device.wan_state_since)}
+                            positive={form.device.wan_allowed}
                         />
                         <ReadonlyField
                             label={form.device.wan_allowed ? "Интернет доступен" : "Интернет отключён"}
                             value={formatStateDuration(form.device.wan_state_since, now)}
+                            positive={form.device.wan_allowed}
                         />
                     </>}
                     <ReadonlyField
                         label={form.device.online ? "Время запуска" : "Время выключения"}
                         value={formatStateTime(form.device.online_state_since)}
+                            positive={form.device.online}
                     />
                     <ReadonlyField
                         label={form.device.online ? "Включен" : "Выключен"}
                         value={formatStateDuration(form.device.online_state_since, now)}
+                            positive={form.device.online}
                     />
                 </div>}
                 {form.mode === "edit-device" && <div className="modal-actions">
@@ -238,11 +242,11 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
     );
 }
 
-function ReadonlyField(props: { label: string; value: string }) {
-    const { label, value } = props;
+function ReadonlyField(props: { label: string; value: string; positive?: boolean }) {
+    const { label, value, positive } = props;
 
     return (
-        <div className="readonly-field">
+        <div className={`readonly-field${positive === undefined ? "" : positive ? " readonly-field-positive" : " readonly-field-negative"}`}>
             <span>{label}</span>
             <strong>{value}</strong>
         </div>
