@@ -124,12 +124,12 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                         />
                     </>}
                     <ReadonlyField
-                        label={form.device.online ? "Время запуска" : "Время выключения"}
+                        label={form.device.online ? "Время запуска устройства" : "Время выключения устройства"}
                         value={formatStateTime(form.device.online_state_since)}
                             positive={form.device.online}
                     />
                     <ReadonlyField
-                        label={form.device.online ? "Включен" : "Выключен"}
+                        label={form.device.online ? "Устройство включено" : "Устройство выключено"}
                         value={formatStateDuration(form.device.online_state_since, now)}
                             positive={form.device.online}
                     />
