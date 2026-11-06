@@ -292,6 +292,20 @@ export function getClassroomDashboard(classroomId: number | null): Promise<Class
     return request<ClassroomDashboard>(`/api/classrooms/${classroomId}/dashboard`);
 }
 
+export type WakeResult = {
+    sent_count: number;
+    failed_count: number;
+    results: { device_id: number; mac_address: string; sent: boolean; error: string | null }[];
+};
+
+export function wakeDevice(deviceId: number): Promise<WakeResult> {
+    return request(`/api/devices/${deviceId}/wake`, { method: "POST" });
+}
+
+export function wakeClassroom(classroomId: number): Promise<WakeResult> {
+    return request(`/api/classrooms/${classroomId}/wake-all`, { method: "POST" });
+}
+
 export function blockDeviceWan(deviceId: number): Promise<unknown> {
     return request(`/api/devices/${deviceId}/wan/block`, {
         method: "POST",

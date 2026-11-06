@@ -2,6 +2,8 @@ import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
     allowClassroomWan,
     allowDeviceWan,
+    wakeDevice,
+    wakeClassroom,
     blockClassroomWan,
     blockDeviceWan,
     cleanupStaleObservedDevices,
@@ -83,6 +85,8 @@ export function App() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [busyDeviceId, setBusyDeviceId] = useState<number | null>(null);
+    const [busyWakeAction, setBusyWakeAction] = useState<number | "all" | null>(null);
+    const [wakeMessage, setWakeMessage] = useState<string | null>(null);
     const [busyClassroomWanAction, setBusyClassroomWanAction] = useState<"block" | "allow" | null>(null);
     const [busyDeleteObservedDeviceId, setBusyDeleteObservedDeviceId] = useState<number | null>(null);
     const [busyCleanupStaleObservedDevices, setBusyCleanupStaleObservedDevices] = useState(false);
@@ -553,6 +557,25 @@ export function App() {
         }
     }
 
+    async function handleWake(deviceId?: number) {
+        if (selectedClassroomId === null || busyWakeAction !== null) return;
+        setBusyWakeAction(deviceId ?? "all");
+        setWakeMessage(null);
+        setError(null);
+        try {
+            const result = deviceId === undefined
+                ? await wakeClassroom(selectedClassroomId)
+                : await wakeDevice(deviceId);
+            setWakeMessage(result.failed_count
+                ? `Пакеты WoL отправлены: ${result.sent_count}. Не удалось отправить: ${result.failed_count}. ${result.results.find((item) => !item.sent)?.error ?? ""}`
+                : result.sent_count ? "Пакеты WoL отправлены." : "Нет устройств для пробуждения.");
+        } catch (err) {
+            setError(extractErrorDetail(err));
+        } finally {
+            setBusyWakeAction(null);
+        }
+    }
+
     async function handleBlockClassroomWan() {
         if (
             selectedClassroomId === null ||
@@ -697,6 +720,7 @@ export function App() {
 
     function openEditDeviceForm(device: DashboardDevice) {
         setError(null);
+        setWakeMessage(null);
 
         setDeviceForm({
             mode: "edit-device",
@@ -861,10 +885,11 @@ export function App() {
                         <ClassroomTabs
                             classrooms={classrooms}
                             selectedClassroomId={selectedClassroomId}
-                            onSelect={setSelectedClassroomId}
+                            onSelect={(id) => { setWakeMessage(null); setSelectedClassroomId(id); }}
                         />
 
                         {error && <pre className="error-box">{error}</pre>}
+                        {wakeMessage && <div className="muted" role="status">{wakeMessage}</div>}
 
                         {loading && <div className="loading">Загрузка...</div>}
 
@@ -890,6 +915,11 @@ export function App() {
                                     </div>
 
                                     <div className="classroom-actions">
+                                        <button className="secondary-button"
+                                            disabled={busyWakeAction !== null || dashboard.devices.length === 0 || dashboard.classroom.id !== selectedClassroomId}
+                                            onClick={() => void handleWake()}>
+                                            {busyWakeAction === "all" ? "Отправка WoL..." : "Разбудить всё"}
+                                        </button>
                                         {userCanControlWan && (
                                             <>
                                                 <button
@@ -975,6 +1005,9 @@ export function App() {
                     canManage={userCanManageWorkstations && (principal.role === "admin" || principal.role === "superadmin")}
                     canControlWan={userCanControlWan}
                     wanBusy={busyDeviceId === deviceForm.device.id}
+                    wakeBusy={busyWakeAction !== null}
+                    onWake={(device) => void handleWake(device.id)}
+                    wakeMessage={wakeMessage}
                     onToggleWan={(device) => {
                         if (device.wan_allowed) void handleBlock(device.id);
                         else void handleAllow(device.id);

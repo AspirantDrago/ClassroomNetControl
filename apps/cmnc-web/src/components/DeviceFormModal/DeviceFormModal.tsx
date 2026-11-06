@@ -27,6 +27,9 @@ type DeviceFormModalProps = {
     canManage: boolean;
     canControlWan: boolean;
     wanBusy: boolean;
+    wakeBusy: boolean;
+    onWake: (device: DashboardDevice) => void;
+    wakeMessage: string | null;
     onToggleWan: (device: DashboardDevice) => void;
     error: string | null;
     onChange: (form: DeviceFormState) => void;
@@ -37,7 +40,7 @@ type DeviceFormModalProps = {
 
 export function DeviceFormModal(props: DeviceFormModalProps) {
     const { form, busy, canManage, canControlWan, wanBusy, onToggleWan, error,
-        onChange, onClose, onSubmit, onUnpin } = props;
+        onChange, onClose, onSubmit, onUnpin, wakeBusy, onWake, wakeMessage } = props;
     const [selectedTab, setSelectedTab] = useState<"info" | "settings">(
         canManage ? "settings" : "info",
     );
@@ -134,7 +137,12 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                             positive={form.device.online}
                     />
                 </div>}
+                {wakeMessage && <div className="device-wake-message muted" role="status">{wakeMessage}</div>}
                 {form.mode === "edit-device" && <div className="modal-actions">
+                    <button type="button" className="secondary-button"
+                        disabled={wakeBusy} onClick={() => onWake(form.device)}>
+                        {wakeBusy ? "Отправка WoL..." : "Разбудить"}
+                    </button>
                     <button type="button"
                         className={form.device.wan_allowed ? "danger-button" : "primary-button"}
                         disabled={!canControlWan || wanBusy || (form.device.wan_protected && form.device.wan_allowed)}

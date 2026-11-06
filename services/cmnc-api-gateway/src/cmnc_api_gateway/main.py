@@ -11,6 +11,7 @@ from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
+from cmnc_api_gateway.wake_on_lan import check_wol_capability, send_wol_packets
 from cmnc_api_gateway.clients import ServiceClient
 from cmnc_api_gateway.schemas import (
     ClassroomDashboardResponse,
@@ -1113,6 +1114,58 @@ async def allow_classroom_wan(
         ) from exc
 
 
+async def get_wol_classroom_layout(classroom_id: int) -> dict[str, Any]:
+    try:
+        layout = await classroom_client.get_json(f"/internal/classrooms/{classroom_id}/layout")
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(exc.response.status_code, "Не удалось загрузить аудиторию для WoL") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, "Сервис аудиторий недоступен") from exc
+    if not isinstance(layout, dict) or not isinstance(layout.get("devices"), list):
+        raise HTTPException(502, "Некорректные данные аудитории")
+    return layout
+
+
+@app.post("/api/devices/{device_id}/wake")
+async def wake_device(
+    device_id: int, request: Request, authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    try:
+        classroom_id = await get_device_classroom_id(device_id)
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, "Сервис аудиторий недоступен") from exc
+    if classroom_id is None:
+        raise HTTPException(404, "Устройство не найдено")
+    await ensure_classroom_access(principal, classroom_id)
+    layout = await get_wol_classroom_layout(classroom_id)
+    devices = [item for item in layout["devices"] if item.get("id") == device_id]
+    if not devices:
+        raise HTTPException(404, "Устройство не найдено в аудитории")
+    classroom = layout["classroom"]
+    router = await get_router_connection_from_inventory(get_classroom_router_id(classroom))
+    result = await send_wol_packets(router, get_router_rest_base_url(router), classroom["subnet_cidr"], devices)
+    if result["failed_count"]:
+        raise HTTPException(502, result["results"][0]["error"])
+    return result
+
+
+@app.post("/api/classrooms/{classroom_id}/wake-all")
+async def wake_classroom(
+    classroom_id: int, request: Request, authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    await ensure_classroom_access(principal, classroom_id)
+    layout = await get_wol_classroom_layout(classroom_id)
+    if not layout["devices"]:
+        return {"sent_count": 0, "failed_count": 0, "results": []}
+    classroom = layout["classroom"]
+    router = await get_router_connection_from_inventory(get_classroom_router_id(classroom))
+    return await send_wol_packets(
+        router, get_router_rest_base_url(router), classroom["subnet_cidr"], layout["devices"],
+    )
+
+
 @app.post("/api/devices/{device_id}/wan/block")
 async def block_device_wan(
     device_id: int,
@@ -1511,6 +1564,12 @@ async def check_mikrotik_router_capabilities(router: dict[str, Any]) -> dict[str
         follow_redirects=False,
     ) as client:
         capabilities = [
+            await check_mikrotik_capability_request(
+                client, base_url=base_url, name="ip_addresses_read",
+                label="IP addresses and interfaces read", method="GET",
+                path="/ip/address", expected_json_type=list,
+            ),
+            await check_wol_capability(client, base_url),
             await check_mikrotik_capability_request(
                 client,
                 base_url=base_url,
