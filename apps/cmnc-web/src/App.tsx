@@ -915,7 +915,7 @@ export function App() {
                                     </div>
 
                                     <div className="classroom-actions">
-                                        <button className="secondary-button"
+                                        <button className="success-button"
                                             disabled={busyWakeAction !== null || dashboard.devices.length === 0 || dashboard.classroom.id !== selectedClassroomId}
                                             onClick={() => void handleWake()}>
                                             {busyWakeAction === "all" ? "Отправка WoL..." : "Разбудить всё"}
@@ -933,7 +933,7 @@ export function App() {
                                                 </button>
 
                                                 <button
-                                                    className="secondary-button"
+                                                    className="success-button"
                                                     disabled={busyClassroomWanAction !== null}
                                                     onClick={() => void handleAllowClassroomWan()}
                                                 >

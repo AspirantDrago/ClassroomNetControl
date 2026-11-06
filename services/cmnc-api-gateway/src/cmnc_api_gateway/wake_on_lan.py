@@ -1,10 +1,14 @@
 import asyncio
 import ipaddress
+import logging
 import re
 from typing import Any
 
 import httpx
 from fastapi import HTTPException
+
+
+logger = logging.getLogger("uvicorn.error.wol")
 
 
 WOL_PROBE_MAC = "02:00:00:00:00:00"
@@ -40,18 +44,41 @@ def select_wol_interface(addresses: list[Any], subnet_cidr: str) -> str:
 
 
 def wol_response_error(response: httpx.Response) -> str | None:
-    if response.status_code in {401, 403}:
-        return "Недостаточно прав MikroTik для WoL"
-    if not response.is_success:
-        return f"MikroTik отклонил запрос WoL (HTTP {response.status_code})"
     try:
         data = response.json()
     except ValueError:
-        return "MikroTik вернул некорректный ответ WoL"
+        data = None
+
+    # RouterOS can return command/permission failures as HTTP 500. Keep its
+    # diagnostic detail instead of reducing all errors to the HTTP status.
+    details: list[str] = []
+    if isinstance(data, dict):
+        for key in ("detail", "message"):
+            value = data.get(key)
+            if isinstance(value, str):
+                value = " ".join(value.split())[:500]
+                if value and value not in details and value.lower() not in {
+                    "internal server error", "bad request", "forbidden", "unauthorized",
+                }:
+                    details.append(value)
+    detail = "; ".join(details)
+    denied = any(phrase in detail.lower() for phrase in (
+        "not enough permissions", "not permitted", "permission denied", "access denied",
+    ))
+    if response.status_code in {401, 403} or denied:
+        message = (
+            "Недостаточно прав MikroTik для WoL. Проверьте право test у группы "
+            "учётной записи сервиса; для REST также нужны read и rest-api."
+        )
+        return f"{message} RouterOS: {detail}" if detail else message
+    if not response.is_success or (isinstance(data, dict) and data.get("error")):
+        message = f"MikroTik отклонил запрос WoL (HTTP {response.status_code})"
+        return f"{message}: {detail}" if detail else message
+    # Commands may return [] or an empty successful response.
+    if not response.content.strip():
+        return None
     if not isinstance(data, (dict, list)):
         return "MikroTik вернул некорректный ответ WoL"
-    if isinstance(data, dict) and data.get("error"):
-        return "MikroTik сообщил об ошибке WoL"
     return None
 
 
@@ -83,6 +110,10 @@ async def send_wol_packets(
         ) as client:
             addresses = await read_wol_addresses(client, base_url)
             interface = select_wol_interface(addresses, subnet_cidr)
+            logger.info(
+                "WoL batch router_id=%s subnet=%s interface=%s targets=%s",
+                router.get("id"), subnet_cidr, interface, len(targets),
+            )
             semaphore = asyncio.Semaphore(4)
 
             async def send_one(mac: str, device: dict[str, Any]) -> dict[str, Any]:
@@ -98,6 +129,20 @@ async def send_wol_packets(
                                     f"{base_url}/tool/wol", json={"mac": mac, "interface": interface},
                                 )
                                 error = wol_response_error(response)
+                                if error:
+                                    error = f"{error} Интерфейс: {interface}."
+                                    diagnostic = error
+                                    reply = " ".join(response.text.split())[:1200]
+                                    secret = router.get("api_password")
+                                    if isinstance(secret, str) and secret:
+                                        diagnostic = diagnostic.replace(secret, "[redacted]")
+                                        reply = reply.replace(secret, "[redacted]")
+                                    logger.warning(
+                                        "WoL rejected router_id=%s device_id=%s mac=%s interface=%s "
+                                        "routeros_status=%s content_type=%s reason=%s routeros_reply=%s",
+                                        router.get("id"), device["id"], mac, interface,
+                                        response.status_code, response.headers.get("content-type", ""), diagnostic, reply,
+                                    )
                     except (TimeoutError, httpx.TimeoutException):
                         error = "Превышено время ожидания отправки WoL"
                     except httpx.RequestError:
@@ -105,6 +150,11 @@ async def send_wol_packets(
                 return {"device_id": device["id"], "mac_address": mac, "sent": error is None, "error": error}
 
             results = await asyncio.gather(*(send_one(mac, device) for mac, device in targets.items()))
+            logger.info(
+                "WoL complete router_id=%s interface=%s sent=%s failed=%s",
+                router.get("id"), interface,
+                sum(item["sent"] for item in results), sum(not item["sent"] for item in results),
+            )
     except httpx.TimeoutException as exc:
         raise HTTPException(504, "Превышено время ожидания MikroTik") from exc
     except httpx.RequestError as exc:

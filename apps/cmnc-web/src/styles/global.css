@@ -26,6 +26,7 @@ button {
 
 .primary-button,
 .secondary-button,
+.success-button,
 .danger-button {
     border: 0;
     border-radius: 10px;
@@ -46,8 +47,17 @@ button {
     background: #dc2626;
 }
 
+.success-button {
+    background: #15803d;
+}
+
+.success-button:hover:not(:disabled) {
+    background: #166534;
+}
+
 .primary-button:disabled,
 .secondary-button:disabled,
+.success-button:disabled,
 .danger-button:disabled {
     opacity: 0.6;
     cursor: not-allowed;

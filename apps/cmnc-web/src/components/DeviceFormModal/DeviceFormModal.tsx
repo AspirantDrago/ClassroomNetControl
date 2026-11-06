@@ -139,7 +139,7 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                 </div>}
                 {wakeMessage && <div className="device-wake-message muted" role="status">{wakeMessage}</div>}
                 {form.mode === "edit-device" && <div className="modal-actions">
-                    <button type="button" className="secondary-button"
+                    <button type="button" className="success-button"
                         disabled={wakeBusy} onClick={() => onWake(form.device)}>
                         {wakeBusy ? "Отправка WoL..." : "Разбудить"}
                     </button>

@@ -51,3 +51,32 @@ bash scripts/compose-up.sh cmnc-api-gateway cmnc-web
 
 Документация MikroTik: [Wake on LAN](https://help.mikrotik.com/docs/spaces/ROS/pages/120782862/Wake+on+LAN),
 [REST API](https://help.mikrotik.com/docs/spaces/ROS/pages/47579162/REST+API).
+
+## Ошибки WoL
+
+RouterOS может вернуть отказ команды с HTTP 500. Интерфейс показывает текст
+`detail`/`message` из ответа маршрутизатора и выбранный интерфейс отправки.
+Отказ `not enough permissions (9)` распознаётся также при HTTP 500.
+В этом случае проверьте право `test` у группы учётной записи сервиса MikroTik.
+Права `read` и `rest-api` также нужны для чтения интерфейсов и доступа к REST.
+Сохраняйте существующие права этой группы, которые используются управлением WAN.
+Если RouterOS сообщает другую причину, она выводится без подмены на ошибку прав.
+
+Описание прав: [User groups](https://manual.mikrotik.com/docs/authentication-authorization-accounting/user/).
+
+## Диагностика отказов без пояснения в интерфейсе
+
+В журнале API gateway записываются строки `WoL batch`, `WoL rejected` и
+`WoL complete`. Они содержат ID маршрутизатора и устройства, MAC, выбранный
+интерфейс, статус RouterOS и ограниченный фрагмент ответа маршрутизатора.
+Пароль учётной записи перед записью скрывается. Заголовки авторизации не записываются.
+
+Если вся групповая отправка завершилась ошибками, API отвечает HTTP 502.
+При частичном успехе ответ HTTP 200 содержит `sent_count`, `failed_count` и
+результат каждого устройства. HTTP 200 сам по себе не подтверждает включение компьютеров.
+
+После одной попытки отправки на сервере:
+
+```bash
+docker logs --since 5m cmnc-api-gateway 2>&1 | grep 'WoL'
+```

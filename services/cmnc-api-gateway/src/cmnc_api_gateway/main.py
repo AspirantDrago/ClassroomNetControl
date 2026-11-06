@@ -1161,9 +1161,12 @@ async def wake_classroom(
         return {"sent_count": 0, "failed_count": 0, "results": []}
     classroom = layout["classroom"]
     router = await get_router_connection_from_inventory(get_classroom_router_id(classroom))
-    return await send_wol_packets(
+    result = await send_wol_packets(
         router, get_router_rest_base_url(router), classroom["subnet_cidr"], layout["devices"],
     )
+    if result["failed_count"] and not result["sent_count"]:
+        raise HTTPException(502, result["results"][0]["error"])
+    return result
 
 
 @app.post("/api/devices/{device_id}/wan/block")

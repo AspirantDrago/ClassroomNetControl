@@ -81,6 +81,16 @@ def test_wake_routes_follow_classroom_access_without_wan_permission(monkeypatch)
                     response = await client.post(path)
                     assert response.status_code == 200
             assert send.await_count == 10
+            send.return_value = {"sent_count": 0, "failed_count": 1,
+                                 "results": [{"error": "RouterOS: interface is not running"}]}
+            failed = await client.post('/api/classrooms/7/wake-all')
+            assert failed.status_code == 502
+            assert "interface is not running" in failed.json()["detail"]
+            send.return_value = {"sent_count": 1, "failed_count": 1,
+                                 "results": [{"error": "RouterOS error"}]}
+            partial = await client.post('/api/classrooms/7/wake-all')
+            assert partial.status_code == 200
+            assert partial.json()["failed_count"] == 1
             principal.classroom_ids = []
             send.reset_mock()
             layout.reset_mock()
@@ -94,3 +104,60 @@ def test_wake_routes_follow_classroom_access_without_wan_permission(monkeypatch)
             assert (await client.post('/api/classrooms/7/wake-all')).json()['sent_count'] == 0
             send.assert_not_awaited()
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("status,payload,expected", [
+    (500, {"error": 500, "message": "Internal Server Error", "detail": "not enough permissions (9)"}, "право test"),
+    (500, {"error": 500, "detail": "not permitted (9)"}, "право test"),
+    (500, {"error": 500, "detail": "input does not match any value of interface"}, "input does not match"),
+    (500, {"error": 500, "detail": "failure: interface is not running"}, "interface is not running"),
+    (403, {"error": 403}, "право test"),
+    (200, {"error": 500, "detail": "command failed"}, "command failed"),
+])
+def test_routeros_command_errors_preserve_details(status, payload, expected):
+    error = wol.wol_response_error(httpx.Response(status, json=payload))
+    assert expected in error
+    if "право test" not in expected:
+        assert "право test" not in error
+
+
+def test_empty_success_and_invalid_wol_responses():
+    assert wol.wol_response_error(httpx.Response(204)) is None
+    assert wol.wol_response_error(httpx.Response(200, json=[])) is None
+    assert "некорректный" in wol.wol_response_error(httpx.Response(200, text="<html>Login</html>"))
+    assert "HTTP 500" in wol.wol_response_error(httpx.Response(500))
+
+
+def test_capability_probe_recognizes_http_500_permission_error():
+    async def run():
+        def handle(request):
+            if request.method == "GET":
+                return httpx.Response(200, json=[{"address": "192.168.7.1/24", "interface": "vlan7"}])
+            return httpx.Response(500, json={"error": 500, "message": "Internal Server Error", "detail": "not enough permissions (9)"})
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+            result = await wol.check_wol_capability(client, "https://router.test/rest")
+            assert result["ok"] is False
+            assert result["status_code"] == 500
+            assert "право test" in result["error"]
+            assert "not enough permissions (9)" in result["error"]
+    asyncio.run(run())
+
+
+
+def test_routeros_failure_is_logged_without_credentials(monkeypatch, caplog):
+    import logging
+    def handle(request):
+        if request.method == "GET":
+            return httpx.Response(200, json=[{"address": "192.168.7.1/24", "interface": "vlan7"}])
+        return httpx.Response(500, json={"error": 500, "detail": "failure: interface is not running", "sensitive": ROUTER["api_password"]})
+    original = httpx.AsyncClient
+    monkeypatch.setattr(wol.httpx, 'AsyncClient', lambda **kwargs: original(transport=httpx.MockTransport(handle), **kwargs))
+    with caplog.at_level(logging.INFO, logger="uvicorn.error.wol"):
+        result = asyncio.run(wol.send_wol_packets(ROUTER, 'https://router.test/rest', CLASSROOM['subnet_cidr'], [DEVICE]))
+    assert result["failed_count"] == 1
+    assert "routeros_status=500" in caplog.text
+    assert "device_id=10" in caplog.text
+    assert "interface=vlan7" in caplog.text
+    assert "interface is not running" in caplog.text
+    assert '"error":500' in caplog.text
+    assert ROUTER["api_password"] not in caplog.text
