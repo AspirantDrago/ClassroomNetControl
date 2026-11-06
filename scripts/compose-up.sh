@@ -50,12 +50,12 @@ compose_args=(
   -d
   --build
   --remove-orphans
-  --force-recreate
 )
 
-# При указании конкретных сервисов не трогаем их зависимости.
+# Полный запуск обновляет только изменившиеся контейнеры.
+# Явно указанные сервисы принудительно перезапускаем, не трогая зависимости.
 if [ "$#" -gt 0 ]; then
-  compose_args+=(--no-deps)
+  compose_args+=(--no-deps --force-recreate)
 fi
 
 docker compose "${compose_args[@]}" "$@"
