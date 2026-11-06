@@ -31,6 +31,8 @@ export type DashboardDevice = {
     sync_error: string | null;
     online: boolean;
     last_seen_at: string | null;
+    wan_state_since?: string | null;
+    online_state_since?: string | null;
 };
 
 export type DynamicDevice = {

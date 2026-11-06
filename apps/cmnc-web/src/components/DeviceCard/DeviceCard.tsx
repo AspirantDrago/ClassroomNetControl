@@ -9,7 +9,6 @@ type DeviceCardProps = {
     onAllow: (deviceId: number) => Promise<void>;
     onEdit: (device: DashboardDevice) => void;
     canControlWan: boolean;
-    canManageWorkstations: boolean;
 };
 
 export function DeviceCard(props: DeviceCardProps) {
@@ -20,29 +19,21 @@ export function DeviceCard(props: DeviceCardProps) {
         onAllow,
         onEdit,
         canControlWan,
-        canManageWorkstations,
     } = props;
     const busy = busyDeviceId === device.id;
 
     return (
-        <div className={`device-card ${device.online ? "device-online" : "device-offline"}`}>
+        <div className={`device-card ${device.online ? "device-online" : "device-offline"}`}
+            onClick={(event) => {
+                if (!(event.target as HTMLElement).closest("button")) onEdit(device);
+            }}>
+            <button type="button" className="device-open-button"
+                aria-label={`Открыть устройство ${getDeviceTitle(device)}`}
+                onClick={(event) => { event.stopPropagation(); onEdit(device); }} />
             <div className="device-card-header">
                 <div className="device-title">{getDeviceTitle(device)}</div>
 
-                {canManageWorkstations && (
-                    <button
-                        type="button"
-                        className="device-edit-button"
-                        title="Редактировать устройство"
-                        aria-label={`Редактировать устройство ${getDeviceTitle(device)}`}
-                        onClick={(event) => {
-                            event.stopPropagation();
-                            onEdit(device);
-                        }}
-                    >
-                        ✎
-                    </button>
-                )}
+
             </div>
 
             <div className="device-info">

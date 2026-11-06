@@ -670,10 +670,6 @@ export function App() {
     }
 
     function openEditDeviceForm(device: DashboardDevice) {
-        if (!canManageWorkstations(principal)) {
-            return;
-        }
-
         setError(null);
 
         setDeviceForm({
@@ -920,7 +916,6 @@ export function App() {
                                     onAllow={handleAllow}
                                     onEdit={openEditDeviceForm}
                                     canControlWan={userCanControlWan}
-                                    canManageWorkstations={userCanManageWorkstations}
                                 />
 
                                 {userCanViewDynamicDevices && (
@@ -941,10 +936,22 @@ export function App() {
                 )}
             </main>
 
-            {deviceForm && userCanManageWorkstations && (
+            {deviceForm && (deviceForm.mode === "edit-device" || userCanManageWorkstations) && (
                 <DeviceFormModal
-                    form={deviceForm}
+                    key={`${deviceForm.mode}:${deviceForm.device.id}`}
+                    form={deviceForm.mode === "edit-device" ? {
+                        ...deviceForm,
+                        device: dashboard?.devices.find((device) => device.id === deviceForm.device.id) ?? deviceForm.device,
+                    } : deviceForm}
                     busy={busyForm}
+                    canManage={userCanManageWorkstations && (principal.role === "admin" || principal.role === "superadmin")}
+                    canControlWan={userCanControlWan}
+                    wanBusy={busyDeviceId === deviceForm.device.id}
+                    onToggleWan={(device) => {
+                        if (device.wan_allowed) void handleBlock(device.id);
+                        else void handleAllow(device.id);
+                    }}
+                    error={error}
                     onChange={setDeviceForm}
                     onClose={closeDeviceForm}
                     onSubmit={handleDeviceFormSubmit}

@@ -840,17 +840,29 @@ async def get_classroom_dashboard(
         for device in devices
     }
 
+    state_times = layout.get("device_state_times", {})
     dashboard_devices: list[DashboardDevice] = []
 
     for device in devices:
         observed_device = observed_by_mac.get(device["mac_address"].upper())
+        online = bool(observed_device and observed_device["active"])
+        timing = state_times.get(str(device["id"]), {})
+        wan_state = "protected" if device["wan_protected"] else (
+            "allowed" if device["wan_allowed"] else "blocked"
+        )
 
         dashboard_devices.append(
             DashboardDevice(
                 **device,
                 active_ip=observed_device["active_ip"] if observed_device else None,
                 observed_hostname=observed_device["hostname"] if observed_device else None,
-                online=bool(observed_device and observed_device["active"]),
+                online=online,
+                online_state_since=(
+                    timing.get("online_state_since") if timing.get("online") == online else None
+                ),
+                wan_state_since=(
+                    timing.get("wan_state_since") if timing.get("wan_state") == wan_state else None
+                ),
                 last_seen_at=observed_device["last_seen_at"] if observed_device else None,
             )
         )

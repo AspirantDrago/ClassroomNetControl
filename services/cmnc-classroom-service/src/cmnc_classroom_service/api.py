@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cmnc_contracts.events import WanPolicyChangedEvent
 from cmnc_contracts.routing_keys import CLASSROOM_DEVICE_WAN_POLICY_CHANGED
 
+from cmnc_classroom_service.device_state_timing import get_device_state_times
 from cmnc_classroom_service.db import get_session
 from cmnc_classroom_service.messaging import RabbitMqClient
 from cmnc_classroom_service.models import Classroom, ClassroomCamera, Device
@@ -107,6 +108,7 @@ async def get_classroom_layout(
     return ClassroomLayoutResponse(
         classroom=ClassroomRead.model_validate(classroom),
         devices=[DeviceRead.model_validate(device) for device in devices],
+        device_state_times=await get_device_state_times(session, [device.id for device in devices]),
         cameras=[ClassroomCameraRead.model_validate(camera) for camera in cameras],
     )
 

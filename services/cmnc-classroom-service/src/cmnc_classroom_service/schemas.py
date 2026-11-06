@@ -78,9 +78,17 @@ class DeviceRead(BaseModel):
     sync_error: str | None
 
 
+class DeviceStateTiming(BaseModel):
+    online: bool
+    wan_state: str
+    online_state_since: datetime | None = None
+    wan_state_since: datetime | None = None
+
+
 class ClassroomLayoutResponse(BaseModel):
     classroom: ClassroomRead
     devices: list[DeviceRead]
+    device_state_times: dict[int, DeviceStateTiming] = Field(default_factory=dict)
     cameras: list[ClassroomCameraRead]
 
 

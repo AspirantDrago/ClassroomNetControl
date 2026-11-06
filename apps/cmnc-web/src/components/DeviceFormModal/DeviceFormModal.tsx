@@ -1,4 +1,5 @@
-import type { FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import { formatStateDuration, formatStateTime } from "../../utils/deviceTiming";
 import type { DashboardDevice, DynamicDevice } from "../../api";
 import "./DeviceFormModal.css";
 
@@ -23,6 +24,11 @@ export type DeviceFormState =
 type DeviceFormModalProps = {
     form: DeviceFormState;
     busy: boolean;
+    canManage: boolean;
+    canControlWan: boolean;
+    wanBusy: boolean;
+    onToggleWan: (device: DashboardDevice) => void;
+    error: string | null;
     onChange: (form: DeviceFormState) => void;
     onClose: () => void;
     onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -30,45 +36,111 @@ type DeviceFormModalProps = {
 };
 
 export function DeviceFormModal(props: DeviceFormModalProps) {
-    const { form, busy, onChange, onClose, onSubmit, onUnpin } = props;
+    const { form, busy, canManage, canControlWan, wanBusy, onToggleWan, error,
+        onChange, onClose, onSubmit, onUnpin } = props;
+    const [selectedTab, setSelectedTab] = useState<"info" | "settings">(
+        canManage ? "settings" : "info",
+    );
+    const tab = canManage ? selectedTab : "info";
+    const [now, setNow] = useState(() => Date.now());
+
+    useEffect(() => {
+        const timer = window.setInterval(() => setNow(Date.now()), 1000);
+        return () => window.clearInterval(timer);
+    }, []);
 
     return (
         <div className="modal-backdrop" onMouseDown={onClose}>
             <form
                 className="modal-card"
-                onSubmit={onSubmit}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="device-dialog-title"
+                onSubmit={(event) => {
+                    if (tab === "settings" && canManage) onSubmit(event);
+                    else event.preventDefault();
+                }}
+                onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}
                 onMouseDown={(event) => event.stopPropagation()}
             >
                 <div className="modal-header">
                     <div>
-                        <h3>
+                        <h3 id="device-dialog-title">
                             {form.mode === "pin-observed"
                                 ? "Закрепить устройство"
-                                : "Редактировать устройство"}
+                                : "Устройство"}
                         </h3>
-                        <div className="muted">
+                        {tab === "settings" && <div className="muted">
                             {form.mode === "pin-observed"
                                 ? "Устройство будет добавлено в сетку аудитории."
                                 : "Можно изменить позицию в сетке или очистить Row/Column."}
-                        </div>
+                        </div>}
                     </div>
 
                     <button
                         type="button"
                         className="modal-close-button"
+                        aria-label="Закрыть"
+                        autoFocus
                         onClick={onClose}
                     >
                         ×
                     </button>
                 </div>
 
+                <div className="device-modal-tabs" role="tablist" aria-label="Устройство">
+                    <button type="button" role="tab" id="device-info-tab"
+                        aria-selected={tab === "info"} aria-controls="device-info-panel"
+                        onClick={() => setSelectedTab("info")}>Инфо</button>
+                    {canManage && <button type="button" role="tab" id="device-settings-tab"
+                        aria-selected={tab === "settings"} aria-controls="device-settings-panel"
+                        onClick={() => setSelectedTab("settings")}>Настройка</button>}
+                </div>
+
+                {error && <div className="device-modal-error" role="alert">{error}</div>}
+
+                {tab === "info" && <div role="tabpanel" id="device-info-panel" aria-labelledby="device-info-tab">
                 <div className="readonly-grid">
                     <ReadonlyField label="MAC" value={getMacAddress(form)} />
                     <ReadonlyField label="IP" value={getIpAddress(form)} />
                     <ReadonlyField label="Hostname из MikroTik" value={getHostname(form)} />
                     <ReadonlyField label="Lease" value={getLeaseText(form)} />
+                    <ReadonlyField label="Название в аудитории" value={form.mode === "edit-device" ? form.device.inventory_name || "-" : "-"} />
+                    {form.mode === "edit-device" && form.device.wan_protected && (
+                        <ReadonlyField label="Защищено от отключения WAN" value="Да" />
+                    )}
                 </div>
+                {form.mode === "edit-device" && <div className="device-state-grid">
+                    {!form.device.wan_protected && <>
+                        <ReadonlyField
+                            label={form.device.wan_allowed ? "Время включения Интернета" : "Время отключения Интернета"}
+                            value={formatStateTime(form.device.wan_state_since)}
+                        />
+                        <ReadonlyField
+                            label={form.device.wan_allowed ? "Интернет доступен" : "Интернет отключён"}
+                            value={formatStateDuration(form.device.wan_state_since, now)}
+                        />
+                    </>}
+                    <ReadonlyField
+                        label={form.device.online ? "Время запуска" : "Время выключения"}
+                        value={formatStateTime(form.device.online_state_since)}
+                    />
+                    <ReadonlyField
+                        label={form.device.online ? "Включен" : "Выключен"}
+                        value={formatStateDuration(form.device.online_state_since, now)}
+                    />
+                </div>}
+                {form.mode === "edit-device" && <div className="modal-actions">
+                    <button type="button"
+                        className={form.device.wan_allowed ? "danger-button" : "primary-button"}
+                        disabled={!canControlWan || wanBusy || (form.device.wan_protected && form.device.wan_allowed)}
+                        onClick={() => onToggleWan(form.device)}>
+                        {form.device.wan_allowed ? "Выключить Интернет" : "Включить Интернет"}
+                    </button>
+                </div>}
+                </div>}
 
+                {tab === "settings" && canManage && <div role="tabpanel" id="device-settings-panel" aria-labelledby="device-settings-tab">
                 <div className="pin-form-grid">
                     <label>
                         Название в аудитории
@@ -160,6 +232,7 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                         {form.mode === "pin-observed" ? "Закрепить" : "Сохранить"}
                     </button>
                 </div>
+                </div>}
             </form>
         </div>
     );

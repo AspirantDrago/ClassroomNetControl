@@ -128,3 +128,62 @@
     width: 16px;
     height: 16px;
 }
+
+.device-modal-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.device-modal-tabs button {
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 10px 16px;
+    background: #1f2937;
+    color: #e5e7eb;
+    cursor: pointer;
+}
+
+.device-modal-tabs button[aria-selected="true"] {
+    background: #2563eb;
+    border-color: #2563eb;
+}
+
+.device-modal-error {
+    color: #fecaca;
+    margin-bottom: 16px;
+    overflow-wrap: anywhere;
+}
+
+.modal-card {
+    max-height: calc(100dvh - 48px);
+    overflow-y: auto;
+}
+
+@media (max-width: 640px) {
+    .modal-backdrop { padding: 12px; }
+    .modal-card { max-height: calc(100dvh - 24px); }
+    .readonly-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+.device-state-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.device-state-grid .readonly-field {
+    min-width: 0;
+}
+
+.device-state-grid .readonly-field strong {
+    word-break: normal;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+    .device-state-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}

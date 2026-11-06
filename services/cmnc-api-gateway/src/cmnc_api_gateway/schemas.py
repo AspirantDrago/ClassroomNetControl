@@ -28,6 +28,8 @@ class DashboardDevice(BaseModel):
     sync_error: str | None
     online: bool = False
     last_seen_at: datetime | None = None
+    wan_state_since: datetime | None = None
+    online_state_since: datetime | None = None
 
 
 class DynamicDevice(BaseModel):
