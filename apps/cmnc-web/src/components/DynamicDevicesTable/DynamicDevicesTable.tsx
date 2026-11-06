@@ -10,9 +10,11 @@ type DynamicDevicesTableProps = {
     busyPinMac: string | null;
     busyDeleteObservedDeviceId: number | null;
     busyCleanupStale: boolean;
+    busyCleanupAll: boolean;
     onOpenPinForm: (device: DynamicDevice) => void;
     onDeleteInactive: (device: DynamicDevice) => void;
     onCleanupStale: () => void;
+    onCleanupAll: () => void;
     canManageWorkstations: boolean;
 };
 
@@ -22,12 +24,16 @@ export function DynamicDevicesTable(props: DynamicDevicesTableProps) {
         busyPinMac,
         busyDeleteObservedDeviceId,
         busyCleanupStale,
+        busyCleanupAll,
         onOpenPinForm,
         onDeleteInactive,
         onCleanupStale,
+        onCleanupAll,
         canManageWorkstations,
     } = props;
 
+    const cleanupBusy = busyCleanupStale || busyCleanupAll;
+    const actionBusy = cleanupBusy || busyDeleteObservedDeviceId !== null || busyPinMac !== null;
     const sortedDevices = [...devices].sort((left, right) => {
         return compareIpAddresses(left.active_ip, right.active_ip);
     });
@@ -43,13 +49,23 @@ export function DynamicDevicesTable(props: DynamicDevicesTableProps) {
                 </div>
 
                 {canManageWorkstations && (
+                    <div className="dynamic-cleanup-actions">
                     <button
                         className="secondary-button compact-button"
-                        disabled={busyCleanupStale}
+                        disabled={actionBusy}
                         onClick={onCleanupStale}
                     >
                         {busyCleanupStale ? "Очистка..." : "Очистить старые"}
                     </button>
+                    <button
+                        type="button"
+                        className="danger-button compact-button"
+                        disabled={actionBusy || devices.length === 0}
+                        onClick={onCleanupAll}
+                    >
+                        {busyCleanupAll ? "Очистка..." : "Очистить все"}
+                    </button>
+                    </div>
                 )}
             </div>
 
@@ -91,7 +107,7 @@ export function DynamicDevicesTable(props: DynamicDevicesTableProps) {
                                             className="icon-danger-button"
                                             title="Удалить неактивное устройство из базы данных"
                                             aria-label="Удалить неактивное устройство из базы данных"
-                                            disabled={busyDeleteObservedDeviceId === device.id}
+                                            disabled={cleanupBusy || busyDeleteObservedDeviceId === device.id}
                                             onClick={() => onDeleteInactive(device)}
                                         >
                                             {busyDeleteObservedDeviceId === device.id ? "..." : "×"}
@@ -99,7 +115,7 @@ export function DynamicDevicesTable(props: DynamicDevicesTableProps) {
                                     ) : canPinObservedDevice(device) ? (
                                         <button
                                             className="secondary-button compact-button"
-                                            disabled={busyPinMac === device.mac_address}
+                                            disabled={cleanupBusy || busyPinMac === device.mac_address}
                                             onClick={() => onOpenPinForm(device)}
                                         >
                                             {busyPinMac === device.mac_address ? "..." : "Закрепить"}

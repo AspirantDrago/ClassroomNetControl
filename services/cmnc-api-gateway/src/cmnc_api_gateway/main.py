@@ -1013,6 +1013,66 @@ async def admin_cleanup_stale_observed_devices(
         ) from exc
 
 
+@app.post("/api/admin/classrooms/{classroom_id}/observed-devices/cleanup-all")
+async def admin_cleanup_all_observed_devices(
+    classroom_id: int,
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    principal = await get_current_principal(request, authorization)
+    require_permission(principal, PERMISSION_DEVICES_MANAGE)
+
+    try:
+        classroom, devices, observed_devices = await get_classroom_layout_and_observed_devices(
+            classroom_id
+        )
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Classroom not found") from exc
+        raise HTTPException(status_code=502, detail=exc.response.text) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    pinned_macs = get_pinned_macs(devices)
+    ids_to_delete: list[int] = []
+
+    for observed_device in observed_devices:
+        observed_device_id = observed_device.get("id")
+        if not isinstance(observed_device_id, int):
+            continue
+
+        mac_address = observed_device.get("mac_address")
+        if not isinstance(mac_address, str) or mac_address.upper() in pinned_macs:
+            continue
+
+        if not ip_in_subnet(observed_device.get("active_ip"), classroom["subnet_cidr"]):
+            continue
+
+        ids_to_delete.append(observed_device_id)
+
+    if not ids_to_delete:
+        return {
+            "deleted_ids": [],
+            "deleted_count": 0,
+        }
+
+    try:
+        return await inventory_client.post_json(
+            f"/internal/routers/{get_classroom_router_id(classroom)}/observed-devices/delete",
+            json={"ids": ids_to_delete},
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=exc.response.text,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Inventory service unavailable: {exc}",
+        ) from exc
+
+
 @app.post("/api/classrooms/{classroom_id}/wan/block-all")
 async def block_classroom_wan(
     classroom_id: int,

@@ -5,6 +5,7 @@ import {
     blockClassroomWan,
     blockDeviceWan,
     cleanupStaleObservedDevices,
+    cleanupAllObservedDevices,
     clearAccessToken,
     deleteObservedDevice,
     extractErrorDetail,
@@ -85,6 +86,7 @@ export function App() {
     const [busyClassroomWanAction, setBusyClassroomWanAction] = useState<"block" | "allow" | null>(null);
     const [busyDeleteObservedDeviceId, setBusyDeleteObservedDeviceId] = useState<number | null>(null);
     const [busyCleanupStaleObservedDevices, setBusyCleanupStaleObservedDevices] = useState(false);
+    const [busyCleanupAllObservedDevices, setBusyCleanupAllObservedDevices] = useState(false);
     const [deviceForm, setDeviceForm] = useState<DeviceFormState | null>(null);
     const [busyForm, setBusyForm] = useState(false);
     const [classroomForm, setClassroomForm] = useState<ClassroomFormState | null>(null);
@@ -357,6 +359,7 @@ export function App() {
         setBusyClassroomWanAction(null);
         setBusyDeleteObservedDeviceId(null);
         setBusyCleanupStaleObservedDevices(false);
+        setBusyCleanupAllObservedDevices(false);
         setDeviceForm(null);
         setClassroomForm(null);
         setCurrentPage("dashboard");
@@ -652,6 +655,29 @@ export function App() {
         }
     }
 
+    async function handleCleanupAllObservedDevices() {
+        if (selectedClassroomId === null || !canManageWorkstations(principal) ||
+            busyCleanupAllObservedDevices || busyCleanupStaleObservedDevices) {
+            return;
+        }
+
+        const confirmed = window.confirm(
+            "Удалить из базы данных ВСЕ незакреплённые устройства текущей аудитории, включая активные? Закреплённые устройства останутся. Активные устройства могут появиться снова после опроса MikroTik.",
+        );
+        if (!confirmed) return;
+
+        setBusyCleanupAllObservedDevices(true);
+        setError(null);
+        try {
+            await cleanupAllObservedDevices(selectedClassroomId);
+            await reload();
+        } catch (err) {
+            setError(extractErrorDetail(err));
+        } finally {
+            setBusyCleanupAllObservedDevices(false);
+        }
+    }
+
     function openPinObservedForm(device: DynamicDevice) {
         if (!canManageWorkstations(principal)) {
             return;
@@ -924,9 +950,11 @@ export function App() {
                                         busyPinMac={busyPinMac}
                                         busyDeleteObservedDeviceId={busyDeleteObservedDeviceId}
                                         busyCleanupStale={busyCleanupStaleObservedDevices}
+                                        busyCleanupAll={busyCleanupAllObservedDevices}
                                         onOpenPinForm={openPinObservedForm}
                                         onDeleteInactive={handleDeleteInactiveObservedDevice}
                                         onCleanupStale={handleCleanupStaleObservedDevices}
+                                        onCleanupAll={handleCleanupAllObservedDevices}
                                         canManageWorkstations={userCanManageWorkstations}
                                     />
                                 )}

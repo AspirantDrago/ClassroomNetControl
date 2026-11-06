@@ -79,3 +79,16 @@
     opacity: 0.6;
     cursor: not-allowed;
 }
+
+.dynamic-cleanup-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+    .dynamic-section-header { flex-direction: column; }
+    .dynamic-cleanup-actions { width: 100%; }
+    .dynamic-cleanup-actions button { flex: 1; }
+}

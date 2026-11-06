@@ -376,6 +376,15 @@ export function cleanupStaleObservedDevices(
     );
 }
 
+export function cleanupAllObservedDevices(
+    classroomId: number,
+): Promise<DeleteObservedDevicesResponse> {
+    return request<DeleteObservedDevicesResponse>(
+        `/api/admin/classrooms/${classroomId}/observed-devices/cleanup-all`,
+        { method: "POST" },
+    );
+}
+
 export function pinObservedDevice(
     classroomId: number,
     payload: PinObservedDeviceRequest,
