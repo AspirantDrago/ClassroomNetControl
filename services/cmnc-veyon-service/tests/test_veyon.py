@@ -8,6 +8,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import HTTPException
 
+from cmnc_veyon_service import main as veyon_main
 from cmnc_veyon_service.key_store import KeyStore
 from cmnc_veyon_service.main import AUTH_KEYS, FEATURES, Target, VeyonBridge
 from cmnc_api_gateway import main as gateway
@@ -127,4 +128,64 @@ def test_gateway_access_confirmation_and_image_proxy(monkeypatch):
             assert (await client.post('/api/devices/10/veyon/power-down')).status_code == 403
             assert (await client.post('/api/classrooms/7/veyon/power-down-all', json={'confirmed': True})).status_code == 403
             assert len(calls) == before
+    asyncio.run(run())
+
+
+
+def test_initial_frame_waits_on_the_same_connection(tmp_path, pem, monkeypatch):
+    async def run():
+        store = KeyStore(tmp_path)
+        store.save('router', 1, 'CMNC', pem)
+        calls = []
+        frames = 0
+        def handle(request):
+            nonlocal frames
+            calls.append(request.method)
+            if request.method == 'POST':
+                return httpx.Response(200, json={'connection-uid': 'same-connection'})
+            assert request.headers['Connection-Uid'] == 'same-connection'
+            if request.method == 'GET':
+                frames += 1
+                if frames < 3:
+                    return httpx.Response(503, json={'error': {'code': 10, 'message': 'Framebuffer not available'}})
+                return httpx.Response(200, content=b'ready-frame', headers={'content-type': 'image/jpeg'})
+            return httpx.Response(200, json={})
+        monkeypatch.setattr(veyon_main, 'FRAMEBUFFER_RETRY_DELAY', 0)
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+            bridge = VeyonBridge(store, client)
+            target = Target(device_id=1, router_id=1, classroom_id=2, host='192.168.1.2')
+            assert (await bridge.operate(target))[0] == b'ready-frame'
+            assert (await bridge.operate(target))[0] == b'ready-frame'
+            assert calls.count('POST') == 1
+            assert calls.count('DELETE') == 0
+            assert len(bridge.sessions) == 1
+    asyncio.run(run())
+
+
+def test_frame_still_missing_preserves_session_for_next_request(tmp_path, pem, monkeypatch):
+    async def run():
+        store = KeyStore(tmp_path)
+        store.save('router', 1, 'CMNC', pem)
+        ready = False
+        methods = []
+        def handle(request):
+            methods.append(request.method)
+            if request.method == 'POST':
+                return httpx.Response(200, json={'connection-uid': 'persistent'})
+            if request.method == 'GET' and not ready:
+                return httpx.Response(503, json={'error': {'code': 10, 'message': 'Framebuffer not available'}})
+            return httpx.Response(200, content=b'frame', headers={'content-type': 'image/jpeg'})
+        monkeypatch.setattr(veyon_main, 'FRAMEBUFFER_ATTEMPTS', 2)
+        monkeypatch.setattr(veyon_main, 'FRAMEBUFFER_RETRY_DELAY', 0)
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+            bridge = VeyonBridge(store, client)
+            target = Target(device_id=1, router_id=1, classroom_id=2, host='192.168.1.2')
+            with pytest.raises(HTTPException) as exc:
+                await bridge.operate(target)
+            assert exc.value.status_code == 503
+            assert len(bridge.sessions) == 1
+            ready = True
+            assert (await bridge.operate(target))[0] == b'frame'
+            assert methods.count('POST') == 1
+            assert methods.count('DELETE') == 0
     asyncio.run(run())

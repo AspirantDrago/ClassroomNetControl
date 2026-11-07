@@ -19,6 +19,14 @@ AUTH_KEYS = "0c69b301-81b4-42d6-8fae-128cdd113314"
 FEATURES = {"power-down": "6f5a27a0-0e2f-496e-afcc-7aae62eede10", "reboot": "4f7d98f0-395a-4fff-b968-e49b8d0f748c"}
 WEBAPI = os.environ.get("CMNC_VEYON_WEBAPI_URL", "http://cmnc-veyon-proxy:11080").rstrip("/")
 TARGET_PORT = int(os.environ.get("CMNC_VEYON_TARGET_PORT", "11100"))
+FRAMEBUFFER_ATTEMPTS = 12
+FRAMEBUFFER_RETRY_DELAY = 0.35
+
+
+class VeyonError(HTTPException):
+    def __init__(self, status_code: int, detail: str, error_code: int | None = None):
+        super().__init__(status_code, detail)
+        self.error_code = error_code
 
 
 class KeyInput(BaseModel):
@@ -74,8 +82,10 @@ class VeyonBridge:
             raise HTTPException(503, "Veyon недоступен: проверьте службу на устройстве и сетевое подключение") from exc
         if not response.is_success:
             message = "Ошибка подключения Veyon"
+            error_code = None
             try:
                 error = response.json().get("error", {})
+                error_code = error.get("code")
                 if error.get("code") in (4, 5, 6):
                     message = "Veyon отклонил ключ: проверьте имя, приватный ключ и соответствующий публичный ключ на устройстве"
                 elif error.get("code") == 10:
@@ -84,7 +94,7 @@ class VeyonBridge:
                     message = "Veyon: " + error["message"][:200]
             except (ValueError, AttributeError):
                 pass
-            raise HTTPException(503 if response.status_code in (408, 429, 503) else 502, message)
+            raise VeyonError(503 if response.status_code in (408, 429, 503) else 502, message, error_code)
         return response
 
     async def connection(self, identity, name, pem, target):
@@ -115,13 +125,29 @@ class VeyonBridge:
                 if action:
                     await self.checked("PUT", "/api/v1/feature/" + FEATURES[action], headers=headers, json={"active": True, "arguments": {}})
                     return {"accepted": True, "device_id": target.device_id}
-                response = await self.checked("GET", "/api/v1/framebuffer", headers=headers, params={"format": "jpeg", "quality": 75, "width": target.width})
+                # Authentication can finish before the first framebuffer arrives.
+                # Keep this connection alive while waiting; never reauthenticate
+                # just because the initial screen image is not ready yet.
+                try:
+                    async with asyncio.timeout(8):
+                        for attempt in range(FRAMEBUFFER_ATTEMPTS):
+                            try:
+                                response = await self.checked("GET", "/api/v1/framebuffer", headers=headers, params={"format": "jpeg", "quality": 75, "width": target.width})
+                                break
+                            except VeyonError as exc:
+                                if exc.error_code != 10 or attempt == FRAMEBUFFER_ATTEMPTS - 1:
+                                    raise
+                                await asyncio.sleep(FRAMEBUFFER_RETRY_DELAY)
+                except TimeoutError as exc:
+                    raise VeyonError(503, "Veyon ещё не подготовил изображение экрана", 10) from exc
                 if not response.headers.get("content-type", "").lower().startswith("image/"):
                     raise HTTPException(502, "Veyon не вернул изображение экрана")
                 return response.content, response.headers["content-type"]
-            except HTTPException:
-                # Reconnect on the next explicit request, without repeating a power command.
-                await self.close(identity)
+            except HTTPException as exc:
+                # A missing first frame is temporary, not an invalid connection.
+                # Power commands are never retried automatically.
+                if not (action is None and isinstance(exc, VeyonError) and exc.error_code == 10):
+                    await self.close(identity)
                 raise
             finally:
                 session.last_used = time.monotonic()
