@@ -6,15 +6,8 @@ export function DeviceScreen({ deviceId, standalone = false }: { deviceId: numbe
     const [source, setSource] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [popup, setPopup] = useState<Window | null>(null);
-    const [fullscreen, setFullscreen] = useState(false);
-    const container = useRef<HTMLDivElement>(null);
+    const imageRef = useRef<HTMLImageElement>(null);
     const viewDocument = document;
-
-    useEffect(() => {
-        const changed = () => setFullscreen(Boolean(viewDocument.fullscreenElement));
-        viewDocument.addEventListener("fullscreenchange", changed);
-        return () => viewDocument.removeEventListener("fullscreenchange", changed);
-    }, [viewDocument]);
 
     useEffect(() => {
         if (!popup) return;
@@ -69,7 +62,7 @@ export function DeviceScreen({ deviceId, standalone = false }: { deviceId: numbe
     async function toggleFullscreen() {
         try {
             if (viewDocument.fullscreenElement) await viewDocument.exitFullscreen();
-            else if (container.current?.requestFullscreen) await container.current.requestFullscreen();
+            else if (imageRef.current?.requestFullscreen) await imageRef.current.requestFullscreen();
             else setError("Этот браузер не поддерживает полноэкранный режим. Откройте экран в отдельном окне.");
         } catch { setError("Не удалось открыть полноэкранный режим."); }
     }
@@ -86,23 +79,21 @@ export function DeviceScreen({ deviceId, standalone = false }: { deviceId: numbe
         setPopup(next);
     }
 
-    const screen = <div className="device-screen" ref={container}>
-        <div className="device-screen-toolbar">
-            <button type="button" className="btn btn-secondary" onClick={() => void toggleFullscreen()}>
-                {fullscreen ? "Выйти из полного экрана" : "На весь экран"}
-            </button>
-            {!standalone && <button type="button" className="btn btn-secondary" onClick={openWindow}>В отдельном окне</button>}
-        </div>
+    const screen = <div className="device-screen">
         {error && <div className="device-modal-error" role="alert">{error}</div>}
         {!source && !error && <p role="status">Подключение к экрану...</p>}
-        {source && <img src={source} alt="Экран устройства" />}
+        {source && <img ref={imageRef} src={source} alt="Экран устройства" />}
         {error && source && <p className="muted">Показан последний полученный кадр.</p>}
+        <div className="device-screen-toolbar">
+            <button type="button" className="secondary-button" disabled={!source} onClick={() => void toggleFullscreen()}>На весь экран</button>
+            {!standalone && <button type="button" className="secondary-button" onClick={openWindow}>В отдельном окне</button>}
+        </div>
     </div>;
     return popup ? <>
         <p role="status">Экран открыт в отдельном окне.</p>
         <div className="device-screen-toolbar">
-            <button type="button" className="btn btn-secondary" onClick={() => popup.focus()}>Показать окно</button>
-            <button type="button" className="btn btn-secondary" onClick={() => { popup.close(); setPopup(null); }}>Вернуть в окно устройства</button>
+            <button type="button" className="secondary-button" onClick={() => popup.focus()}>Показать окно</button>
+            <button type="button" className="secondary-button" onClick={() => { popup.close(); setPopup(null); }}>Вернуть в окно устройства</button>
         </div>
     </> : screen;
 }

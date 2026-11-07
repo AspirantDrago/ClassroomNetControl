@@ -16,6 +16,23 @@ from pydantic import BaseModel, Field, field_validator
 from cmnc_veyon_service.key_store import KeyStore
 
 
+class HealthCheckAccessFilter(logging.Filter):
+    """Omit GET /health probes from Uvicorn access logs."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if not isinstance(args, tuple) or len(args) != 5:
+            return True
+        _, method, path, _, _ = args
+        return not (
+            method == "GET"
+            and isinstance(path, str)
+            and path.partition("?")[0] == "/health"
+        )
+
+
+logging.getLogger("uvicorn.access").addFilter(HealthCheckAccessFilter())
+
 logger = logging.getLogger("uvicorn.error.veyon")
 
 
