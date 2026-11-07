@@ -23,6 +23,7 @@ AUTH_KEYS = "0c69b301-81b4-42d6-8fae-128cdd113314"
 FEATURES = {"power-down": "6f5a27a0-0e2f-496e-afcc-7aae62eede10", "reboot": "4f7d98f0-395a-4fff-b968-e49b8d0f748c"}
 WEBAPI = os.environ.get("CMNC_VEYON_WEBAPI_URL", "http://cmnc-veyon-proxy:11080").rstrip("/")
 TARGET_PORT = int(os.environ.get("CMNC_VEYON_TARGET_PORT", "11100"))
+FRAME_CACHE_SECONDS = 0.1
 FRAMEBUFFER_ATTEMPTS = 12
 FRAMEBUFFER_RETRY_DELAY = 0.35
 
@@ -65,6 +66,9 @@ class Connection:
     last_used: float
     created: float
     last_frame_warning: float = 0
+    frame: tuple[bytes, str] | None = None
+    frame_width: int = 0
+    frame_at: float = 0
 
 
 class VeyonBridge:
@@ -131,6 +135,11 @@ class VeyonBridge:
                 if action:
                     await self.checked("PUT", "/api/v1/feature/" + FEATURES[action], headers=headers, json={"active": True, "arguments": {}})
                     return {"accepted": True, "device_id": target.device_id}
+                # A short shared cache coalesces concurrent viewers on this
+                # authenticated target without persisting screenshots to disk.
+                if (session.frame is not None and session.frame_width == target.width
+                        and time.monotonic() - session.frame_at < FRAME_CACHE_SECONDS):
+                    return session.frame
                 # Authentication can finish before the first framebuffer arrives.
                 # Keep this connection alive while waiting; never reauthenticate
                 # just because the initial screen image is not ready yet.
@@ -148,7 +157,10 @@ class VeyonBridge:
                     raise VeyonError(503, "Veyon ещё не подготовил изображение экрана", 10) from exc
                 if not response.headers.get("content-type", "").lower().startswith("image/"):
                     raise HTTPException(502, "Veyon не вернул изображение экрана")
-                return response.content, response.headers["content-type"]
+                session.frame = (response.content, response.headers["content-type"])
+                session.frame_width = target.width
+                session.frame_at = time.monotonic()
+                return session.frame
             except HTTPException as exc:
                 # A missing first frame is temporary, not an invalid connection.
                 # Power commands are never retried automatically.

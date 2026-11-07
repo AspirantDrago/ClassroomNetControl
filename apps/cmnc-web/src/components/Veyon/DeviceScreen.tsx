@@ -1,25 +1,57 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { extractErrorDetail, getVeyonFrame } from "../../api";
 import "./Veyon.css";
 
-export function DeviceScreen({ deviceId }: { deviceId: number }) {
+export function DeviceScreen({ deviceId, standalone = false }: { deviceId: number; standalone?: boolean }) {
     const [source, setSource] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [popup, setPopup] = useState<Window | null>(null);
+    const [fullscreen, setFullscreen] = useState(false);
+    const container = useRef<HTMLDivElement>(null);
+    const viewDocument = document;
+
     useEffect(() => {
+        const changed = () => setFullscreen(Boolean(viewDocument.fullscreenElement));
+        viewDocument.addEventListener("fullscreenchange", changed);
+        return () => viewDocument.removeEventListener("fullscreenchange", changed);
+    }, [viewDocument]);
+
+    useEffect(() => {
+        if (!popup) return;
+        const timer = setInterval(() => { if (popup.closed) setPopup(null); }, 500);
+        // The independent viewer may outlive the device dialog.
+        return () => clearInterval(timer);
+    }, [popup]);
+
+    useEffect(() => {
+        if (popup) return;
         let stopped = false;
         let currentUrl: string | null = null;
         let timer: ReturnType<typeof setTimeout> | undefined;
+        let averageDuration = 80;
         const controller = new AbortController();
         async function refresh() {
-            let delay = 700;
+            let delay = 1000;
             try {
-                if (document.visibilityState !== "hidden") {
+                if (viewDocument.visibilityState !== "hidden") {
+                    const started = performance.now();
                     const blob = await getVeyonFrame(deviceId, controller.signal);
                     if (stopped) return;
                     const next = URL.createObjectURL(blob);
+                    const image = viewDocument.createElement("img");
+                    image.src = next;
+                    try { await image.decode(); }
+                    catch (err) { URL.revokeObjectURL(next); throw err; }
+                    if (stopped) { URL.revokeObjectURL(next); return; }
                     setSource(next); setError(null);
                     if (currentUrl) URL.revokeObjectURL(currentUrl);
                     currentUrl = next;
+                    const elapsed = performance.now() - started;
+                    averageDuration = averageDuration * 0.7 + elapsed * 0.3;
+                    // Adapt to network, server and image decoding time. Never
+                    // overlap requests; cap at 10 fps with some capacity to spare.
+                    const period = Math.min(1000, Math.max(100, averageDuration * 1.25));
+                    delay = Math.max(0, period - elapsed);
                 }
             } catch (err) {
                 if (!stopped) setError(extractErrorDetail(err));
@@ -32,11 +64,45 @@ export function DeviceScreen({ deviceId }: { deviceId: number }) {
             stopped = true; controller.abort(); clearTimeout(timer);
             if (currentUrl) URL.revokeObjectURL(currentUrl);
         };
-    }, [deviceId]);
-    return <div className="device-screen">
+    }, [deviceId, viewDocument, popup]);
+
+    async function toggleFullscreen() {
+        try {
+            if (viewDocument.fullscreenElement) await viewDocument.exitFullscreen();
+            else if (container.current?.requestFullscreen) await container.current.requestFullscreen();
+            else setError("Этот браузер не поддерживает полноэкранный режим. Откройте экран в отдельном окне.");
+        } catch { setError("Не удалось открыть полноэкранный режим."); }
+    }
+
+    function openWindow() {
+        const url = new URL(window.location.href);
+        url.search = "";
+        url.hash = "";
+        url.searchParams.set("veyon_device", String(deviceId));
+        const next = window.open(url.href, "_blank", "popup,width=1280,height=800");
+        if (!next) { setError("Разрешите всплывающие окна для просмотра экрана в отдельном окне."); return; }
+        next.opener = null;
+
+        setPopup(next);
+    }
+
+    const screen = <div className="device-screen" ref={container}>
+        <div className="device-screen-toolbar">
+            <button type="button" className="btn btn-secondary" onClick={() => void toggleFullscreen()}>
+                {fullscreen ? "Выйти из полного экрана" : "На весь экран"}
+            </button>
+            {!standalone && <button type="button" className="btn btn-secondary" onClick={openWindow}>В отдельном окне</button>}
+        </div>
         {error && <div className="device-modal-error" role="alert">{error}</div>}
         {!source && !error && <p role="status">Подключение к экрану...</p>}
         {source && <img src={source} alt="Экран устройства" />}
-        <p className="muted">Просмотр экрана через Veyon. {error && source ? "Показан последний полученный кадр." : ""}</p>
+        {error && source && <p className="muted">Показан последний полученный кадр.</p>}
     </div>;
+    return popup ? <>
+        <p role="status">Экран открыт в отдельном окне.</p>
+        <div className="device-screen-toolbar">
+            <button type="button" className="btn btn-secondary" onClick={() => popup.focus()}>Показать окно</button>
+            <button type="button" className="btn btn-secondary" onClick={() => { popup.close(); setPopup(null); }}>Вернуть в окно устройства</button>
+        </div>
+    </> : screen;
 }

@@ -27,3 +27,13 @@
     gap: 12px;
     padding: 0;
 }
+
+.device-screen { min-width: 0; }
+.device-screen-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.device-screen:fullscreen { display: flex; flex-direction: column; padding: 12px; background: #0f172a; overflow: auto; }
+.device-screen:fullscreen img { flex: 1; min-height: 0; max-height: none; width: 100%; }
+.veyon-screen-window { margin: 0; padding: 12px; background: #0f172a; color: #e5e7eb; }
+.veyon-screen-window .device-screen img { max-height: calc(100dvh - 100px); }
+@media (max-width: 640px) {
+    .device-screen-toolbar { flex-direction: column; }
+}

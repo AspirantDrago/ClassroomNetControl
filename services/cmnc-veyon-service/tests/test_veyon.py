@@ -212,3 +212,47 @@ def test_frame_diagnostics_are_throttled_and_do_not_log_credentials(tmp_path, pe
         for secret in (pem, 'private-uid', 'private-login', 'private-name', 'private-host'):
             assert secret not in caplog.text
     asyncio.run(run())
+
+
+def test_concurrent_viewers_share_frames_but_not_power_commands(tmp_path, pem):
+    async def run():
+        store = KeyStore(tmp_path)
+        store.save('router', 1, 'CMNC', pem)
+        store.save('router', 2, 'other-key', pem)
+        frames = 0
+        auth = 0
+        power = 0
+        async def handle(request):
+            nonlocal frames, auth, power
+            if request.method == 'POST':
+                auth += 1
+                return httpx.Response(200, json={'connection-uid': f'connection-{auth}'})
+            if request.method == 'PUT':
+                power += 1
+                return httpx.Response(200, json={})
+            if request.method == 'DELETE':
+                return httpx.Response(200, json={})
+            frames += 1
+            await asyncio.sleep(0.01)
+            return httpx.Response(200, content=f'frame-{frames}'.encode(), headers={'content-type': 'image/jpeg'})
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+            bridge = VeyonBridge(store, client)
+            target = Target(device_id=1, router_id=1, classroom_id=2, host='192.168.1.2')
+            results = await asyncio.gather(*(bridge.operate(target) for _ in range(5)))
+            assert len(set(results)) == 1
+            assert frames == 1 and auth == 1
+            await bridge.operate(target, 'reboot')
+            await bridge.operate(target, 'reboot')
+            assert power == 2
+            session = next(iter(bridge.sessions.values()))
+            session.frame_at -= 1
+            assert (await bridge.operate(target))[0] == b'frame-2'
+            wider = target.model_copy(update={'width': 1920})
+            assert (await bridge.operate(wider))[0] == b'frame-3'
+            other_key = wider.model_copy(update={'router_id': 2})
+            assert (await bridge.operate(other_key))[0] == b'frame-4'
+            assert auth == 2
+            await bridge.close(bridge.identity(target)[0])
+            assert (await bridge.operate(target))[0] == b'frame-5'
+            assert auth == 3
+    asyncio.run(run())
