@@ -1,0 +1,17 @@
+.veyon-key-panel { margin-top: 20px; border-top: 1px solid #334155; padding-top: 14px; }
+.veyon-key-panel h4 { margin: 0 0 8px; }
+.veyon-key-form { display: grid; gap: 12px; }
+.veyon-key-form label { display: grid; gap: 5px; }
+.veyon-key-form input, .veyon-key-form textarea {
+    width: 100%; min-width: 0; border: 1px solid #475569; border-radius: 8px;
+    padding: 8px; background: #0f172a; color: #e5e7eb;
+}
+.veyon-key-form textarea { resize: vertical; }
+.veyon-key-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.device-screen img { display: block; max-width: 100%; max-height: 65dvh; margin: auto; object-fit: contain; }
+.modal-card.device-modal-screen { width: min(1200px, 100%); }
+.device-power-actions { flex-wrap: wrap; }
+@media (max-width: 640px) {
+    .veyon-key-actions { flex-direction: column; }
+    .device-modal-tabs { flex-wrap: wrap; }
+}
