@@ -68,7 +68,9 @@ def wol_response_error(response: httpx.Response) -> str | None:
     if response.status_code in {401, 403} or denied:
         message = (
             "Недостаточно прав MikroTik для WoL. Проверьте право test у группы "
-            "учётной записи сервиса; для REST также нужны read и rest-api."
+            "учётной записи сервиса; для REST также нужны read, api и rest-api. "
+            "Если права недавно изменены, завершите API/REST-сеансы этой учётной записи "
+            "в MikroTik Users → Active Users: старые права могут сохраняться до 10 минут."
         )
         return f"{message} RouterOS: {detail}" if detail else message
     if not response.is_success or (isinstance(data, dict) and data.get("error")):

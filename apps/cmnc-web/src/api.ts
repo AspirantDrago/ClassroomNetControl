@@ -973,3 +973,32 @@ function extractFilenameFromContentDisposition(value: string | null): string | n
     const plainMatch = value.match(/filename=([^;]+)/i);
     return plainMatch?.[1]?.trim() || null;
 }
+
+
+export type VeyonKeyInfo = { configured: boolean; key_name: string; router_override?: boolean };
+export function getVeyonKey(scope: "router" | "classroom", id: number): Promise<VeyonKeyInfo> {
+    return request(`/api/admin/veyon/keys/${scope}/${id}`);
+}
+export function saveVeyonKey(scope: "router" | "classroom", id: number, keyName: string, privateKey: string): Promise<VeyonKeyInfo> {
+    return request(`/api/admin/veyon/keys/${scope}/${id}`, {method: "PUT", body: JSON.stringify({key_name: keyName, private_key: privateKey})});
+}
+export function deleteVeyonKey(scope: "router" | "classroom", id: number): Promise<VeyonKeyInfo> {
+    return request(`/api/admin/veyon/keys/${scope}/${id}`, {method: "DELETE"});
+}
+export async function getVeyonFrame(deviceId: number, signal: AbortSignal): Promise<Blob> {
+    const token = getAccessToken();
+    const response = await fetch(`${API_BASE_URL}/api/devices/${deviceId}/veyon/frame`, {
+        signal, cache: "no-store", headers: token ? {Authorization: `Bearer ${token}`} : {},
+    });
+    if (!response.ok) throw new Error(await readErrorMessage(response));
+    if (!response.headers.get("content-type")?.startsWith("image/")) throw new Error("Сервис не вернул изображение экрана");
+    return response.blob();
+}
+export function powerVeyonDevice(deviceId: number, action: "power-down" | "reboot"): Promise<{accepted: boolean}> {
+    return request(`/api/devices/${deviceId}/veyon/${action}`, {method: "POST"});
+}
+export function powerDownVeyonClassroom(classroomId: number): Promise<{
+    accepted_count: number; failed_count: number; results: {device_id: number; accepted: boolean; error: string | null}[];
+}> {
+    return request(`/api/classrooms/${classroomId}/veyon/power-down-all`, {method: "POST", body: JSON.stringify({confirmed: true})});
+}

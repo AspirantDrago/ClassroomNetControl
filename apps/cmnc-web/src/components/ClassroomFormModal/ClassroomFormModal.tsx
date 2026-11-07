@@ -1,3 +1,4 @@
+import { VeyonKeyPanel } from "../Veyon/VeyonKeyPanel";
 import type { FormEvent } from "react";
 import type { AdminRouter, Classroom } from "../../api";
 import { ClassroomCamerasAdminPanel } from "../ClassroomCamerasAdminPanel/ClassroomCamerasAdminPanel";
@@ -223,6 +224,8 @@ export function ClassroomFormModal(props: ClassroomFormModalProps) {
                     </div>
                 </form>
 
+                {form.mode === "edit" && <VeyonKeyPanel key={form.classroom.id} scope="classroom" scopeId={form.classroom.id} />}
+                {form.mode === "create" && <p className="muted">Ключ Veyon можно указать после создания аудитории.</p>}
                 {form.mode === "edit" && onCamerasChanged && (
                     <ClassroomCamerasAdminPanel
                         classroomId={form.classroom.id}

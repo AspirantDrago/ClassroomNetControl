@@ -14,6 +14,8 @@ Compose запускает независимые ветви параллель�
 | MikroTik poller | RabbitMQ, Inventory | Список маршрутизаторов и публикация DHCP-событий |
 | Policy sync | RabbitMQ, Classroom, Inventory | Очередь политик, правила и настройки маршрутизаторов |
 | Camera, Maintenance | Никого | Подключаются по запросам, не блокируют API/Web |
+| Veyon Proxy | Никого | Отдельный WebAPI-мост, не блокирует API/Web |
+| Veyon Service | Veyon Proxy | Ключи, экран и питание; не блокирует API/Web |
 
 Критическая цепочка для интерфейса:
 

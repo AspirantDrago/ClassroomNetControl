@@ -259,6 +259,51 @@ services:
       start_interval: 2s
 
   # Only login and dashboard backends gate the gateway; workers/cameras/maintenance do not.
+  cmnc-veyon-proxy:
+    build:
+      context: ..
+      dockerfile: services/cmnc-veyon-service/Proxy.Dockerfile
+    container_name: cmnc-veyon-proxy
+    restart: unless-stopped
+    networks:
+      - cmnc-network
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "curl --silent --output /dev/null --max-time 3 http://127.0.0.1:11080/api/v1/feature"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+      start_interval: 2s
+
+  cmnc-veyon-service:
+    build:
+      context: ..
+      dockerfile: services/cmnc-veyon-service/Dockerfile
+    container_name: cmnc-veyon-service
+    restart: unless-stopped
+    environment:
+      CMNC_VEYON_WEBAPI_URL: http://cmnc-veyon-proxy:11080
+      CMNC_VEYON_TARGET_PORT: ${CMNC_VEYON_TARGET_PORT:-11100}
+      CMNC_VEYON_DATA_DIR: /data
+    volumes:
+      - cmnc_veyon_data:/data
+    expose:
+      - "8008"
+    depends_on:
+      cmnc-veyon-proxy:
+        condition: service_healthy
+    networks:
+      - cmnc-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8008/health', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+      start_interval: 2s
+
   cmnc-api-gateway:
     build:
       context: ..
@@ -275,6 +320,7 @@ services:
       CMNC_API_GATEWAY_POLICY_SYNC_SERVICE_URL: http://cmnc-policy-sync-service:8007
       CMNC_API_GATEWAY_MAINTENANCE_SERVICE_URL: http://cmnc-maintenance-service:8004
       CMNC_API_GATEWAY_CAMERA_SERVICE_URL: http://cmnc-camera-service:8005
+      CMNC_API_GATEWAY_VEYON_SERVICE_URL: http://cmnc-veyon-service:8008
     ports:
       - "127.0.0.1:${CMNC_API_GATEWAY_PORT:-8000}:8000"
     volumes:
@@ -320,6 +366,7 @@ services:
 volumes:
   cmnc_postgres_data:
   cmnc_rabbitmq_data:
+  cmnc_veyon_data:
 
 networks:
   cmnc-network:

@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     policy_sync_service_url: str = "http://localhost:8007"
     maintenance_service_url: str = "http://localhost:8004"
     camera_service_url: str = "http://localhost:8005"
+    veyon_service_url: str = "http://cmnc-veyon-service:8008"
 
 
     model_config = SettingsConfigDict(

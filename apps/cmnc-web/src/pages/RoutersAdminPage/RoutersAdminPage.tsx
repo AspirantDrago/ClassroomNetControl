@@ -1,3 +1,4 @@
+import { VeyonKeyPanel } from "../../components/Veyon/VeyonKeyPanel";
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from "react";
 import {
     checkAdminRouterCapabilities,
@@ -531,6 +532,8 @@ export function RoutersAdminPage() {
                                 </button>
                             </div>
                         </form>
+                        {form.mode === "edit" && form.router && <VeyonKeyPanel key={form.router.id} scope="router" scopeId={form.router.id} />}
+                        {form.mode === "create" && <p className="muted">Ключ Veyon можно указать после создания MikroTik.</p>}
                     </div>
                 </div>
             )}

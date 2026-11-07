@@ -4,6 +4,8 @@ import {
     allowDeviceWan,
     wakeDevice,
     wakeClassroom,
+    powerVeyonDevice,
+    powerDownVeyonClassroom,
     blockClassroomWan,
     blockDeviceWan,
     cleanupStaleObservedDevices,
@@ -85,6 +87,7 @@ export function App() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [busyDeviceId, setBusyDeviceId] = useState<number | null>(null);
+    const [busyPower, setBusyPower] = useState(false);
     const [busyWakeAction, setBusyWakeAction] = useState<number | "all" | null>(null);
     const [wakeMessage, setWakeMessage] = useState<string | null>(null);
     const [busyClassroomWanAction, setBusyClassroomWanAction] = useState<"block" | "allow" | null>(null);
@@ -557,6 +560,31 @@ export function App() {
         }
     }
 
+    async function handlePower(device: DashboardDevice, action: "power-down" | "reboot") {
+        if (busyPower) return;
+        const verb = action === "power-down" ? "Выключить" : "Перезагрузить";
+        if (!window.confirm(`${verb} устройство «${device.inventory_name || device.mac_address}»? Несохранённые данные могут быть потеряны.`)) return;
+        setBusyPower(true); setError(null); setWakeMessage(null);
+        try {
+            await powerVeyonDevice(device.id, action);
+            setWakeMessage(`Команда «${verb}» отправлена через Veyon.`);
+        } catch (err) { setError(extractErrorDetail(err)); }
+        finally { setBusyPower(false); }
+    }
+
+    async function handlePowerDownAll() {
+        if (!dashboard || dashboard.classroom.id !== selectedClassroomId || busyPower) return;
+        if (!window.confirm(`Выключить все закреплённые устройства аудитории «${dashboard.classroom.name}» (${dashboard.devices.length})? Несохранённые данные могут быть потеряны.`)) return;
+        setBusyPower(true); setError(null); setWakeMessage(null);
+        try {
+            const result = await powerDownVeyonClassroom(dashboard.classroom.id);
+            const failure = result.results.find((item) => !item.accepted)?.error ?? "";
+            if (!result.accepted_count && result.failed_count) throw new Error(failure);
+            setWakeMessage(`Команд выключения отправлено: ${result.accepted_count}.${result.failed_count ? ` Ошибок: ${result.failed_count}. ${failure}` : ""}`);
+        } catch (err) { setError(extractErrorDetail(err)); }
+        finally { setBusyPower(false); }
+    }
+
     async function handleWake(deviceId?: number) {
         if (selectedClassroomId === null || busyWakeAction !== null) return;
         setBusyWakeAction(deviceId ?? "all");
@@ -915,6 +943,11 @@ export function App() {
                                     </div>
 
                                     <div className="classroom-actions">
+                                        <button className="danger-button"
+                                            disabled={busyPower || dashboard.devices.length === 0 || dashboard.classroom.id !== selectedClassroomId}
+                                            onClick={() => void handlePowerDownAll()}>
+                                            {busyPower ? "Отправка команды..." : "Выключить все"}
+                                        </button>
                                         <button className="success-button"
                                             disabled={busyWakeAction !== null || dashboard.devices.length === 0 || dashboard.classroom.id !== selectedClassroomId}
                                             onClick={() => void handleWake()}>
@@ -1006,6 +1039,8 @@ export function App() {
                     canControlWan={userCanControlWan}
                     wanBusy={busyDeviceId === deviceForm.device.id}
                     wakeBusy={busyWakeAction !== null}
+                    powerBusy={busyPower}
+                    onPower={(device, action) => void handlePower(device, action)}
                     onWake={(device) => void handleWake(device.id)}
                     wakeMessage={wakeMessage}
                     onToggleWan={(device) => {

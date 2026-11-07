@@ -2891,3 +2891,8 @@ def run() -> None:
 
 if __name__ == "__main__":
     run()
+
+
+from cmnc_api_gateway.veyon_routes import register_veyon_routes  # noqa: E402 - gateway definitions must exist first
+
+register_veyon_routes(app)

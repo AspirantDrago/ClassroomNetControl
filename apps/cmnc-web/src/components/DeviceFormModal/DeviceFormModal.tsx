@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { formatStateDuration, formatStateTime } from "../../utils/deviceTiming";
 import type { DashboardDevice, DynamicDevice } from "../../api";
+import { DeviceScreen } from "../Veyon/DeviceScreen";
 import "./DeviceFormModal.css";
 
 export type DeviceFormState =
@@ -28,6 +29,8 @@ type DeviceFormModalProps = {
     canControlWan: boolean;
     wanBusy: boolean;
     wakeBusy: boolean;
+    powerBusy: boolean;
+    onPower: (device: DashboardDevice, action: "power-down" | "reboot") => void;
     onWake: (device: DashboardDevice) => void;
     wakeMessage: string | null;
     onToggleWan: (device: DashboardDevice) => void;
@@ -40,11 +43,11 @@ type DeviceFormModalProps = {
 
 export function DeviceFormModal(props: DeviceFormModalProps) {
     const { form, busy, canManage, canControlWan, wanBusy, onToggleWan, error,
-        onChange, onClose, onSubmit, onUnpin, wakeBusy, onWake, wakeMessage } = props;
-    const [selectedTab, setSelectedTab] = useState<"info" | "settings">(
+        onChange, onClose, onSubmit, onUnpin, wakeBusy, onWake, wakeMessage, powerBusy, onPower } = props;
+    const [selectedTab, setSelectedTab] = useState<"info" | "settings" | "screen">(
         canManage ? "settings" : "info",
     );
-    const tab = canManage ? selectedTab : "info";
+    const tab = !canManage && selectedTab === "settings" ? "info" : selectedTab;
     const [now, setNow] = useState(() => Date.now());
 
     useEffect(() => {
@@ -55,7 +58,7 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
     return (
         <div className="modal-backdrop" onMouseDown={onClose}>
             <form
-                className="modal-card"
+                className={`modal-card${tab === "screen" ? " device-modal-screen" : ""}`}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="device-dialog-title"
@@ -95,12 +98,19 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                     <button type="button" role="tab" id="device-info-tab"
                         aria-selected={tab === "info"} aria-controls="device-info-panel"
                         onClick={() => setSelectedTab("info")}>Инфо</button>
+                    {form.mode === "edit-device" && <button type="button" role="tab" id="device-screen-tab"
+                        aria-selected={tab === "screen"} aria-controls="device-screen-panel"
+                        onClick={() => setSelectedTab("screen")}>Экран</button>}
                     {canManage && <button type="button" role="tab" id="device-settings-tab"
                         aria-selected={tab === "settings"} aria-controls="device-settings-panel"
                         onClick={() => setSelectedTab("settings")}>Настройка</button>}
                 </div>
 
                 {error && <div className="device-modal-error" role="alert">{error}</div>}
+
+                {tab === "screen" && form.mode === "edit-device" && <div role="tabpanel" id="device-screen-panel" aria-labelledby="device-screen-tab">
+                    <DeviceScreen key={form.device.id} deviceId={form.device.id} />
+                </div>}
 
                 {tab === "info" && <div role="tabpanel" id="device-info-panel" aria-labelledby="device-info-tab">
                 <div className="readonly-grid">
@@ -138,7 +148,11 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                     />
                 </div>}
                 {wakeMessage && <div className="device-wake-message muted" role="status">{wakeMessage}</div>}
-                {form.mode === "edit-device" && <div className="modal-actions">
+                {form.mode === "edit-device" && <div className="modal-actions device-power-actions">
+                    <button type="button" className="danger-button" disabled={powerBusy}
+                        onClick={() => onPower(form.device, "power-down")}>Выключить</button>
+                    <button type="button" className="secondary-button" disabled={powerBusy}
+                        onClick={() => onPower(form.device, "reboot")}>Перезагрузить</button>
                     <button type="button" className="success-button"
                         disabled={wakeBusy} onClick={() => onWake(form.device)}>
                         {wakeBusy ? "Отправка WoL..." : "Разбудить"}
