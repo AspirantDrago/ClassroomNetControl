@@ -934,49 +934,14 @@ export function App() {
                                                 routerNames,
                                             )}
                                         </div>
-                                        <br/>
+                                    </div>
+
+                                    <div className="classroom-actions">
                                         <ClassroomStatisticsButton
                                             key={dashboard.classroom.id}
                                             classroomId={dashboard.classroom.id}
                                             classroomName={dashboard.classroom.name}
                                         />
-                                    </div>
-
-                                    <div className="classroom-actions">
-                                        <button className="danger-button"
-                                            disabled={busyPower || dashboard.devices.length === 0 || dashboard.classroom.id !== selectedClassroomId}
-                                            onClick={() => void handlePowerDownAll()}>
-                                            {busyPower ? "Отправка команды..." : "Выключить все"}
-                                        </button>
-                                        <button className="success-button"
-                                            disabled={busyWakeAction !== null || dashboard.devices.length === 0 || dashboard.classroom.id !== selectedClassroomId}
-                                            onClick={() => void handleWake()}>
-                                            {busyWakeAction === "all" ? "Отправка WoL..." : "Разбудить всё"}
-                                        </button>
-                                        {userCanControlWan && (
-                                            <>
-                                                <button
-                                                    className="danger-button"
-                                                    disabled={busyClassroomWanAction !== null}
-                                                    onClick={() => void handleBlockClassroomWan()}
-                                                >
-                                                    {busyClassroomWanAction === "block"
-                                                        ? "Блокировка..."
-                                                        : "Блокировать всё"}
-                                                </button>
-
-                                                <button
-                                                    className="success-button"
-                                                    disabled={busyClassroomWanAction !== null}
-                                                    onClick={() => void handleAllowClassroomWan()}
-                                                >
-                                                    {busyClassroomWanAction === "allow"
-                                                        ? "Разблокировка..."
-                                                        : "Разблокировать всё"}
-                                                </button>
-                                            </>
-                                        )}
-
                                         {userCanManageClassrooms && (
                                             <button
                                                 className="secondary-button"
@@ -997,6 +962,37 @@ export function App() {
                                             camera={camera}
                                         />
                                     ))}
+
+                                <div className="classroom-actions classroom-device-actions">
+                                    <button className="danger-button"
+                                        disabled={busyPower || dashboard.devices.length === 0 || dashboard.classroom.id !== selectedClassroomId}
+                                        onClick={() => void handlePowerDownAll()}>
+                                        {busyPower ? "Отправка команды..." : "Выключить все"}
+                                    </button>
+                                    <button className="success-button"
+                                        disabled={busyWakeAction !== null || dashboard.devices.length === 0 || dashboard.classroom.id !== selectedClassroomId}
+                                        onClick={() => void handleWake()}>
+                                        {busyWakeAction === "all" ? "Отправка WoL..." : "Разбудить всё"}
+                                    </button>
+                                    {userCanControlWan && dashboard.devices.some((device) => !device.wan_protected && device.wan_allowed) && (
+                                        <button
+                                            className="danger-button"
+                                            disabled={busyClassroomWanAction !== null || dashboard.classroom.id !== selectedClassroomId}
+                                            onClick={() => void handleBlockClassroomWan()}
+                                        >
+                                            {busyClassroomWanAction === "block" ? "Отключение..." : "Отключить всем Интернет"}
+                                        </button>
+                                    )}
+                                    {userCanControlWan && dashboard.devices.some((device) => !device.wan_allowed) && (
+                                        <button
+                                            className="success-button"
+                                            disabled={busyClassroomWanAction !== null || dashboard.classroom.id !== selectedClassroomId}
+                                            onClick={() => void handleAllowClassroomWan()}
+                                        >
+                                            {busyClassroomWanAction === "allow" ? "Включение..." : "Включить всем Интернет"}
+                                        </button>
+                                    )}
+                                </div>
 
                                 <DeviceGrid
                                     deviceGrid={deviceGrid}

@@ -8,6 +8,8 @@
 
 .classroom-header {
     display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 18px;
@@ -91,4 +93,14 @@
     background: #020617;
     color: #9ca3af;
     text-align: center;
+}
+
+.classroom-device-actions {
+    justify-content: flex-start;
+    margin-bottom: 18px;
+}
+
+@media (max-width: 640px) {
+    .classroom-header > .classroom-actions { width: 100%; justify-content: flex-start; }
+    .classroom-device-actions > button { flex: 1 1 100%; }
 }
