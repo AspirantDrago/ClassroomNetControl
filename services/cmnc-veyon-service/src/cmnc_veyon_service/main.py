@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import ipaddress
+import logging
 import os
 import time
 from contextlib import asynccontextmanager, suppress
@@ -13,6 +14,9 @@ from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field, field_validator
 
 from cmnc_veyon_service.key_store import KeyStore
+
+
+logger = logging.getLogger("uvicorn.error.veyon")
 
 
 AUTH_KEYS = "0c69b301-81b4-42d6-8fae-128cdd113314"
@@ -60,6 +64,7 @@ class Connection:
     host: str
     last_used: float
     created: float
+    last_frame_warning: float = 0
 
 
 class VeyonBridge:
@@ -113,6 +118,7 @@ class VeyonBridge:
             raise HTTPException(502, "Veyon вернул некорректный идентификатор подключения")
         session = Connection(uid, host, time.monotonic(), time.monotonic())
         self.sessions[identity] = session
+        logger.info("Veyon authenticated device_id=%s host=%s", target.device_id, target.host)
         return session
 
     async def operate(self, target: Target, action: str | None = None):
@@ -146,11 +152,44 @@ class VeyonBridge:
             except HTTPException as exc:
                 # A missing first frame is temporary, not an invalid connection.
                 # Power commands are never retried automatically.
-                if not (action is None and isinstance(exc, VeyonError) and exc.error_code == 10):
+                if action is None and isinstance(exc, VeyonError) and exc.error_code == 10:
+                    await self.log_missing_frame(target, session)
+                else:
                     await self.close(identity)
                 raise
             finally:
                 session.last_used = time.monotonic()
+
+    async def log_missing_frame(self, target: Target, session: Connection):
+        now = time.monotonic()
+        if session.last_frame_warning and now - session.last_frame_warning < 60:
+            return
+        session.last_frame_warning = now
+        metadata = {}
+        # Read only diagnostics. Never enable WebAPI debug logging: it can include
+        # authentication request bodies containing private keys.
+        for resource in ("session", "user"):
+            try:
+                response = await self.client.get(
+                    WEBAPI + "/api/v1/" + resource,
+                    headers={"Connection-Uid": session.uid}, timeout=2,
+                )
+                if response.is_success:
+                    data = response.json()
+                    if isinstance(data, dict):
+                        if resource == "session":
+                            metadata["session_id"] = data.get("sessionId")
+                            metadata["session_uptime"] = data.get("sessionUptime")
+                        else:
+                            metadata["user_logged_in"] = bool(data.get("login"))
+                else:
+                    metadata[resource + "_http_status"] = response.status_code
+            except (httpx.HTTPError, ValueError):
+                metadata[resource + "_unavailable"] = True
+        logger.warning(
+            "Veyon framebuffer unavailable device_id=%s host=%s connection_age_seconds=%s diagnostics=%s",
+            target.device_id, target.host, round(now - session.created), metadata,
+        )
 
     async def close(self, identity):
         session = self.sessions.pop(identity, None)

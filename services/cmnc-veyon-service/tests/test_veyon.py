@@ -189,3 +189,26 @@ def test_frame_still_missing_preserves_session_for_next_request(tmp_path, pem, m
             assert methods.count('POST') == 1
             assert methods.count('DELETE') == 0
     asyncio.run(run())
+
+
+def test_frame_diagnostics_are_throttled_and_do_not_log_credentials(tmp_path, pem, caplog):
+    async def run():
+        store = KeyStore(tmp_path)
+        store.save('router', 1, 'CMNC', pem)
+        calls = []
+        def handle(request):
+            calls.append(request.url.path)
+            if request.url.path.endswith('/session'):
+                return httpx.Response(200, json={'sessionId': 3, 'sessionUptime': 42, 'sessionHostName': 'private-host'})
+            return httpx.Response(200, json={'login': 'private-login', 'fullName': 'private-name'})
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+            bridge = VeyonBridge(store, client)
+            session = veyon_main.Connection('private-uid', '192.168.1.2', 0, 0)
+            target = Target(device_id=1, router_id=1, classroom_id=2, host='192.168.1.2')
+            await bridge.log_missing_frame(target, session)
+            await bridge.log_missing_frame(target, session)
+        assert len(calls) == 2
+        assert 'session_id' in caplog.text and 'user_logged_in' in caplog.text
+        for secret in (pem, 'private-uid', 'private-login', 'private-name', 'private-host'):
+            assert secret not in caplog.text
+    asyncio.run(run())
