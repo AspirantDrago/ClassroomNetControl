@@ -161,3 +161,36 @@ def test_routeros_failure_is_logged_without_credentials(monkeypatch, caplog):
     assert "interface is not running" in caplog.text
     assert '"error":500' in caplog.text
     assert ROUTER["api_password"] not in caplog.text
+
+
+def test_wol_protection_only_excludes_bulk_wake(monkeypatch):
+    async def run():
+        protected = {**DEVICE, 'wol_protected': True}
+        regular = {**DEVICE, 'id': 11, 'wol_protected': False}
+        veyon_only = {**DEVICE, 'id': 12, 'veyon_bulk_protected': True}
+        layout = {'classroom': CLASSROOM, 'devices': [protected, regular, veyon_only]}
+        principal = PrincipalResponse(principal_type='user', id=1, role='teacher', display_name='Test', classroom_ids=[7], permissions=[])
+        monkeypatch.setattr(main, 'get_current_principal', AsyncMock(return_value=principal))
+        monkeypatch.setattr(main, 'get_device_classroom_id', AsyncMock(return_value=7))
+        monkeypatch.setattr(main, 'get_classroom_or_404', AsyncMock(return_value=CLASSROOM))
+        monkeypatch.setattr(main, 'get_wol_classroom_layout', AsyncMock(return_value=layout))
+        router = AsyncMock(return_value=ROUTER)
+        monkeypatch.setattr(main, 'get_router_connection_from_inventory', router)
+        send = AsyncMock(return_value={'sent_count': 2, 'failed_count': 0, 'results': []})
+        monkeypatch.setattr(main, 'send_wol_packets', send)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url='http://test') as client:
+            batch = await client.post('/api/classrooms/7/wake-all')
+            assert batch.status_code == 200
+            assert batch.json()['skipped_count'] == 1
+            assert [device['id'] for device in send.await_args.args[-1]] == [11, 12]
+            send.reset_mock()
+            assert (await client.post('/api/devices/10/wake')).status_code == 200
+            assert send.await_args.args[-1] == [protected]
+            layout['devices'] = [protected]
+            router.reset_mock()
+            send.reset_mock()
+            result = (await client.post('/api/classrooms/7/wake-all')).json()
+            assert result == {'sent_count': 0, 'failed_count': 0, 'skipped_count': 1, 'results': []}
+            send.assert_not_awaited()
+            router.assert_not_awaited()
+    asyncio.run(run())

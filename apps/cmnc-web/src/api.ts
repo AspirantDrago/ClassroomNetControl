@@ -27,6 +27,7 @@ export type DashboardDevice = {
     wan_allowed: boolean;
     wan_protected: boolean;
     veyon_bulk_protected: boolean;
+    wol_protected: boolean;
     policy_generation: number;
     sync_status: string;
     sync_error: string | null;
@@ -294,6 +295,7 @@ export function getClassroomDashboard(classroomId: number | null): Promise<Class
 }
 
 export type WakeResult = {
+    skipped_count?: number;
     sent_count: number;
     failed_count: number;
     results: { device_id: number; mac_address: string; sent: boolean; error: string | null }[];
@@ -362,6 +364,7 @@ export type PinObservedDeviceRequest = {
     column_index?: number | null;
     wan_protected?: boolean;
     veyon_bulk_protected?: boolean;
+    wol_protected?: boolean;
 };
 
 export type DeleteObservedDevicesResponse = {
@@ -420,6 +423,7 @@ export type UpdateDeviceRequest = {
     column_index?: number | null;
     wan_protected?: boolean;
     veyon_bulk_protected?: boolean;
+    wol_protected?: boolean;
 };
 
 export function updateDevice(

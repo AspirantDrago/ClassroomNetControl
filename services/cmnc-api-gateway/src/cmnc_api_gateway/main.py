@@ -1157,13 +1157,16 @@ async def wake_classroom(
     principal = await get_current_principal(request, authorization)
     await ensure_classroom_access(principal, classroom_id)
     layout = await get_wol_classroom_layout(classroom_id)
-    if not layout["devices"]:
-        return {"sent_count": 0, "failed_count": 0, "results": []}
+    targets = [device for device in layout["devices"] if not device.get("wol_protected", False)]
+    skipped_count = len(layout["devices"]) - len(targets)
+    if not targets:
+        return {"sent_count": 0, "failed_count": 0, "skipped_count": skipped_count, "results": []}
     classroom = layout["classroom"]
     router = await get_router_connection_from_inventory(get_classroom_router_id(classroom))
     result = await send_wol_packets(
-        router, get_router_rest_base_url(router), classroom["subnet_cidr"], layout["devices"],
+        router, get_router_rest_base_url(router), classroom["subnet_cidr"], targets,
     )
+    result["skipped_count"] = skipped_count
     if result["failed_count"] and not result["sent_count"]:
         raise HTTPException(502, result["results"][0]["error"])
     return result
@@ -2149,7 +2152,7 @@ async def admin_update_device(
     allowed_payload = {
         key: value
         for key, value in payload.items()
-        if key in {"inventory_name", "row_index", "column_index", "wan_protected", "veyon_bulk_protected"}
+        if key in {"inventory_name", "row_index", "column_index", "wan_protected", "veyon_bulk_protected", "wol_protected"}
     }
 
     try:
@@ -2238,6 +2241,10 @@ async def admin_pin_observed_device(
     if not isinstance(veyon_bulk_protected, bool):
         raise HTTPException(status_code=422, detail="veyon_bulk_protected must be a boolean")
 
+    wol_protected = payload.get("wol_protected", False)
+    if not isinstance(wol_protected, bool):
+        raise HTTPException(status_code=422, detail="wol_protected must be a boolean")
+
     raw_inventory_name = payload.get("inventory_name")
     if raw_inventory_name is not None and not isinstance(raw_inventory_name, str):
         raise HTTPException(status_code=422, detail="inventory_name must be a string")
@@ -2312,6 +2319,7 @@ async def admin_pin_observed_device(
         "is_pinned": True,
         "wan_protected": wan_protected,
         "veyon_bulk_protected": veyon_bulk_protected,
+        "wol_protected": wol_protected,
         "wan_allowed": True,
     }
 

@@ -576,7 +576,7 @@ export function App() {
         if (!dashboard || dashboard.classroom.id !== selectedClassroomId || busyPower) return;
         const targets = dashboard.devices.filter((device) => !device.veyon_bulk_protected);
         if (!targets.length) return;
-        if (!window.confirm(`Выключить устройства аудитории «${dashboard.classroom.name}» (${targets.length})? Устройства с защитой от массового управления будут пропущены. Несохранённые данные могут быть потеряны.`)) return;
+        if (!window.confirm(`Выключить устройства аудитории «${dashboard.classroom.name}» (${targets.length})? Устройства с защитой от массового управления через Veyon будут пропущены. Несохранённые данные могут быть потеряны.`)) return;
         setBusyPower(true); setError(null); setWakeMessage(null);
         try {
             const result = await powerDownVeyonClassroom(dashboard.classroom.id);
@@ -596,9 +596,10 @@ export function App() {
             const result = deviceId === undefined
                 ? await wakeClassroom(selectedClassroomId)
                 : await wakeDevice(deviceId);
-            setWakeMessage(result.failed_count
+            setWakeMessage((result.failed_count
                 ? `Пакеты WoL отправлены: ${result.sent_count}. Не удалось отправить: ${result.failed_count}. ${result.results.find((item) => !item.sent)?.error ?? ""}`
-                : result.sent_count ? "Пакеты WoL отправлены." : "Нет устройств для пробуждения.");
+                : result.sent_count ? "Пакеты WoL отправлены." : "Нет устройств для пробуждения.")
+                + (result.skipped_count ? ` Пропущено защищённых: ${result.skipped_count}.` : ""));
         } catch (err) {
             setError(extractErrorDetail(err));
         } finally {
@@ -746,6 +747,7 @@ export function App() {
             columnIndex: "",
             wanProtected: false,
             veyonBulkProtected: false,
+            wolProtected: false,
         });
     }
 
@@ -761,6 +763,7 @@ export function App() {
             columnIndex: device.column_index?.toString() ?? "",
             wanProtected: device.wan_protected,
             veyonBulkProtected: device.veyon_bulk_protected ?? false,
+            wolProtected: device.wol_protected ?? false,
         });
     }
 
@@ -794,6 +797,7 @@ export function App() {
                     column_index: columnIndex,
                     wan_protected: deviceForm.wanProtected,
                     veyon_bulk_protected: deviceForm.veyonBulkProtected,
+                    wol_protected: deviceForm.wolProtected,
                 });
             } else {
                 await updateDevice(deviceForm.device.id, {
@@ -802,6 +806,7 @@ export function App() {
                     column_index: columnIndex,
                     wan_protected: deviceForm.wanProtected,
                     veyon_bulk_protected: deviceForm.veyonBulkProtected,
+                    wol_protected: deviceForm.wolProtected,
                 });
             }
 
@@ -976,7 +981,7 @@ export function App() {
                                         {busyPower ? "Отправка команды..." : "Выключить все"}
                                     </button>
                                     <button className="success-button"
-                                        disabled={busyWakeAction !== null || dashboard.devices.length === 0 || dashboard.classroom.id !== selectedClassroomId}
+                                        disabled={busyWakeAction !== null || !dashboard.devices.some((device) => !device.wol_protected) || dashboard.classroom.id !== selectedClassroomId}
                                         onClick={() => void handleWake()}>
                                         {busyWakeAction === "all" ? "Отправка WoL..." : "Разбудить всё"}
                                     </button>

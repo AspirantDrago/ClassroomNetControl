@@ -24,6 +24,7 @@ class DashboardDevice(BaseModel):
     wan_allowed: bool
     wan_protected: bool
     veyon_bulk_protected: bool = False
+    wol_protected: bool = False
     policy_generation: int
     sync_status: str
     sync_error: str | None
@@ -68,6 +69,7 @@ class PinObservedDeviceRequest(BaseModel):
     hostname: str | None = None
     wan_protected: bool = False
     veyon_bulk_protected: bool = False
+    wol_protected: bool = False
 
 
 class LoginRequest(BaseModel):
