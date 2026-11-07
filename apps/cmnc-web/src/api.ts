@@ -26,6 +26,7 @@ export type DashboardDevice = {
     is_pinned: boolean;
     wan_allowed: boolean;
     wan_protected: boolean;
+    veyon_bulk_protected: boolean;
     policy_generation: number;
     sync_status: string;
     sync_error: string | null;
@@ -360,6 +361,7 @@ export type PinObservedDeviceRequest = {
     row_index?: number | null;
     column_index?: number | null;
     wan_protected?: boolean;
+    veyon_bulk_protected?: boolean;
 };
 
 export type DeleteObservedDevicesResponse = {
@@ -417,6 +419,7 @@ export type UpdateDeviceRequest = {
     row_index?: number | null;
     column_index?: number | null;
     wan_protected?: boolean;
+    veyon_bulk_protected?: boolean;
 };
 
 export function updateDevice(
@@ -998,7 +1001,7 @@ export function powerVeyonDevice(deviceId: number, action: "power-down" | "reboo
     return request(`/api/devices/${deviceId}/veyon/${action}`, {method: "POST"});
 }
 export function powerDownVeyonClassroom(classroomId: number): Promise<{
-    accepted_count: number; failed_count: number; results: {device_id: number; accepted: boolean; error: string | null}[];
+    accepted_count: number; failed_count: number; skipped_count: number; results: {device_id: number; accepted: boolean; error: string | null}[];
 }> {
     return request(`/api/classrooms/${classroomId}/veyon/power-down-all`, {method: "POST", body: JSON.stringify({confirmed: true})});
 }

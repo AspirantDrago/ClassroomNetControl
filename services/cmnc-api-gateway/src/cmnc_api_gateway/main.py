@@ -2149,7 +2149,7 @@ async def admin_update_device(
     allowed_payload = {
         key: value
         for key, value in payload.items()
-        if key in {"inventory_name", "row_index", "column_index", "wan_protected"}
+        if key in {"inventory_name", "row_index", "column_index", "wan_protected", "veyon_bulk_protected"}
     }
 
     try:
@@ -2234,6 +2234,10 @@ async def admin_pin_observed_device(
     if not isinstance(wan_protected, bool):
         raise HTTPException(status_code=422, detail="wan_protected must be a boolean")
 
+    veyon_bulk_protected = payload.get("veyon_bulk_protected", False)
+    if not isinstance(veyon_bulk_protected, bool):
+        raise HTTPException(status_code=422, detail="veyon_bulk_protected must be a boolean")
+
     raw_inventory_name = payload.get("inventory_name")
     if raw_inventory_name is not None and not isinstance(raw_inventory_name, str):
         raise HTTPException(status_code=422, detail="inventory_name must be a string")
@@ -2307,6 +2311,7 @@ async def admin_pin_observed_device(
         "column_index": column_index,
         "is_pinned": True,
         "wan_protected": wan_protected,
+        "veyon_bulk_protected": veyon_bulk_protected,
         "wan_allowed": True,
     }
 

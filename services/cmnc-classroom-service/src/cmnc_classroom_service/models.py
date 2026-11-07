@@ -147,6 +147,10 @@ class Device(Base):
         default=False,
     )
 
+    veyon_bulk_protected: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false"), default=False,
+    )
+
     policy_generation: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     sync_status: Mapped[str] = mapped_column(String(32), default="unknown", nullable=False)
     sync_error: Mapped[str | None] = mapped_column(String(1024), nullable=True)

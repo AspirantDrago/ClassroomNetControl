@@ -42,6 +42,12 @@ async def authorized_layout(classroom_id, request, authorization):
     return await gateway.get_wol_classroom_layout(classroom_id)
 
 
+def bulk_veyon_devices(layout):
+    # Every classroom-wide Veyon action must use this server-owned selection.
+    # Direct device actions deliberately do not apply this filter.
+    return [device for device in layout["devices"] if not device.get("veyon_bulk_protected", False)]
+
+
 def device_target(layout, device):
     classroom = layout["classroom"]
     host = device.get("static_ip")
@@ -141,6 +147,8 @@ def register_veyon_routes(app):
             except TimeoutError:
                 return {"device_id": device["id"], "accepted": False, "error": "Veyon: превышено время ожидания"}
 
-        results = await asyncio.gather(*(send(device) for device in layout["devices"]))
+        targets = bulk_veyon_devices(layout)
+        results = await asyncio.gather(*(send(device) for device in targets))
         return {"accepted_count": sum(item["accepted"] for item in results),
-                "failed_count": sum(not item["accepted"] for item in results), "results": results}
+                "failed_count": sum(not item["accepted"] for item in results),
+                "skipped_count": len(layout["devices"]) - len(targets), "results": results}

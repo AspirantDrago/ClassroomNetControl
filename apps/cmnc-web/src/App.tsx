@@ -574,13 +574,15 @@ export function App() {
 
     async function handlePowerDownAll() {
         if (!dashboard || dashboard.classroom.id !== selectedClassroomId || busyPower) return;
-        if (!window.confirm(`Выключить все закреплённые устройства аудитории «${dashboard.classroom.name}» (${dashboard.devices.length})? Несохранённые данные могут быть потеряны.`)) return;
+        const targets = dashboard.devices.filter((device) => !device.veyon_bulk_protected);
+        if (!targets.length) return;
+        if (!window.confirm(`Выключить устройства аудитории «${dashboard.classroom.name}» (${targets.length})? Устройства с защитой от массового управления будут пропущены. Несохранённые данные могут быть потеряны.`)) return;
         setBusyPower(true); setError(null); setWakeMessage(null);
         try {
             const result = await powerDownVeyonClassroom(dashboard.classroom.id);
             const failure = result.results.find((item) => !item.accepted)?.error ?? "";
             if (!result.accepted_count && result.failed_count) throw new Error(failure);
-            setWakeMessage(`Команд выключения отправлено: ${result.accepted_count}.${result.failed_count ? ` Ошибок: ${result.failed_count}. ${failure}` : ""}`);
+            setWakeMessage(`Команд выключения отправлено: ${result.accepted_count}.${result.skipped_count ? ` Пропущено защищённых: ${result.skipped_count}.` : ""}${result.failed_count ? ` Ошибок: ${result.failed_count}. ${failure}` : ""}`);
         } catch (err) { setError(extractErrorDetail(err)); }
         finally { setBusyPower(false); }
     }
@@ -743,6 +745,7 @@ export function App() {
             rowIndex: "",
             columnIndex: "",
             wanProtected: false,
+            veyonBulkProtected: false,
         });
     }
 
@@ -757,6 +760,7 @@ export function App() {
             rowIndex: device.row_index?.toString() ?? "",
             columnIndex: device.column_index?.toString() ?? "",
             wanProtected: device.wan_protected,
+            veyonBulkProtected: device.veyon_bulk_protected ?? false,
         });
     }
 
@@ -789,6 +793,7 @@ export function App() {
                     row_index: rowIndex,
                     column_index: columnIndex,
                     wan_protected: deviceForm.wanProtected,
+                    veyon_bulk_protected: deviceForm.veyonBulkProtected,
                 });
             } else {
                 await updateDevice(deviceForm.device.id, {
@@ -796,6 +801,7 @@ export function App() {
                     row_index: rowIndex,
                     column_index: columnIndex,
                     wan_protected: deviceForm.wanProtected,
+                    veyon_bulk_protected: deviceForm.veyonBulkProtected,
                 });
             }
 
@@ -965,7 +971,7 @@ export function App() {
 
                                 <div className="classroom-actions classroom-device-actions">
                                     <button className="danger-button"
-                                        disabled={busyPower || dashboard.devices.length === 0 || dashboard.classroom.id !== selectedClassroomId}
+                                        disabled={busyPower || !dashboard.devices.some((device) => !device.veyon_bulk_protected) || dashboard.classroom.id !== selectedClassroomId}
                                         onClick={() => void handlePowerDownAll()}>
                                         {busyPower ? "Отправка команды..." : "Выключить все"}
                                     </button>

@@ -740,6 +740,7 @@ async def create_device(
         existing_device.is_pinned = True
         existing_device.wan_allowed = True if payload.wan_protected else payload.wan_allowed
         existing_device.wan_protected = payload.wan_protected
+        existing_device.veyon_bulk_protected = payload.veyon_bulk_protected
         existing_device.sync_status = "applied"
         existing_device.sync_error = None
 
@@ -762,6 +763,7 @@ async def create_device(
         is_pinned=payload.is_pinned,
         wan_allowed=True if payload.wan_protected else payload.wan_allowed,
         wan_protected=payload.wan_protected,
+        veyon_bulk_protected=payload.veyon_bulk_protected,
         sync_status="applied",
         sync_error=None,
     )
@@ -860,6 +862,7 @@ async def pin_device(
     device.row_index = payload.row_index
     device.column_index = payload.column_index
     device.is_pinned = True
+    device.veyon_bulk_protected = payload.veyon_bulk_protected
 
     await commit_or_409(
         session,

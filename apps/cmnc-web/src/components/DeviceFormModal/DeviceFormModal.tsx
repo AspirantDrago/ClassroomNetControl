@@ -12,6 +12,7 @@ export type DeviceFormState =
     rowIndex: string;
     columnIndex: string;
     wanProtected: boolean;
+    veyonBulkProtected: boolean;
 }
     | {
     mode: "edit-device";
@@ -20,6 +21,7 @@ export type DeviceFormState =
     rowIndex: string;
     columnIndex: string;
     wanProtected: boolean;
+    veyonBulkProtected: boolean;
 };
 
 type DeviceFormModalProps = {
@@ -228,6 +230,13 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                     />
                     <span>Защитить от отключения WAN</span>
                 </label>
+
+                <label className="checkbox-field">
+                    <input type="checkbox" checked={form.veyonBulkProtected}
+                        onChange={(event) => onChange({ ...form, veyonBulkProtected: event.target.checked })} />
+                    <span>Защита от массового управления</span>
+                </label>
+                <p className="muted">Исключает устройство из массовых команд Veyon. Действия в окне устройства остаются доступны.</p>
 
                 <div className="modal-actions">
                     {form.mode === "edit-device" && onUnpin && (
