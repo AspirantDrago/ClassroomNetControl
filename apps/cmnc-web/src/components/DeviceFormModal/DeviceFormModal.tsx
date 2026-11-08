@@ -83,7 +83,7 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                             {form.mode === "pin-observed"
                                 ? "Закрепить устройство"
                                 : `${props.classroomName || "Аудитория"}: ${getDeviceTitle(form.device)}`}
-                            {(tab === "screen" || tab === "control") && <span className="muted"> ({fps} FPS)</span>}
+                            {(tab === "screen" || tab === "control") && <span className="device-fps"> ({fps} FPS)</span>}
                         </h3>
                         {tab === "settings" && <div className="muted">
                             {form.mode === "pin-observed"

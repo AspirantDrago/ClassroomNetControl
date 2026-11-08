@@ -25,8 +25,12 @@ class Confirmation(BaseModel):
 
 async def service_call(method, path, payload=None):
     try:
-        async with httpx.AsyncClient(timeout=35, trust_env=False) as client:
+        client = getattr(gateway.app.state, "veyon_http", None)
+        if client is not None:
             response = await client.request(method, gateway.settings.veyon_service_url.rstrip("/") + path, json=payload)
+        else:
+            async with httpx.AsyncClient(timeout=35, trust_env=False) as client:
+                response = await client.request(method, gateway.settings.veyon_service_url.rstrip("/") + path, json=payload)
     except httpx.HTTPError as exc:
         raise HTTPException(503, "Сервис Veyon недоступен") from exc
     if not response.is_success:

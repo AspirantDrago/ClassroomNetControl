@@ -78,3 +78,5 @@
     .recording-timer { width: 100%; }
     .device-recording-controls button { flex: 1; }
 }
+
+.device-fps { color: #35373b; }

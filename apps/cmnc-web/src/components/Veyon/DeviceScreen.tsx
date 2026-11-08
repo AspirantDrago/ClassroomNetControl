@@ -51,11 +51,11 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
         let stopped = false;
         let currentUrl: string | null = null;
         let timer: ReturnType<typeof setTimeout> | undefined;
-        let averageDuration = 33;
+
         let count = 0, measuredAt = performance.now();
         const fpsTimer = setInterval(() => {
             const now = performance.now();
-            const value = Math.round(count * 10000 / (now - measuredAt)) / 10;
+            const value = Math.round(count * 1000 / (now - measuredAt));
             setFps(value); onFps?.(value); count = 0; measuredAt = now;
         }, 1000);
         const controller = new AbortController();
@@ -79,12 +79,11 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
                     if (currentUrl) URL.revokeObjectURL(currentUrl);
                     currentUrl = next;
                     const elapsed = performance.now() - started;
-                    averageDuration = averageDuration * 0.7 + elapsed * 0.3;
-                    // Adapt to network, server and image decoding time. Never
-                    // overlap requests; cap at 10 fps with some capacity to spare.
+
+                    // One request at a time; slow responses already provide backpressure.
                     const period = capture
-                        ? Math.max(1000 / capture.fps, averageDuration * 1.05)
-                        : Math.max(1000 / 30, averageDuration * 1.05);
+                        ? 1000 / capture.fps
+                        : 1000 / 30;
                     delay = Math.max(0, period - elapsed);
                 }
             } catch (err) {
@@ -156,7 +155,7 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
         </div>
     );
     return <>
-        {standalone && <h3>{classroomName || "Аудитория"}: {deviceName || `PC-${deviceId}`} <span className="muted">({fps} FPS)</span></h3>}
+        {standalone && <h3>{classroomName || "Аудитория"}: {deviceName || `PC-${deviceId}`} <span className="device-fps">({fps} FPS)</span></h3>}
         {toolbarTarget ? createPortal(toolbar, toolbarTarget) : toolbar}
         {recordingSettings && <RecordingSettings busy={recording.busy}
             onStart={options => { void recording.start(options).then(() => setRecordingSettings(false)); }}

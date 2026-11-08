@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 import logging
 import ipaddress
 import json
@@ -58,7 +60,24 @@ class HealthCheckAccessFilter(logging.Filter):
 logging.getLogger("uvicorn.access").addFilter(HealthCheckAccessFilter())
 
 
-app = FastAPI(title=settings.service_name)
+@asynccontextmanager
+async def lifespan(app):
+    clients = (auth_client, classroom_client, inventory_client, poller_client,
+               policy_sync_client, maintenance_client, camera_client)
+    async with httpx.AsyncClient(timeout=35, trust_env=False,
+            limits=httpx.Limits(max_connections=100, max_keepalive_connections=30)) as veyon_http:
+        app.state.veyon_http = veyon_http
+        try:
+            for client in clients:
+                await client.start()
+            yield
+        finally:
+            app.state.veyon_http = None
+            for client in clients:
+                await client.close()
+
+
+app = FastAPI(title=settings.service_name, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
