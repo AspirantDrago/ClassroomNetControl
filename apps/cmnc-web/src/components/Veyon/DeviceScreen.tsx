@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { extractErrorDetail, getVeyonFrame, getVeyonSnapshot, getCurrentPrincipal, type VeyonShortcut } from "../../api";
 import "./Veyon.css";
+import { ScreenQualitySettings } from "./ScreenQualitySettings";
+import { SCREEN_QUALITIES, readScreenQuality, saveScreenQuality } from "./screenQuality";
 import { RecordingSettings } from "./RecordingSettings";
 import { useScreenRecording } from "./useScreenRecording";
 import { downloadMedia, mediaFilename, recordingClock, RECORDING_MAX_SECONDS, RECORDING_QUALITIES } from "./recording";
@@ -11,6 +13,13 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
     const [source, setSource] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [popup, setPopup] = useState<Window | null>(null);
+    const [screenQuality, setScreenQuality] = useState(readScreenQuality);
+    const [qualitySettings, setQualitySettings] = useState(false);
+    useEffect(() => {
+        const refreshQuality = () => setScreenQuality(readScreenQuality());
+        window.addEventListener("focus", refreshQuality);
+        return () => window.removeEventListener("focus", refreshQuality);
+    }, []);
     const [fps, setFps] = useState(0);
     const commandRef = useRef<((shortcut: VeyonShortcut) => Promise<void>) | null>(null);
     const [canSendAdminShortcut, setCanSendAdminShortcut] = useState(false);
@@ -82,7 +91,7 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
             try {
                 if (capture || viewDocument.visibilityState !== "hidden") {
                     const started = performance.now();
-                    const preset = capture ? RECORDING_QUALITIES[capture.quality] : undefined;
+                    const preset = capture ? RECORDING_QUALITIES[capture.quality] : SCREEN_QUALITIES[screenQuality];
                     const blob = await getVeyonFrame(deviceId, controller.signal, preset?.width, preset?.quality);
                     if (stopped) return;
                     const next = URL.createObjectURL(blob);
@@ -115,7 +124,7 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
             stopped = true; controller.abort(); clearTimeout(timer); clearInterval(fpsTimer);
             if (currentUrl) URL.revokeObjectURL(currentUrl);
         };
-    }, [deviceId, viewDocument, popup, capture, onRecordingFrame, onFps]);
+    }, [deviceId, viewDocument, popup, capture, onRecordingFrame, onFps, screenQuality]);
 
     async function toggleFullscreen() {
         try {
@@ -159,11 +168,18 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
     </div>;
     const snapshotButton = !control && <button type="button" className="success-button" disabled={savingSnapshot}
         onClick={() => void saveSnapshot()}>{savingSnapshot ? "Сохранение…" : "Снимок"}</button>;
+    const qualityButton = <button type="button" className="secondary-button screen-quality-button" aria-label="Качество экрана" title="Качество экрана" onClick={() => setQualitySettings(true)}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+            <path d="m9 3-.6 2.4-2 .9L4.2 6l-2 3.5 1.7 1.7v2l-1.7 1.7 2 3.5 2.2-.3 2 .9L9 21h4l.6-2.4 2-.9 2.2.3 2-3.5-1.7-1.7v-2l1.7-1.7-2-3.5-2.2.3-2-.9L13 3Z" />
+            <circle cx="11" cy="12" r="3" />
+        </svg>
+    </button>;
     const toolbar = popup ? <div className="device-screen-toolbar">
         {snapshotButton}
             {recordingControls}
         <button type="button" className="secondary-button" onClick={() => popup.focus()}>Показать окно</button>
         <button type="button" className="secondary-button" onClick={() => { popup.close(); setPopup(null); }}>Вернуть в окно устройства</button>
+        {qualityButton}
     </div> : (
         <div className="device-screen-toolbar">
             {snapshotButton}
@@ -174,11 +190,15 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
                 onMouseDown={event => event.preventDefault()} onClick={() => void sendShortcut("ctrl-alt-delete")}>Ctrl+Alt+Del</button>}
             <button type="button" className="secondary-button" disabled={!source} onClick={() => void toggleFullscreen()}>На весь экран</button>
             {!standalone && <button type="button" className="secondary-button" disabled={recording.busy || !!recording.options} onClick={openWindow}>В отдельном окне</button>}
+            {qualityButton}
         </div>
     );
     return <>
         {standalone && <h3>{classroomName || "Аудитория"}: {deviceName || `PC-${deviceId}`} <span className="device-fps">({fps} FPS)</span></h3>}
         {toolbarTarget ? createPortal(toolbar, toolbarTarget) : toolbar}
+        {qualitySettings && <ScreenQualitySettings value={screenQuality}
+            onSave={quality => { saveScreenQuality(quality); setScreenQuality(quality); setQualitySettings(false); }}
+            onClose={() => setQualitySettings(false)} />}
         {recordingSettings && <RecordingSettings busy={recording.busy}
             onStart={options => { void recording.start(options).then(() => setRecordingSettings(false)); }}
             onClose={() => setRecordingSettings(false)} />}
