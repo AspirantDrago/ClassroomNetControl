@@ -388,3 +388,32 @@ def test_recording_frame_quality_validation_and_gateway_access(monkeypatch):
             assert (await client.get('/api/devices/10/veyon/frame?quality=95')).status_code == 403
             service.assert_not_awaited()
     asyncio.run(run())
+
+
+@pytest.mark.parametrize('role,allowed', [('teacher', False), ('moderator', False), ('admin', True), ('superadmin', True)])
+def test_control_shortcuts_enforce_role_and_forward_owned_lease(monkeypatch, role, allowed):
+    async def run():
+        principal = PrincipalResponse(principal_type='user', id=8, role=role, display_name='Test', classroom_ids=[7], permissions=[])
+        monkeypatch.setattr(gateway, 'get_current_principal', AsyncMock(return_value=principal))
+        target = {'device_id': 10, 'router_id': 1, 'classroom_id': 7, 'host': '192.168.1.10'}
+        authorized = AsyncMock(return_value=target)
+        monkeypatch.setattr(veyon_routes, 'authorized_target', authorized)
+        service = AsyncMock(return_value=httpx.Response(200, json={'accepted': True}))
+        monkeypatch.setattr(veyon_routes, 'service_call', service)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=gateway.app), base_url='http://test') as client:
+            response = await client.post('/api/devices/10/veyon/shortcut/ctrl-shift-delete', json={'token':'owned-lease'})
+            assert response.status_code == (200 if allowed else 403)
+            if allowed:
+                payload = service.call_args.args[2]
+                assert payload['owner'] == 'user:8' and payload['token'] == 'owned-lease'
+                assert [(event['key'], event['pressed']) for event in payload['events']] == [
+                    (0xffe3, True), (0xffe1, True), (0xffff, True),
+                    (0xffff, False), (0xffe1, False), (0xffe3, False)]
+            else:
+                service.assert_not_awaited()
+                authorized.assert_not_awaited()
+            service.reset_mock()
+            response = await client.post('/api/devices/10/veyon/shortcut/escape', json={'token':'owned-lease'})
+            assert response.status_code == 200
+            assert [(event['key'], event['pressed']) for event in service.call_args.args[2]['events']] == [(0xff1b, True), (0xff1b, False)]
+    asyncio.run(run())

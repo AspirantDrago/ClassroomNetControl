@@ -1,5 +1,5 @@
 import { useEffect, useState, type RefObject } from "react";
-import { extractErrorDetail, veyonControl, type VeyonInputEvent } from "../../api";
+import { extractErrorDetail, veyonControl, veyonShortcut, type VeyonShortcut, type VeyonInputEvent } from "../../api";
 
 const special: Record<string, number> = {
     Backspace: 0xff08, Tab: 0xff09, Enter: 0xff0d, Delete: 0xffff, Insert: 0xff63,
@@ -17,8 +17,8 @@ function remoteKey(key: string, location = 0): number | null {
     return point <= 255 ? point : 0x01000000 + point;
 }
 
-export function RemoteControlImage({deviceId, source, imageRef}: {
-    deviceId: number; source: string; imageRef: RefObject<HTMLImageElement | null>;
+export function RemoteControlImage({deviceId, source, imageRef, commandRef}: {
+    deviceId: number; source: string; imageRef: RefObject<HTMLImageElement | null>; commandRef: RefObject<((shortcut: VeyonShortcut) => Promise<void>) | null>;
 }) {
     const [status, setStatus] = useState("Нажмите на изображение для управления. Esc — отпустить мышь и клавиатуру.");
     const [error, setError] = useState<string | null>(null);
@@ -113,6 +113,16 @@ export function RemoteControlImage({deviceId, source, imageRef}: {
             const buttons = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? (event.deltaY<0 ? 8 : 16) : (event.deltaX<0 ? 32 : 64);
             enqueue({type:"pointer", ...point, buttons: buttons | pointerButtons}); enqueue({type:"pointer", ...point, buttons:pointerButtons});
         }
+        commandRef.current = async shortcut => {
+            image.focus({preventScroll: true});
+            start();
+            const current = token ?? await starting;
+            if (!current || !active || disposed) throw new Error("Не удалось подключить управление");
+            pump();
+            await pumping;
+            if (!active || token !== current) throw new Error("Управление завершено. Подключитесь снова");
+            await veyonShortcut(deviceId, shortcut, current);
+        };
         const context = (event: Event) => event.preventDefault();
         const visibility = () => { if (document.hidden) stop(); };
         const fullscreen = () => { if (!document.fullscreenElement) stop(); };
@@ -129,6 +139,7 @@ export function RemoteControlImage({deviceId, source, imageRef}: {
             }
         }, 2000);
         return () => {
+            commandRef.current = null;
             disposed = true; stop(); clearInterval(heartbeat);
             for (const type of ["pointerdown", "pointermove", "pointerup"] as const) image.removeEventListener(type, pointer);
             image.removeEventListener("pointercancel", stop);
@@ -138,7 +149,7 @@ export function RemoteControlImage({deviceId, source, imageRef}: {
             document.removeEventListener("visibilitychange", visibility);
             document.removeEventListener("fullscreenchange", fullscreen);
         };
-    }, [deviceId, imageRef]);
+    }, [deviceId, imageRef, commandRef]);
     return <>
         {error && <div className="device-modal-error" role="alert">{error}</div>}
         <img ref={imageRef} src={source} alt="Управление устройством" tabIndex={0} draggable={false} className="device-control-image" />

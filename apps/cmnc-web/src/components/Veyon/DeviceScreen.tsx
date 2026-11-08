@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { extractErrorDetail, getVeyonFrame, getVeyonSnapshot } from "../../api";
+import { extractErrorDetail, getVeyonFrame, getVeyonSnapshot, getCurrentPrincipal, type VeyonShortcut } from "../../api";
 import "./Veyon.css";
 import { RecordingSettings } from "./RecordingSettings";
 import { useScreenRecording } from "./useScreenRecording";
@@ -12,6 +12,24 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
     const [error, setError] = useState<string | null>(null);
     const [popup, setPopup] = useState<Window | null>(null);
     const [fps, setFps] = useState(0);
+    const commandRef = useRef<((shortcut: VeyonShortcut) => Promise<void>) | null>(null);
+    const [canSendAdminShortcut, setCanSendAdminShortcut] = useState(false);
+    const [shortcutBusy, setShortcutBusy] = useState(false);
+    useEffect(() => {
+        if (!control) return;
+        let disposed = false;
+        void getCurrentPrincipal().then(principal => {
+            if (!disposed) setCanSendAdminShortcut(principal.role === "admin" || principal.role === "superadmin");
+        }).catch(() => {});
+        return () => { disposed = true; };
+    }, [control]);
+    async function sendShortcut(shortcut: VeyonShortcut) {
+        if (!commandRef.current || shortcutBusy) return;
+        setShortcutBusy(true);
+        try { await commandRef.current(shortcut); }
+        catch (err) { setError(extractErrorDetail(err)); }
+        finally { setShortcutBusy(false); }
+    }
     const imageRef = useRef<HTMLImageElement>(null);
     const snapshotRequest = useRef<AbortController | null>(null);
     const recording = useScreenRecording(deviceId, deviceName, classroomName);
@@ -136,7 +154,7 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
         {recording.message && <p role="status">{recording.message}</p>}
         {error && <div className="device-modal-error" role="alert">{error}</div>}
         {!source && !error && <p role="status">Подключение к экрану...</p>}
-        {source && (control ? <RemoteControlImage deviceId={deviceId} source={source} imageRef={imageRef} /> : <img ref={imageRef} src={source} alt="Экран устройства" />)}
+        {source && (control ? <RemoteControlImage deviceId={deviceId} source={source} imageRef={imageRef} commandRef={commandRef} /> : <img ref={imageRef} src={source} alt="Экран устройства" />)}
         {error && source && <p className="muted">Показан последний полученный кадр.</p>}
     </div>;
     const snapshotButton = !control && <button type="button" className="success-button" disabled={savingSnapshot}
@@ -150,6 +168,10 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
         <div className="device-screen-toolbar">
             {snapshotButton}
             {recordingControls}
+            {control && <button type="button" className="secondary-button" disabled={!source || shortcutBusy}
+                onMouseDown={event => event.preventDefault()} onClick={() => void sendShortcut("escape")}>Esc</button>}
+            {control && canSendAdminShortcut && <button type="button" className="danger-button" disabled={!source || shortcutBusy}
+                onMouseDown={event => event.preventDefault()} onClick={() => void sendShortcut("ctrl-shift-delete")}>Ctrl+Shift+Del</button>}
             <button type="button" className="secondary-button" disabled={!source} onClick={() => void toggleFullscreen()}>На весь экран</button>
             {!standalone && <button type="button" className="secondary-button" disabled={recording.busy || !!recording.options} onClick={openWindow}>В отдельном окне</button>}
         </div>
