@@ -28,6 +28,7 @@ export type DeviceFormState =
 };
 
 type DeviceFormModalProps = {
+    classroomName?: string;
     form: DeviceFormState;
     busy: boolean;
     canManage: boolean;
@@ -122,7 +123,7 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                 {error && <div className="device-modal-error" role="alert">{error}</div>}
 
                 {tab === "screen" && form.mode === "edit-device" && <div role="tabpanel" id="device-screen-panel" aria-labelledby="device-screen-tab">
-                    <DeviceScreen key={form.device.id} deviceId={form.device.id} deviceName={getDeviceTitle(form.device)} toolbarTarget={screenToolbar} />
+                    <DeviceScreen key={form.device.id} deviceId={form.device.id} deviceName={getDeviceTitle(form.device)} classroomName={props.classroomName} toolbarTarget={screenToolbar} />
                 </div>}
 
                 {tab === "control" && form.mode === "edit-device" && <div role="tabpanel" id="device-control-panel" aria-labelledby="device-control-tab">
