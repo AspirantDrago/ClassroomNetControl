@@ -7,6 +7,7 @@ from fastapi import Header, HTTPException, Request, Query
 from pydantic import BaseModel, Field
 
 from cmnc_api_gateway import main as gateway
+from cmnc_contracts.veyon_actions import DeviceAction, ADMIN_ACTIONS
 
 
 class KeyInput(BaseModel):
@@ -123,6 +124,15 @@ def register_veyon_routes(app):
                          authorization: str | None = Header(default=None)):
         await check_key_admin(scope, scope_id, request, authorization)
         return (await service_call("DELETE", f"/internal/keys/{scope}/{scope_id}")).json()
+
+    @app.post("/api/devices/{device_id}/veyon/action")
+    async def device_action(device_id: int, payload: DeviceAction, request: Request,
+                            authorization: str | None = Header(default=None)):
+        principal = await gateway.get_current_principal(request, authorization)
+        if payload.action in ADMIN_ACTIONS and principal.role not in {"admin", "superadmin"}:
+            raise HTTPException(403, "Действие доступно только администраторам")
+        target = await authorized_target(device_id, request, authorization, principal)
+        return (await service_call("POST", "/internal/device/action", {**target, **payload.wire()})).json()
 
     @app.get("/api/devices/{device_id}/veyon/frame")
     async def device_frame(device_id: int, request: Request, authorization: str | None = Header(default=None),

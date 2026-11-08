@@ -13,6 +13,8 @@ import httpx
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field, field_validator
 
+from cmnc_contracts.veyon_actions import DeviceAction, FEATURE_IDS
+
 from cmnc_veyon_service.key_store import KeyStore
 from cmnc_veyon_service.control import RemoteControl, InputEvent
 
@@ -39,6 +41,7 @@ logger = logging.getLogger("uvicorn.error.veyon")
 
 AUTH_KEYS = "0c69b301-81b4-42d6-8fae-128cdd113314"
 FEATURES = {"power-down": "6f5a27a0-0e2f-496e-afcc-7aae62eede10", "reboot": "4f7d98f0-395a-4fff-b968-e49b8d0f748c", "install-updates-and-power-down": "09bcb3a1-fc11-4d03-8cf1-efd26be8655b"}
+FEATURES.update(FEATURE_IDS)
 WEBAPI = os.environ.get("CMNC_VEYON_WEBAPI_URL", "http://cmnc-veyon-proxy:11080").rstrip("/")
 TARGET_PORT = int(os.environ.get("CMNC_VEYON_TARGET_PORT", "11100"))
 # Veyon waits up to 15 seconds for authentication methods on the target.
@@ -147,7 +150,7 @@ class VeyonBridge:
         logger.info("Veyon authenticated device_id=%s host=%s", target.device_id, target.host)
         return session
 
-    async def operate(self, target: Target, action: str | None = None, *, snapshot: bool = False):
+    async def operate(self, target: Target, action: str | None = None, *, snapshot: bool = False, arguments: dict | None = None, active: bool = True):
         identity, name, pem = self.identity(target)
         lock = self.locks.setdefault(identity, asyncio.Lock())
         async with self.capacity, lock:
@@ -155,7 +158,7 @@ class VeyonBridge:
             try:
                 headers = {"Connection-Uid": session.uid}
                 if action:
-                    await self.checked("PUT", "/api/v1/feature/" + FEATURES[action], headers=headers, json={"active": True, "arguments": {}})
+                    await self.checked("PUT", "/api/v1/feature/" + FEATURES[action], headers=headers, json={"active": active, "arguments": arguments or {}})
                     return {"accepted": True, "device_id": target.device_id}
                 # A short shared cache coalesces concurrent viewers on this
                 # authenticated target without persisting screenshots to disk.
@@ -317,6 +320,16 @@ async def device_frame(payload: Target):
 async def device_snapshot(payload: Target):
     content, media_type = await app.state.bridge.operate(payload, snapshot=True)
     return Response(content, media_type=media_type, headers={"Cache-Control": "no-store"})
+
+
+class DeviceActionInput(Target, DeviceAction):
+    pass
+
+
+@app.post("/internal/device/action")
+async def device_action(payload: DeviceActionInput):
+    return await app.state.bridge.operate(payload, payload.action,
+        arguments=payload.feature_arguments(), active=payload.action != "screen-on")
 
 
 @app.post("/internal/device/power")

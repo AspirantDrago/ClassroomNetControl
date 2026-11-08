@@ -84,3 +84,16 @@
 .screen-quality-dialog { color: #e5e7eb; }
 .screen-quality-dialog::backdrop { background: rgba(2, 6, 23, .72); }
 .screen-quality-button { display: inline-flex; align-items: center; justify-content: center; }
+
+.device-action-groups { display: grid; gap: 16px; }
+.device-action-groups section { border-top: 1px solid #334155; padding-top: 12px; }
+.device-action-groups h4 { margin: 0 0 10px; }
+.device-action-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.orange-button, .purple-button { border: 0; border-radius: 10px; padding: 10px 14px; color: white; cursor: pointer; }
+.orange-button { background: #c2410c; }
+.purple-button { background: #7e22ce; }
+.orange-button:disabled, .purple-button:disabled { opacity: .6; cursor: not-allowed; }
+.device-action-time { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.device-action-dialog input, .device-action-dialog textarea { width: 100%; min-width: 0; padding: 10px; border: 1px solid #475569; border-radius: 8px; background: #0f172a; color: #e5e7eb; font: inherit; }
+.device-action-dialog textarea { resize: vertical; }
+@media(max-width: 640px) { .device-action-buttons { flex-direction: column; } }

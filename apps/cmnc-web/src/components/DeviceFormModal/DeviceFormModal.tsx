@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { formatStateDuration, formatStateTime } from "../../utils/deviceTiming";
 import type { DashboardDevice, DynamicDevice } from "../../api";
 import { getDeviceTitle } from "../../utils/devices";
+import { DeviceActions } from "../Veyon/DeviceActions";
 import { DeviceScreen } from "../Veyon/DeviceScreen";
 import "./DeviceFormModal.css";
 
@@ -50,7 +51,7 @@ type DeviceFormModalProps = {
 export function DeviceFormModal(props: DeviceFormModalProps) {
     const { form, busy, canManage, canControlWan, wanBusy, onToggleWan, error,
         onChange, onClose, onSubmit, onUnpin, wakeBusy, onWake, wakeMessage, powerBusy, onPower } = props;
-    const [selectedTab, setSelectedTab] = useState<"info" | "settings" | "screen" | "control">(
+    const [selectedTab, setSelectedTab] = useState<"info" | "settings" | "screen" | "control" | "actions">(
         canManage ? "settings" : "info",
     );
     const tab = !canManage && selectedTab === "settings" ? "info" : selectedTab;
@@ -114,6 +115,9 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                     {form.mode === "edit-device" && <button type="button" role="tab" id="device-control-tab"
                         aria-selected={tab === "control"} aria-controls="device-control-panel"
                         onClick={() => setSelectedTab("control")}>Перехват экрана</button>}
+                    {form.mode === "edit-device" && <button type="button" role="tab" id="device-actions-tab"
+                        aria-selected={tab === "actions"} aria-controls="device-actions-panel"
+                        onClick={() => setSelectedTab("actions")}>Действия</button>}
                     {canManage && <button type="button" role="tab" id="device-settings-tab"
                         aria-selected={tab === "settings"} aria-controls="device-settings-panel"
                         onClick={() => setSelectedTab("settings")}>Настройка</button>}
@@ -132,6 +136,11 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                     <DeviceScreen key={form.device.id} deviceId={form.device.id} deviceName={getDeviceTitle(form.device)} classroomName={props.classroomName} control toolbarTarget={screenToolbar} onFps={setFps} />
                 </div>}
 
+                {tab === "actions" && form.mode === "edit-device" && <div role="tabpanel" id="device-actions-panel" aria-labelledby="device-actions-tab">
+                    {wakeMessage && <p role="status">{wakeMessage}</p>}
+                    <DeviceActions device={form.device} canControlWan={canControlWan} wanBusy={wanBusy} wakeBusy={wakeBusy} powerBusy={powerBusy}
+                        onToggleWan={onToggleWan} onWake={onWake} onPower={onPower}/>
+                </div>}
                 {tab === "info" && <div role="tabpanel" id="device-info-panel" aria-labelledby="device-info-tab">
                 <div className="readonly-grid">
                     <ReadonlyField label="MAC" value={getMacAddress(form)} />

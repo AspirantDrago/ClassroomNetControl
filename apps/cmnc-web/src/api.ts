@@ -1027,6 +1027,10 @@ export function powerVeyonClassroom(classroomId: number, action: VeyonBulkPowerA
 export type VeyonInputEvent =
     | {type: "key"; key: number; pressed: boolean}
     | {type: "pointer"; x: number; y: number; buttons: number};
+export type VeyonDeviceAction = "install-updates-and-power-down" | "power-down-confirmed" | "power-down-delayed" | "login" | "logout" | "screen-off" | "screen-on" | "message" | "website" | "command";
+export function runVeyonAction(deviceId: number, payload: {action: VeyonDeviceAction; text?: string; username?: string; password?: string; seconds?: number; confirmed?: boolean}): Promise<{accepted: boolean}> {
+    return request(`/api/devices/${deviceId}/veyon/action`, {method: "POST", body: JSON.stringify(payload)});
+}
 export type VeyonShortcut = "escape" | "ctrl-alt-delete";
 export function veyonShortcut(deviceId: number, shortcut: VeyonShortcut, token: string): Promise<{accepted: boolean}> {
     return request(`/api/devices/${deviceId}/veyon/shortcut/${shortcut}`, {method: "POST", body: JSON.stringify({token})});
