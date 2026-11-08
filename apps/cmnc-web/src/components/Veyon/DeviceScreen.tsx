@@ -7,10 +7,11 @@ import { useScreenRecording } from "./useScreenRecording";
 import { downloadMedia, mediaFilename, recordingClock, RECORDING_MAX_SECONDS, RECORDING_QUALITIES } from "./recording";
 import { RemoteControlImage } from "./RemoteControlImage";
 
-export function DeviceScreen({ deviceId, deviceName, classroomName, standalone = false, control = false, toolbarTarget }: { deviceId: number; deviceName?: string; classroomName?: string; standalone?: boolean; control?: boolean; toolbarTarget?: HTMLElement | null }) {
+export function DeviceScreen({ deviceId, deviceName, classroomName, standalone = false, control = false, toolbarTarget, onFps }: { deviceId: number; deviceName?: string; classroomName?: string; standalone?: boolean; control?: boolean; toolbarTarget?: HTMLElement | null; onFps?: (fps: number) => void }) {
     const [source, setSource] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [popup, setPopup] = useState<Window | null>(null);
+    const [fps, setFps] = useState(0);
     const imageRef = useRef<HTMLImageElement>(null);
     const snapshotRequest = useRef<AbortController | null>(null);
     const recording = useScreenRecording(deviceId, deviceName, classroomName);
@@ -50,7 +51,13 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
         let stopped = false;
         let currentUrl: string | null = null;
         let timer: ReturnType<typeof setTimeout> | undefined;
-        let averageDuration = 80;
+        let averageDuration = 33;
+        let count = 0, measuredAt = performance.now();
+        const fpsTimer = setInterval(() => {
+            const now = performance.now();
+            const value = Math.round(count * 10000 / (now - measuredAt)) / 10;
+            setFps(value); onFps?.(value); count = 0; measuredAt = now;
+        }, 1000);
         const controller = new AbortController();
         async function refresh() {
             let delay = 1000;
@@ -66,6 +73,7 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
                     try { await image.decode(); }
                     catch (err) { URL.revokeObjectURL(next); throw err; }
                     if (stopped) { URL.revokeObjectURL(next); return; }
+                    count++;
                     onRecordingFrame(image);
                     setSource(next); setError(null);
                     if (currentUrl) URL.revokeObjectURL(currentUrl);
@@ -76,7 +84,7 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
                     // overlap requests; cap at 10 fps with some capacity to spare.
                     const period = capture
                         ? Math.max(1000 / capture.fps, averageDuration * 1.05)
-                        : Math.min(1000, Math.max(100, averageDuration * 1.25));
+                        : Math.max(1000 / 30, averageDuration * 1.05);
                     delay = Math.max(0, period - elapsed);
                 }
             } catch (err) {
@@ -87,10 +95,10 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
         }
         void refresh();
         return () => {
-            stopped = true; controller.abort(); clearTimeout(timer);
+            stopped = true; controller.abort(); clearTimeout(timer); clearInterval(fpsTimer);
             if (currentUrl) URL.revokeObjectURL(currentUrl);
         };
-    }, [deviceId, viewDocument, popup, capture, onRecordingFrame]);
+    }, [deviceId, viewDocument, popup, capture, onRecordingFrame, onFps]);
 
     async function toggleFullscreen() {
         try {
@@ -148,6 +156,7 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
         </div>
     );
     return <>
+        {standalone && <h3>{classroomName || "Аудитория"}: {deviceName || `PC-${deviceId}`} <span className="muted">({fps} FPS)</span></h3>}
         {toolbarTarget ? createPortal(toolbar, toolbarTarget) : toolbar}
         {recordingSettings && <RecordingSettings busy={recording.busy}
             onStart={options => { void recording.start(options).then(() => setRecordingSettings(false)); }}

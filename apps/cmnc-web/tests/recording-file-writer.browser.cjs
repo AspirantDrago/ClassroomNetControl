@@ -9,11 +9,11 @@ const assert = require('node:assert/strict');
       window.recordingTest = {parts:[], closed:false, aborted:false, filename:null};
       Object.defineProperty(window, 'showSaveFilePicker', {value: async options => {
         window.recordingTest.filename = options.suggestedName;
-        return {createWritable:async () => ({
+        return {getFile:async () => new Blob(window.recordingTest.parts, {type:"video/webm"}), createWritable:async () => {window.recordingTest.parts=[]; return ({
           write: async blob => {await new Promise(resolve=>setTimeout(resolve,20)); window.recordingTest.parts.push(blob);},
           close: async () => {window.recordingTest.closed=true;},
           abort: async () => {window.recordingTest.aborted=true;},
-        })};
+        }); }};
       }});
       const supported = MediaRecorder.isTypeSupported.bind(MediaRecorder);
       MediaRecorder.isTypeSupported = type => type.includes('vp8') && supported(type);
@@ -31,6 +31,7 @@ const assert = require('node:assert/strict');
     await start(); await page.waitForTimeout(1200);
     await page.getByRole('button',{name:'Завершить',exact:true}).click();
     await page.waitForFunction(()=>window.recordingTest.closed);
+    await page.getByRole('button',{name:'Запись',exact:true}).waitFor();
     const result=await page.evaluate(async()=>{
       const test=window.recordingTest;
       const blob=new Blob(test.parts,{type:'video/webm'});

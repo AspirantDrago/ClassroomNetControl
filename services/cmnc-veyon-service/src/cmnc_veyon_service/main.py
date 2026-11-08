@@ -43,7 +43,7 @@ WEBAPI = os.environ.get("CMNC_VEYON_WEBAPI_URL", "http://cmnc-veyon-proxy:11080"
 TARGET_PORT = int(os.environ.get("CMNC_VEYON_TARGET_PORT", "11100"))
 # Veyon waits up to 15 seconds for authentication methods on the target.
 AUTHENTICATION_TIMEOUT_SECONDS = 20
-FRAME_CACHE_SECONDS = 0.1
+FRAME_CACHE_SECONDS = 0.025
 FRAMEBUFFER_ATTEMPTS = 12
 FRAMEBUFFER_RETRY_DELAY = 0.35
 

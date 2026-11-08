@@ -55,6 +55,7 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
     );
     const tab = !canManage && selectedTab === "settings" ? "info" : selectedTab;
     const [screenToolbar, setScreenToolbar] = useState<HTMLDivElement | null>(null);
+    const [fps, setFps] = useState(0);
     const [now, setNow] = useState(() => Date.now());
 
     useEffect(() => {
@@ -81,7 +82,8 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                         <h3 id="device-dialog-title">
                             {form.mode === "pin-observed"
                                 ? "Закрепить устройство"
-                                : "Устройство"}
+                                : `${props.classroomName || "Аудитория"}: ${getDeviceTitle(form.device)}`}
+                            {(tab === "screen" || tab === "control") && <span className="muted"> ({fps} FPS)</span>}
                         </h3>
                         {tab === "settings" && <div className="muted">
                             {form.mode === "pin-observed"
@@ -123,11 +125,11 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                 {error && <div className="device-modal-error" role="alert">{error}</div>}
 
                 {tab === "screen" && form.mode === "edit-device" && <div role="tabpanel" id="device-screen-panel" aria-labelledby="device-screen-tab">
-                    <DeviceScreen key={form.device.id} deviceId={form.device.id} deviceName={getDeviceTitle(form.device)} classroomName={props.classroomName} toolbarTarget={screenToolbar} />
+                    <DeviceScreen key={form.device.id} deviceId={form.device.id} deviceName={getDeviceTitle(form.device)} classroomName={props.classroomName} toolbarTarget={screenToolbar} onFps={setFps} />
                 </div>}
 
                 {tab === "control" && form.mode === "edit-device" && <div role="tabpanel" id="device-control-panel" aria-labelledby="device-control-tab">
-                    <DeviceScreen key={form.device.id} deviceId={form.device.id} control toolbarTarget={screenToolbar} />
+                    <DeviceScreen key={form.device.id} deviceId={form.device.id} deviceName={getDeviceTitle(form.device)} classroomName={props.classroomName} control toolbarTarget={screenToolbar} onFps={setFps} />
                 </div>}
 
                 {tab === "info" && <div role="tabpanel" id="device-info-panel" aria-labelledby="device-info-tab">

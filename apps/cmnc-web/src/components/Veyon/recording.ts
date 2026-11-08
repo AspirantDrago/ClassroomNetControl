@@ -1,3 +1,5 @@
+import { finalizeWebm } from "./webm";
+
 export const RECORDING_QUALITIES = {
     high: { label: "Высокое — до 1920 px", width: 1920, quality: 95, bitrate: 6_000_000 },
     medium: { label: "Среднее — до 1280 px", width: 1280, quality: 85, bitrate: 3_000_000 },
@@ -43,11 +45,11 @@ export function recordingFormat(): { mimeType: string; extension: string; label:
 
 interface RecordingSink {
     write(blob: Blob): Promise<void>;
-    finish(): Promise<void>;
+    finish(seconds: number): Promise<void>;
     abort(): Promise<void>;
 }
 type WritableRecording = { write(blob: Blob): Promise<void>; close(): Promise<void>; abort(): Promise<void> };
-type SavePicker = (options: { suggestedName: string; types: { description: string; accept: Record<string, string[]> }[] }) => Promise<{ createWritable(): Promise<WritableRecording> }>;
+type SavePicker = (options: { suggestedName: string; types: { description: string; accept: Record<string, string[]> }[] }) => Promise<{ createWritable(): Promise<WritableRecording>; getFile(): Promise<File> }>;
 
 function transactionDone(transaction: IDBTransaction): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -63,7 +65,15 @@ export async function recordingSink(filename: string, mimeType: string): Promise
     if (picker) {
         const handle = await picker.call(window, { suggestedName: filename, types: [{ description: "Запись экрана", accept: { [mimeType.split(";")[0]]: [filename.endsWith(".mp4") ? ".mp4" : ".webm"] } }] });
         const writer = await handle.createWritable();
-        return { write: blob => writer.write(blob), finish: () => writer.close(), abort: () => writer.abort() };
+        return { write: blob => writer.write(blob), finish: async seconds => {
+            await writer.close();
+            if (mimeType.startsWith("video/webm")) {
+                const fixed = await finalizeWebm(await handle.getFile(), seconds);
+                const output = await handle.createWritable();
+                try { await output.write(fixed); await output.close(); }
+                catch (error) { await output.abort(); throw error; }
+            }
+        }, abort: () => writer.abort() };
     }
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
         const request = indexedDB.open("cmnc-screen-recordings", 1);
@@ -86,7 +96,7 @@ export async function recordingSink(filename: string, mimeType: string): Promise
             transaction.objectStore("chunks").put(blob, [id, sequence++]);
             await transactionDone(transaction);
         },
-        async finish() {
+        async finish(seconds) {
             try {
                 const transaction = database.transaction("chunks", "readonly");
                 const request = transaction.objectStore("chunks").getAll(range);
@@ -94,7 +104,10 @@ export async function recordingSink(filename: string, mimeType: string): Promise
                     request.onsuccess = () => resolve(request.result);
                     request.onerror = () => reject(request.error);
                 });
-                if (parts.length) downloadMedia(new Blob(parts, { type: mimeType }), filename);
+                if (parts.length) {
+                    const original = new Blob(parts, { type: mimeType });
+                    downloadMedia(mimeType.startsWith("video/webm") ? await finalizeWebm(original, seconds) : original, filename);
+                }
             } finally { await clear(); }
         },
         abort: clear,
@@ -148,7 +161,7 @@ export class ScreenRecording {
                 this.stream.getTracks().forEach(track => track.stop());
                 void this.queue.then(async () => {
                     if (this.cancelled) await this.sink.abort();
-                    else await this.sink.finish();
+                    else await this.sink.finish(this.seconds);
                     if (this.writeError) throw this.writeError;
                 }).then(resolve, reject);
             };
