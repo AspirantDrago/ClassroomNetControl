@@ -862,6 +862,8 @@ export function App() {
     const userCanOpenRouters = userCanManageClassrooms;
     const userCanViewDynamicDevices = canViewDynamicDevices(principal);
     const userCanControlWan = canControlWanForClassroom(principal, selectedClassroomId);
+    const hasPowerDownTargets = dashboard?.devices.some((device) => device.is_pinned && !device.veyon_bulk_protected) ?? false;
+    const hasWakeTargets = dashboard?.devices.some((device) => device.is_pinned && !device.wol_protected) ?? false;
 
     useEffect(() => {
         if (currentPage === "access" && !userCanOpenAccessAdmin) {
@@ -1000,21 +1002,23 @@ export function App() {
                                             </div>
                                         </section>
                                     )}
-                                    <section className="classroom-action-row" aria-label="Питание">
-                                        <span className="classroom-action-label">Питание:</span>
-                                        <div className="classroom-actions">
-                                    <button className="danger-button"
-                                        disabled={busyPower || !dashboard.devices.some((device) => !device.veyon_bulk_protected) || dashboard.classroom.id !== selectedClassroomId}
-                                        onClick={() => void handlePowerDownAll()}>
-                                        {busyPower ? "Отправка команды..." : "Выключить все"}
-                                    </button>
-                                    <button className="success-button"
-                                        disabled={busyWakeAction !== null || !dashboard.devices.some((device) => !device.wol_protected) || dashboard.classroom.id !== selectedClassroomId}
-                                        onClick={() => void handleWake()}>
-                                        {busyWakeAction === "all" ? "Отправка WoL..." : "Разбудить всё"}
-                                    </button>
-                                        </div>
-                                    </section>
+                                    {(hasPowerDownTargets || hasWakeTargets) && (
+                                        <section className="classroom-action-row" aria-label="Питание">
+                                            <span className="classroom-action-label">Питание:</span>
+                                            <div className="classroom-actions">
+                                                {hasPowerDownTargets && <button className="danger-button"
+                                                    disabled={busyPower || dashboard.classroom.id !== selectedClassroomId}
+                                                    onClick={() => void handlePowerDownAll()}>
+                                                    {busyPower ? "Отправка команды..." : "Выключить все"}
+                                                </button>}
+                                                {hasWakeTargets && <button className="success-button"
+                                                    disabled={busyWakeAction !== null || dashboard.classroom.id !== selectedClassroomId}
+                                                    onClick={() => void handleWake()}>
+                                                    {busyWakeAction === "all" ? "Отправка WoL..." : "Разбудить всё"}
+                                                </button>}
+                                            </div>
+                                        </section>
+                                    )}
                                 </div>
 
                                 <DeviceGrid
