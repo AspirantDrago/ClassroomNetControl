@@ -52,6 +52,7 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
         canManage ? "settings" : "info",
     );
     const tab = !canManage && selectedTab === "settings" ? "info" : selectedTab;
+    const [screenToolbar, setScreenToolbar] = useState<HTMLDivElement | null>(null);
     const [now, setNow] = useState(() => Date.now());
 
     useEffect(() => {
@@ -98,6 +99,7 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                     </button>
                 </div>
 
+                <div className="device-modal-navigation">
                 <div className="device-modal-tabs" role="tablist" aria-label="Устройство">
                     <button type="button" role="tab" id="device-info-tab"
                         aria-selected={tab === "info"} aria-controls="device-info-panel"
@@ -107,20 +109,23 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                         onClick={() => setSelectedTab("screen")}>Экран</button>}
                     {form.mode === "edit-device" && <button type="button" role="tab" id="device-control-tab"
                         aria-selected={tab === "control"} aria-controls="device-control-panel"
-                        onClick={() => setSelectedTab("control")}>Управление</button>}
+                        onClick={() => setSelectedTab("control")}>Перехват экрана</button>}
                     {canManage && <button type="button" role="tab" id="device-settings-tab"
                         aria-selected={tab === "settings"} aria-controls="device-settings-panel"
                         onClick={() => setSelectedTab("settings")}>Настройка</button>}
                 </div>
 
+                <div className="device-modal-screen-actions" ref={setScreenToolbar} />
+                </div>
+
                 {error && <div className="device-modal-error" role="alert">{error}</div>}
 
                 {tab === "screen" && form.mode === "edit-device" && <div role="tabpanel" id="device-screen-panel" aria-labelledby="device-screen-tab">
-                    <DeviceScreen key={form.device.id} deviceId={form.device.id} />
+                    <DeviceScreen key={form.device.id} deviceId={form.device.id} toolbarTarget={screenToolbar} />
                 </div>}
 
                 {tab === "control" && form.mode === "edit-device" && <div role="tabpanel" id="device-control-panel" aria-labelledby="device-control-tab">
-                    <DeviceScreen key={form.device.id} deviceId={form.device.id} control />
+                    <DeviceScreen key={form.device.id} deviceId={form.device.id} control toolbarTarget={screenToolbar} />
                 </div>}
 
                 {tab === "info" && <div role="tabpanel" id="device-info-panel" aria-labelledby="device-info-tab">

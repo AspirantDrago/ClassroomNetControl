@@ -974,17 +974,11 @@ export function App() {
                                         />
                                     ))}
 
-                                <div className="classroom-actions classroom-device-actions">
-                                    <button className="danger-button"
-                                        disabled={busyPower || !dashboard.devices.some((device) => !device.veyon_bulk_protected) || dashboard.classroom.id !== selectedClassroomId}
-                                        onClick={() => void handlePowerDownAll()}>
-                                        {busyPower ? "Отправка команды..." : "Выключить все"}
-                                    </button>
-                                    <button className="success-button"
-                                        disabled={busyWakeAction !== null || !dashboard.devices.some((device) => !device.wol_protected) || dashboard.classroom.id !== selectedClassroomId}
-                                        onClick={() => void handleWake()}>
-                                        {busyWakeAction === "all" ? "Отправка WoL..." : "Разбудить всё"}
-                                    </button>
+                                <div className="classroom-device-actions">
+                                    {userCanControlWan && dashboard.devices.some((device) => !device.wan_allowed || !device.wan_protected) && (
+                                        <section className="classroom-action-row" aria-label="Интернет">
+                                            <span className="classroom-action-label">Интернет:</span>
+                                            <div className="classroom-actions">
                                     {userCanControlWan && dashboard.devices.some((device) => !device.wan_protected && device.wan_allowed) && (
                                         <button
                                             className="danger-button"
@@ -1003,6 +997,24 @@ export function App() {
                                             {busyClassroomWanAction === "allow" ? "Включение..." : "Включить всем Интернет"}
                                         </button>
                                     )}
+                                            </div>
+                                        </section>
+                                    )}
+                                    <section className="classroom-action-row" aria-label="Питание">
+                                        <span className="classroom-action-label">Питание:</span>
+                                        <div className="classroom-actions">
+                                    <button className="danger-button"
+                                        disabled={busyPower || !dashboard.devices.some((device) => !device.veyon_bulk_protected) || dashboard.classroom.id !== selectedClassroomId}
+                                        onClick={() => void handlePowerDownAll()}>
+                                        {busyPower ? "Отправка команды..." : "Выключить все"}
+                                    </button>
+                                    <button className="success-button"
+                                        disabled={busyWakeAction !== null || !dashboard.devices.some((device) => !device.wol_protected) || dashboard.classroom.id !== selectedClassroomId}
+                                        onClick={() => void handleWake()}>
+                                        {busyWakeAction === "all" ? "Отправка WoL..." : "Разбудить всё"}
+                                    </button>
+                                        </div>
+                                    </section>
                                 </div>
 
                                 <DeviceGrid

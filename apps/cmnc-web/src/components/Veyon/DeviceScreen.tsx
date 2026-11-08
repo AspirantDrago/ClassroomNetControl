@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { extractErrorDetail, getVeyonFrame } from "../../api";
 import "./Veyon.css";
 import { RemoteControlImage } from "./RemoteControlImage";
 
-export function DeviceScreen({ deviceId, standalone = false, control = false }: { deviceId: number; standalone?: boolean; control?: boolean }) {
+export function DeviceScreen({ deviceId, standalone = false, control = false, toolbarTarget }: { deviceId: number; standalone?: boolean; control?: boolean; toolbarTarget?: HTMLElement | null }) {
     const [source, setSource] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [popup, setPopup] = useState<Window | null>(null);
@@ -86,16 +87,18 @@ export function DeviceScreen({ deviceId, standalone = false, control = false }: 
         {!source && !error && <p role="status">Подключение к экрану...</p>}
         {source && (control ? <RemoteControlImage deviceId={deviceId} source={source} imageRef={imageRef} /> : <img ref={imageRef} src={source} alt="Экран устройства" />)}
         {error && source && <p className="muted">Показан последний полученный кадр.</p>}
+    </div>;
+    const toolbar = popup ? <div className="device-screen-toolbar">
+        <button type="button" className="secondary-button" onClick={() => popup.focus()}>Показать окно</button>
+        <button type="button" className="secondary-button" onClick={() => { popup.close(); setPopup(null); }}>Вернуть в окно устройства</button>
+    </div> : (
         <div className="device-screen-toolbar">
             <button type="button" className="secondary-button" disabled={!source} onClick={() => void toggleFullscreen()}>На весь экран</button>
             {!standalone && <button type="button" className="secondary-button" onClick={openWindow}>В отдельном окне</button>}
         </div>
-    </div>;
-    return popup ? <>
-        <p role="status">{control ? "Управление открыто в отдельном окне." : "Экран открыт в отдельном окне."}</p>
-        <div className="device-screen-toolbar">
-            <button type="button" className="secondary-button" onClick={() => popup.focus()}>Показать окно</button>
-            <button type="button" className="secondary-button" onClick={() => { popup.close(); setPopup(null); }}>Вернуть в окно устройства</button>
-        </div>
-    </> : screen;
+    );
+    return <>
+        {toolbarTarget ? createPortal(toolbar, toolbarTarget) : toolbar}
+        {popup ? <p role="status">{control ? "Управление открыто в отдельном окне." : "Экран открыт в отдельном окне."}</p> : screen}
+    </>;
 }

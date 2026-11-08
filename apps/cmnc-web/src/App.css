@@ -95,12 +95,13 @@
     text-align: center;
 }
 
-.classroom-device-actions {
-    justify-content: flex-start;
-    margin-bottom: 18px;
-}
+.classroom-device-actions { display: grid; gap: 12px; margin-bottom: 18px; }
+.classroom-action-row { display: flex; align-items: center; gap: 12px; }
+.classroom-action-label { min-width: 90px; font-weight: 600; }
+.classroom-action-row .classroom-actions { justify-content: flex-start; }
 
 @media (max-width: 640px) {
     .classroom-header > .classroom-actions { width: 100%; justify-content: flex-start; }
-    .classroom-device-actions > button { flex: 1 1 100%; }
+    .classroom-action-row { flex-direction: column; align-items: stretch; gap: 8px; }
+    .classroom-device-actions .classroom-actions > button { flex: 1 1 100%; }
 }
