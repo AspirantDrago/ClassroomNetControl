@@ -1027,7 +1027,7 @@ export function powerVeyonClassroom(classroomId: number, action: VeyonBulkPowerA
 export type VeyonInputEvent =
     | {type: "key"; key: number; pressed: boolean}
     | {type: "pointer"; x: number; y: number; buttons: number};
-export type VeyonShortcut = "escape" | "ctrl-shift-delete";
+export type VeyonShortcut = "escape" | "ctrl-alt-delete";
 export function veyonShortcut(deviceId: number, shortcut: VeyonShortcut, token: string): Promise<{accepted: boolean}> {
     return request(`/api/devices/${deviceId}/veyon/shortcut/${shortcut}`, {method: "POST", body: JSON.stringify({token})});
 }

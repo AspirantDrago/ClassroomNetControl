@@ -146,13 +146,13 @@ def register_veyon_routes(app):
         return gateway.Response(response.content, media_type="image/png", headers={"Cache-Control": "no-store"})
 
     @app.post("/api/devices/{device_id}/veyon/shortcut/{shortcut}")
-    async def device_shortcut(device_id: int, shortcut: Literal["escape", "ctrl-shift-delete"], payload: ControlInput,
+    async def device_shortcut(device_id: int, shortcut: Literal["escape", "ctrl-alt-delete"], payload: ControlInput,
                               request: Request, authorization: str | None = Header(default=None)):
         principal = await gateway.get_current_principal(request, authorization)
-        if shortcut == "ctrl-shift-delete" and principal.role not in {"admin", "superadmin"}:
+        if shortcut == "ctrl-alt-delete" and principal.role not in {"admin", "superadmin"}:
             raise HTTPException(403, "Комбинация доступна только администраторам")
         target = await authorized_target(device_id, request, authorization, principal)
-        keys = [0xff1b] if shortcut == "escape" else [0xffe3, 0xffe1, 0xffff]
+        keys = [0xff1b] if shortcut == "escape" else [0xffe3, 0xffe9, 0xffff]
         events = [{"type": "key", "key": key, "pressed": True} for key in keys]
         events += [{"type": "key", "key": key, "pressed": False} for key in reversed(keys)]
         return (await service_call("POST", "/internal/device/control/input", {

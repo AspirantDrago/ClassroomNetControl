@@ -401,14 +401,14 @@ def test_control_shortcuts_enforce_role_and_forward_owned_lease(monkeypatch, rol
         service = AsyncMock(return_value=httpx.Response(200, json={'accepted': True}))
         monkeypatch.setattr(veyon_routes, 'service_call', service)
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=gateway.app), base_url='http://test') as client:
-            response = await client.post('/api/devices/10/veyon/shortcut/ctrl-shift-delete', json={'token':'owned-lease'})
+            response = await client.post('/api/devices/10/veyon/shortcut/ctrl-alt-delete', json={'token':'owned-lease'})
             assert response.status_code == (200 if allowed else 403)
             if allowed:
                 payload = service.call_args.args[2]
                 assert payload['owner'] == 'user:8' and payload['token'] == 'owned-lease'
                 assert [(event['key'], event['pressed']) for event in payload['events']] == [
-                    (0xffe3, True), (0xffe1, True), (0xffff, True),
-                    (0xffff, False), (0xffe1, False), (0xffe3, False)]
+                    (0xffe3, True), (0xffe9, True), (0xffff, True),
+                    (0xffff, False), (0xffe9, False), (0xffe3, False)]
             else:
                 service.assert_not_awaited()
                 authorized.assert_not_awaited()

@@ -171,7 +171,7 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
             {control && <button type="button" className="secondary-button" disabled={!source || shortcutBusy}
                 onMouseDown={event => event.preventDefault()} onClick={() => void sendShortcut("escape")}>Esc</button>}
             {control && canSendAdminShortcut && <button type="button" className="danger-button" disabled={!source || shortcutBusy}
-                onMouseDown={event => event.preventDefault()} onClick={() => void sendShortcut("ctrl-shift-delete")}>Ctrl+Shift+Del</button>}
+                onMouseDown={event => event.preventDefault()} onClick={() => void sendShortcut("ctrl-alt-delete")}>Ctrl+Alt+Del</button>}
             <button type="button" className="secondary-button" disabled={!source} onClick={() => void toggleFullscreen()}>На весь экран</button>
             {!standalone && <button type="button" className="secondary-button" disabled={recording.busy || !!recording.options} onClick={openWindow}>В отдельном окне</button>}
         </div>
