@@ -51,6 +51,7 @@ def test_veyon_authentication_frame_reuse_and_power(tmp_path, pem):
             calls.append((request.method, request.url.path))
             if request.method == 'POST':
                 body = json.loads(request.content)
+                assert request.extensions['timeout']['read'] > 15
                 assert body['method'] == AUTH_KEYS
                 assert body['credentials'] == {'keyname': 'CMNC', 'keydata': pem}
                 return httpx.Response(200, json={'connection-uid': 'test-connection'})

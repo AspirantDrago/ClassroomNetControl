@@ -41,6 +41,8 @@ AUTH_KEYS = "0c69b301-81b4-42d6-8fae-128cdd113314"
 FEATURES = {"power-down": "6f5a27a0-0e2f-496e-afcc-7aae62eede10", "reboot": "4f7d98f0-395a-4fff-b968-e49b8d0f748c", "install-updates-and-power-down": "09bcb3a1-fc11-4d03-8cf1-efd26be8655b"}
 WEBAPI = os.environ.get("CMNC_VEYON_WEBAPI_URL", "http://cmnc-veyon-proxy:11080").rstrip("/")
 TARGET_PORT = int(os.environ.get("CMNC_VEYON_TARGET_PORT", "11100"))
+# Veyon waits up to 15 seconds for authentication methods on the target.
+AUTHENTICATION_TIMEOUT_SECONDS = 20
 FRAME_CACHE_SECONDS = 0.1
 FRAMEBUFFER_ATTEMPTS = 12
 FRAMEBUFFER_RETRY_DELAY = 0.35
@@ -134,7 +136,7 @@ class VeyonBridge:
         if len(self.sessions) >= 128:
             raise HTTPException(503, "Достигнут лимит подключений Veyon")
         host = target.host if TARGET_PORT == 11100 else f"{target.host}:{TARGET_PORT}"
-        response = await self.checked("POST", f"/api/v1/authentication/{host}", json={"method": AUTH_KEYS, "credentials": {"keyname": name, "keydata": pem}})
+        response = await self.checked("POST", f"/api/v1/authentication/{host}", timeout=AUTHENTICATION_TIMEOUT_SECONDS, json={"method": AUTH_KEYS, "credentials": {"keyname": name, "keydata": pem}})
         uid = response.json().get("connection-uid")
         if not isinstance(uid, str) or not uid:
             raise HTTPException(502, "Veyon вернул некорректный идентификатор подключения")

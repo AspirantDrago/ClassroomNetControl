@@ -12,6 +12,17 @@ RUN python3 /patch/patch.py /source \
     && cmake -S /source -B /build -G Ninja -DWITH_CORE_ONLY=ON -DWITH_TRANSLATIONS=OFF -DWITH_LTO=OFF -DWITH_PCH=OFF -DCMAKE_BUILD_TYPE=Release \
     && cmake --build /build --target webapi --parallel 2
 
+
+FROM input-builder AS qt-http-builder
+RUN apt-get update && apt-get install -y --no-install-recommends qt6-base-private-dev qt6-websockets-private-dev \
+    && rm -rf /var/lib/apt/lists/*
+ADD --checksum=sha256:0e160bfcbb2573c5be27d97538a646decfd2e7eb2b465da73d80de9bc3c6ca53 https://codeload.github.com/qt/qthttpserver/tar.gz/refs/tags/v6.4.2 /tmp/qt-http-source.tar.gz
+RUN mkdir /qt-http-source && tar -xzf /tmp/qt-http-source.tar.gz -C /qt-http-source --strip-components=1
+COPY services/cmnc-veyon-service/qt-http-fix /qt-http-fix
+RUN python3 /qt-http-fix/patch.py /qt-http-source \
+    && cmake -S /qt-http-source -B /qt-http-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DQT_BUILD_TESTS=OFF -DQT_BUILD_EXAMPLES=OFF \
+    && cmake --build /qt-http-build --parallel 2
+
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive QT_QPA_PLATFORM=offscreen XDG_RUNTIME_DIR=/tmp/veyon-runtime VEYON_LOG_LEVEL=warning
@@ -34,5 +45,6 @@ RUN veyon-cli config set Master/ComputerMonitoringUpdateInterval 100 \
     && chown -R 10001:10001 /tmp/veyon-runtime /tmp/veyon-logs \
     && chmod 700 /tmp/veyon-runtime /tmp/veyon-logs
 COPY --from=input-builder /build/plugins/webapi/webapi.so /usr/lib/x86_64-linux-gnu/veyon/webapi.so
+COPY --from=qt-http-builder /qt-http-build/lib/x86_64-linux-gnu/libQt6HttpServer.so.6.4.2 /usr/lib/x86_64-linux-gnu/libQt6HttpServer.so.6.4.2
 USER 10001:10001
 CMD ["veyon-cli", "webapi", "runserver"]
