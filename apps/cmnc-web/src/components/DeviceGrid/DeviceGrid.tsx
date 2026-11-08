@@ -10,6 +10,7 @@ type DeviceGridProps = {
     onAllow: (deviceId: number) => Promise<void>;
     onEdit: (device: DashboardDevice) => void;
     canControlWan: boolean;
+    showThumbnails: boolean;
 };
 
 export function DeviceGrid(props: DeviceGridProps) {
@@ -20,6 +21,7 @@ export function DeviceGrid(props: DeviceGridProps) {
         onAllow,
         onEdit,
         canControlWan,
+        showThumbnails,
     } = props;
 
     return (
@@ -45,6 +47,7 @@ export function DeviceGrid(props: DeviceGridProps) {
                                         onAllow={onAllow}
                                         onEdit={onEdit}
                                         canControlWan={canControlWan}
+                                        showThumbnails={showThumbnails}
                                     />
                                 ) : (
                                     <div className="empty-device-cell">
@@ -71,6 +74,7 @@ export function DeviceGrid(props: DeviceGridProps) {
                     onAllow={onAllow}
                     onEdit={onEdit}
                     canControlWan={canControlWan}
+                                        showThumbnails={showThumbnails}
                 />
             )}
         </>
@@ -84,6 +88,7 @@ function UnpositionedDevices(props: {
     onAllow: (deviceId: number) => Promise<void>;
     onEdit: (device: DashboardDevice) => void;
     canControlWan: boolean;
+    showThumbnails: boolean;
 }) {
     const {
         devices,
@@ -92,6 +97,7 @@ function UnpositionedDevices(props: {
         onAllow,
         onEdit,
         canControlWan,
+        showThumbnails,
     } = props;
 
     return (
@@ -108,6 +114,7 @@ function UnpositionedDevices(props: {
                         onAllow={onAllow}
                         onEdit={onEdit}
                         canControlWan={canControlWan}
+                                        showThumbnails={showThumbnails}
                     />
                 ))}
             </div>

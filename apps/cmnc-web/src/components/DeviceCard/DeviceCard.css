@@ -112,3 +112,11 @@
     background: #1e3a8a;
     color: #bfdbfe;
 }
+
+
+.device-card-content { position: relative; pointer-events: none; }
+.device-thumbnail { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #020617; border-radius: 5px; }
+@media (hover: hover) {
+    .device-card:hover .device-thumbnail { visibility: hidden; }
+}
+.device-card:focus-within .device-thumbnail { visibility: hidden; }

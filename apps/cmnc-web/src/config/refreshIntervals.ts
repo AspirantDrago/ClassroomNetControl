@@ -1,13 +1,13 @@
 const MIN_REFRESH_INTERVAL_MS = 1_000;
 
-function readRefreshInterval(rawValue: string | undefined, fallbackMs: number): number {
+function readRefreshInterval(rawValue: string | undefined, fallbackMs: number, minimumMs = MIN_REFRESH_INTERVAL_MS): number {
     if (rawValue === undefined || rawValue.trim() === "") {
         return fallbackMs;
     }
 
     const parsed = Number(rawValue);
 
-    if (!Number.isSafeInteger(parsed) || parsed < MIN_REFRESH_INTERVAL_MS) {
+    if (!Number.isSafeInteger(parsed) || parsed < minimumMs) {
         console.warn(
             `Некорректный интервал обновления "${rawValue}". Используется ${fallbackMs} мс.`,
         );
@@ -18,6 +18,7 @@ function readRefreshInterval(rawValue: string | undefined, fallbackMs: number): 
 }
 
 export const REFRESH_INTERVALS = Object.freeze({
+    thumbnails: readRefreshInterval(import.meta.env.VITE_THUMBNAIL_REFRESH_INTERVAL_MS, 1000, 100),
     dashboard: readRefreshInterval(
         import.meta.env.VITE_DASHBOARD_REFRESH_INTERVAL_MS,
         5_000,

@@ -1,3 +1,5 @@
+import { useRef } from "react";
+import { DeviceThumbnail } from "./DeviceThumbnail";
 import type { DashboardDevice } from "../../api";
 import { getDeviceTitle } from "../../utils/devices";
 import "./DeviceCard.css";
@@ -9,6 +11,7 @@ type DeviceCardProps = {
     onAllow: (deviceId: number) => Promise<void>;
     onEdit: (device: DashboardDevice) => void;
     canControlWan: boolean;
+    showThumbnails: boolean;
 };
 
 export function DeviceCard(props: DeviceCardProps) {
@@ -19,17 +22,20 @@ export function DeviceCard(props: DeviceCardProps) {
         onAllow,
         onEdit,
         canControlWan,
+        showThumbnails,
     } = props;
+    const cardRef = useRef<HTMLDivElement>(null);
     const busy = busyDeviceId === device.id;
 
     return (
-        <div className={`device-card ${device.online ? "device-online" : "device-offline"}`}
+        <div ref={cardRef} className={`device-card ${device.online ? "device-online" : "device-offline"}`}
             onClick={(event) => {
                 if (!(event.target as HTMLElement).closest("button")) onEdit(device);
             }}>
             <button type="button" className="device-open-button"
                 aria-label={`Открыть устройство ${getDeviceTitle(device)}`}
                 onClick={(event) => { event.stopPropagation(); onEdit(device); }} />
+            <div className="device-card-content">
             <div className="device-card-header">
                 <div className="device-title">{getDeviceTitle(device)}</div>
 
@@ -42,6 +48,10 @@ export function DeviceCard(props: DeviceCardProps) {
                 <div className="device-subtitle">
                     {device.observed_hostname ?? device.hostname ?? "-"}
                 </div>
+            </div>
+
+            {showThumbnails && device.online && device.static_ip && <DeviceThumbnail
+                key={`${device.id}:${device.static_ip}`} deviceId={device.id} title={getDeviceTitle(device)} cardRef={cardRef} />}
             </div>
 
             {device.sync_error && <div className="error-text">{device.sync_error}</div>}

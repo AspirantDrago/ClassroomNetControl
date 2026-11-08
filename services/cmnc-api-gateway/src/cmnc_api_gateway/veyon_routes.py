@@ -3,7 +3,7 @@ import ipaddress
 from typing import Literal, Any
 
 import httpx
-from fastapi import Header, HTTPException, Request
+from fastapi import Header, HTTPException, Request, Query
 from pydantic import BaseModel, Field
 
 from cmnc_api_gateway import main as gateway
@@ -121,8 +121,10 @@ def register_veyon_routes(app):
         return (await service_call("DELETE", f"/internal/keys/{scope}/{scope_id}")).json()
 
     @app.get("/api/devices/{device_id}/veyon/frame")
-    async def device_frame(device_id: int, request: Request, authorization: str | None = Header(default=None)):
+    async def device_frame(device_id: int, request: Request, authorization: str | None = Header(default=None),
+                           width: int = Query(default=1280, ge=160, le=1920)):
         target = await authorized_target(device_id, request, authorization)
+        target["width"] = width
         response = await service_call("POST", "/internal/device/frame", target)
         content_type = response.headers.get("content-type", "")
         if not content_type.lower().startswith("image/"):
