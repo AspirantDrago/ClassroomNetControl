@@ -14,7 +14,7 @@ RUN python3 /patch/patch.py /source \
 
 FROM ubuntu:24.04
 
-ENV DEBIAN_FRONTEND=noninteractive QT_QPA_PLATFORM=offscreen XDG_RUNTIME_DIR=/tmp/veyon-runtime
+ENV DEBIAN_FRONTEND=noninteractive QT_QPA_PLATFORM=offscreen XDG_RUNTIME_DIR=/tmp/veyon-runtime VEYON_LOG_LEVEL=warning
 ADD --checksum=sha256:c604ac465da02d116e8ed50f1dea11af65b6cd9ed7bdcbc06176ec68172e5d46 https://github.com/veyon/veyon/releases/download/v4.11.4/veyon_4.11.4.0-ubuntu.24.04_amd64.deb /tmp/veyon.deb
 RUN apt-get update \
     && apt-get install -y --no-install-recommends /tmp/veyon.deb curl libqca-qt6-plugins qt6-qpa-plugins \
@@ -23,10 +23,16 @@ RUN apt-get update \
 RUN veyon-cli config set Master/ComputerMonitoringUpdateInterval 100 \
     && veyon-cli config set WebAPI/ConnectionLimit 128 \
     && veyon-cli config set WebAPI/ConnectionIdleTimeout 60 \
+    && veyon-cli config set Logging/LogFileDirectory /tmp/veyon-logs \
+    && veyon-cli config set Logging/LogToStdErr true \
+    && veyon-cli config set Logging/LogFileSizeLimitEnabled true \
+    && veyon-cli config set Logging/LogFileSizeLimit 10 \
+    && veyon-cli config set Logging/LogFileRotationEnabled true \
+    && veyon-cli config set Logging/LogFileRotationCount 2 \
     && useradd --uid 10001 --create-home veyon \
-    && mkdir -p /tmp/veyon-runtime \
-    && chown 10001:10001 /tmp/veyon-runtime \
-    && chmod 700 /tmp/veyon-runtime
+    && mkdir -p /tmp/veyon-runtime /tmp/veyon-logs \
+    && chown -R 10001:10001 /tmp/veyon-runtime /tmp/veyon-logs \
+    && chmod 700 /tmp/veyon-runtime /tmp/veyon-logs
 COPY --from=input-builder /build/plugins/webapi/webapi.so /usr/lib/x86_64-linux-gnu/veyon/webapi.so
 USER 10001:10001
 CMD ["veyon-cli", "webapi", "runserver"]
