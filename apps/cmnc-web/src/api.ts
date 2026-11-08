@@ -992,9 +992,12 @@ export function saveVeyonKey(scope: "router" | "classroom", id: number, keyName:
 export function deleteVeyonKey(scope: "router" | "classroom", id: number): Promise<VeyonKeyInfo> {
     return request(`/api/admin/veyon/keys/${scope}/${id}`, {method: "DELETE"});
 }
-export async function getVeyonFrame(deviceId: number, signal: AbortSignal, width?: number): Promise<Blob> {
+export async function getVeyonFrame(deviceId: number, signal: AbortSignal, width?: number, quality?: number): Promise<Blob> {
     const token = getAccessToken();
-    const response = await fetch(`${API_BASE_URL}/api/devices/${deviceId}/veyon/frame${width === undefined ? "" : `?width=${width}`}`, {
+    const params = new URLSearchParams();
+    if (width !== undefined) params.set("width", String(width));
+    if (quality !== undefined) params.set("quality", String(quality));
+    const response = await fetch(`${API_BASE_URL}/api/devices/${deviceId}/veyon/frame${params.size ? `?${params}` : ""}`, {
         signal, cache: "no-store", headers: token ? {Authorization: `Bearer ${token}`} : {},
     });
     if (!response.ok) throw new Error(await readErrorMessage(response));

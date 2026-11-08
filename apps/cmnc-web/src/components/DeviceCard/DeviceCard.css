@@ -117,14 +117,51 @@
 }
 
 
-.device-card-content { display: grid; grid-template-columns: minmax(0, 1fr); position: relative; pointer-events: none; flex: 1; min-width: 0; }
-.device-description { grid-area: 1 / 1; min-width: 0; }
-.device-thumbnail { display: block; grid-area: 1 / 1; align-self: start; width: calc(100% + 10px); max-width: none; height: auto; margin-left: -5px; background: #020617; border-radius: 0; }
-.device-thumbnail ~ .device-description { visibility: hidden; }
-@media (hover: hover) {
-    .device-card:hover .device-thumbnail { visibility: hidden; }
-    .device-card:hover .device-description { visibility: visible; }
+.device-card-content {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    position: relative;
+    pointer-events: none;
+    flex: 1;
+    min-width: 0;
 }
-.device-card:focus-within .device-thumbnail { visibility: hidden; }
 
-.device-card:focus-within .device-description { visibility: visible; }
+.device-description {
+    grid-area: 1 / 1;
+    min-width: 0;
+}
+
+.device-thumbnail {
+    display: block;
+    grid-area: 1 / 1;
+    align-self: start;
+    width: calc(100% + 10px);
+    max-width: none;
+    height: auto;
+    margin-left: -5px;
+    background: #020617;
+    border-radius: 0;
+    margin-top: 5px;
+}
+
+.device-thumbnail ~ .device-description {
+    visibility: hidden;
+}
+
+@media (hover: hover) {
+    .device-card:hover .device-thumbnail {
+        visibility: hidden;
+    }
+
+    .device-card:hover .device-description {
+        visibility: visible;
+    }
+}
+
+.device-card:focus-within .device-thumbnail {
+    visibility: hidden;
+}
+
+.device-card:focus-within .device-description {
+    visibility: visible;
+}

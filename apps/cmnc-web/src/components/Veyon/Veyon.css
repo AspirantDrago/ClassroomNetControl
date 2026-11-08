@@ -63,3 +63,18 @@
 @media (max-width: 640px) {
     .device-modal-screen-actions { width: 100%; }
 }
+
+
+.device-recording-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.recording-timer { font-variant-numeric: tabular-nums; color: #fca5a5; white-space: nowrap; }
+.recording-timer.recording-paused { color: #fcd34d; }
+.recording-settings-backdrop { z-index: 1100; }
+.recording-settings { width: min(460px, 100%); max-height: calc(100dvh - 48px); overflow-y: auto; }
+.recording-settings label { display: grid; gap: 6px; margin: 12px 0; }
+.recording-settings select { width: 100%; padding: 10px; background: #0f172a; color: #e5e7eb; border: 1px solid #475569; border-radius: 8px; font: inherit; }
+.recording-settings-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 640px) {
+    .device-recording-controls { width: 100%; }
+    .recording-timer { width: 100%; }
+    .device-recording-controls button { flex: 1; }
+}

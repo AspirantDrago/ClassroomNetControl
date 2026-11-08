@@ -122,9 +122,11 @@ def register_veyon_routes(app):
 
     @app.get("/api/devices/{device_id}/veyon/frame")
     async def device_frame(device_id: int, request: Request, authorization: str | None = Header(default=None),
-                           width: int = Query(default=1280, ge=160, le=1920)):
+                           width: int = Query(default=1280, ge=160, le=1920),
+                           quality: int = Query(default=75, ge=1, le=100)):
         target = await authorized_target(device_id, request, authorization)
         target["width"] = width
+        target["quality"] = quality
         response = await service_call("POST", "/internal/device/frame", target)
         content_type = response.headers.get("content-type", "")
         if not content_type.lower().startswith("image/"):

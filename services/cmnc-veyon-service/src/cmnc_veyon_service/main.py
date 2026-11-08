@@ -65,6 +65,7 @@ class Target(BaseModel):
     classroom_id: int = Field(gt=0)
     host: str
     width: int = Field(default=1280, ge=160, le=1920)
+    quality: int = Field(default=75, ge=1, le=100)
 
     @field_validator("host")
     @classmethod
@@ -88,6 +89,7 @@ class Connection:
     last_frame_warning: float = 0
     frame: tuple[bytes, str] | None = None
     frame_width: int = 0
+    frame_quality: int = 0
     frame_at: float = 0
 
 
@@ -158,11 +160,12 @@ class VeyonBridge:
                 # A short shared cache coalesces concurrent viewers on this
                 # authenticated target without persisting screenshots to disk.
                 if (not snapshot and session.frame is not None and session.frame_width == target.width
+                        and session.frame_quality == target.quality
                         and time.monotonic() - session.frame_at < FRAME_CACHE_SECONDS):
                     return session.frame
                 # PNG without width/height returns the native framebuffer without
                 # JPEG loss or resizing. Never reuse the monitoring JPEG cache.
-                params = {"format": "png", "compression": 5} if snapshot else {"format": "jpeg", "quality": 75, "width": target.width}
+                params = {"format": "png", "compression": 5} if snapshot else {"format": "jpeg", "quality": target.quality, "width": target.width}
                 # Authentication can finish before the first framebuffer arrives.
                 # Keep this connection alive while waiting; never reauthenticate
                 # just because the initial screen image is not ready yet.
@@ -186,6 +189,7 @@ class VeyonBridge:
                     return response.content, response.headers["content-type"]
                 session.frame = (response.content, response.headers["content-type"])
                 session.frame_width = target.width
+                session.frame_quality = target.quality
                 session.frame_at = time.monotonic()
                 return session.frame
             except HTTPException as exc:

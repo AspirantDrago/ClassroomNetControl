@@ -341,3 +341,50 @@ def test_snapshot_gateway_checks_device_access_and_png(monkeypatch):
             assert (await client.get('/api/devices/10/veyon/snapshot')).status_code == 403
             service.assert_not_awaited()
     asyncio.run(run())
+
+
+def test_recording_quality_is_forwarded_and_has_its_own_frame_cache(tmp_path, pem):
+    async def run():
+        store = KeyStore(tmp_path)
+        store.save('router', 1, 'CMNC', pem)
+        qualities = []
+        def handle(request):
+            if request.method == 'POST':
+                return httpx.Response(200, json={'connection-uid': 'quality-session'})
+            qualities.append(request.url.params['quality'])
+            return httpx.Response(200, content=f"jpeg-{qualities[-1]}".encode(), headers={'content-type': 'image/jpeg'})
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+            bridge = VeyonBridge(store, client)
+            normal = Target(device_id=1, router_id=1, classroom_id=1, host='192.168.1.10')
+            high = normal.model_copy(update={'quality': 95})
+            assert (await bridge.operate(normal))[0] == b'jpeg-75'
+            assert (await bridge.operate(high))[0] == b'jpeg-95'
+            assert (await bridge.operate(high))[0] == b'jpeg-95'
+            assert (await bridge.operate(normal))[0] == b'jpeg-75'
+            assert qualities == ['75', '95', '75']
+    asyncio.run(run())
+
+
+def test_recording_frame_quality_validation_and_gateway_access(monkeypatch):
+    async def run():
+        principal = PrincipalResponse(principal_type='user', id=1, role='teacher', display_name='Teacher', classroom_ids=[7], permissions=[])
+        classroom = {'id': 7, 'router_id': 1, 'subnet_cidr': '192.168.1.0/24'}
+        monkeypatch.setattr(gateway, 'get_current_principal', AsyncMock(return_value=principal))
+        monkeypatch.setattr(gateway, 'get_device_classroom_id', AsyncMock(return_value=7))
+        monkeypatch.setattr(gateway, 'get_classroom_or_404', AsyncMock(return_value=classroom))
+        monkeypatch.setattr(gateway, 'get_wol_classroom_layout', AsyncMock(return_value={
+            'classroom': classroom, 'devices': [{'id': 10, 'static_ip': '192.168.1.10'}]}))
+        service = AsyncMock(return_value=httpx.Response(200, content=b'high-quality', headers={'content-type': 'image/jpeg'}))
+        monkeypatch.setattr(veyon_routes, 'service_call', service)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=gateway.app), base_url='http://test') as client:
+            assert (await client.get('/api/devices/10/veyon/frame?width=1920&quality=95')).status_code == 200
+            assert service.call_args.args[2]['quality'] == 95
+            assert service.call_args.args[2]['width'] == 1920
+            service.reset_mock()
+            for invalid in ('0', '101', 'invalid'):
+                assert (await client.get(f'/api/devices/10/veyon/frame?quality={invalid}')).status_code == 422
+            service.assert_not_awaited()
+            principal.classroom_ids = []
+            assert (await client.get('/api/devices/10/veyon/frame?quality=95')).status_code == 403
+            service.assert_not_awaited()
+    asyncio.run(run())
