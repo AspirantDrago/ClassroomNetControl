@@ -31,7 +31,8 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends /tmp/veyon.deb curl libqca-qt6-plugins qt6-qpa-plugins \
     && rm -f /tmp/veyon.deb \
     && rm -rf /var/lib/apt/lists/*
-RUN veyon-cli config set Master/ComputerMonitoringUpdateInterval 100 \
+RUN veyon-cli config set Master/ComputerMonitoringImageQuality 0 \
+    && veyon-cli config set Master/ComputerMonitoringUpdateInterval 100 \
     && veyon-cli config set WebAPI/ConnectionLimit 128 \
     && veyon-cli config set WebAPI/ConnectionIdleTimeout 60 \
     && veyon-cli config set Logging/LogFileDirectory /tmp/veyon-logs \

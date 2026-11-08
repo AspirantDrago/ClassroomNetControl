@@ -145,7 +145,7 @@ class VeyonBridge:
         logger.info("Veyon authenticated device_id=%s host=%s", target.device_id, target.host)
         return session
 
-    async def operate(self, target: Target, action: str | None = None):
+    async def operate(self, target: Target, action: str | None = None, *, snapshot: bool = False):
         identity, name, pem = self.identity(target)
         lock = self.locks.setdefault(identity, asyncio.Lock())
         async with self.capacity, lock:
@@ -157,9 +157,12 @@ class VeyonBridge:
                     return {"accepted": True, "device_id": target.device_id}
                 # A short shared cache coalesces concurrent viewers on this
                 # authenticated target without persisting screenshots to disk.
-                if (session.frame is not None and session.frame_width == target.width
+                if (not snapshot and session.frame is not None and session.frame_width == target.width
                         and time.monotonic() - session.frame_at < FRAME_CACHE_SECONDS):
                     return session.frame
+                # PNG without width/height returns the native framebuffer without
+                # JPEG loss or resizing. Never reuse the monitoring JPEG cache.
+                params = {"format": "png", "compression": 5} if snapshot else {"format": "jpeg", "quality": 75, "width": target.width}
                 # Authentication can finish before the first framebuffer arrives.
                 # Keep this connection alive while waiting; never reauthenticate
                 # just because the initial screen image is not ready yet.
@@ -167,7 +170,7 @@ class VeyonBridge:
                     async with asyncio.timeout(8):
                         for attempt in range(FRAMEBUFFER_ATTEMPTS):
                             try:
-                                response = await self.checked("GET", "/api/v1/framebuffer", headers=headers, params={"format": "jpeg", "quality": 75, "width": target.width})
+                                response = await self.checked("GET", "/api/v1/framebuffer", headers=headers, params=params)
                                 break
                             except VeyonError as exc:
                                 if exc.error_code != 10 or attempt == FRAMEBUFFER_ATTEMPTS - 1:
@@ -177,6 +180,10 @@ class VeyonBridge:
                     raise VeyonError(503, "Veyon ещё не подготовил изображение экрана", 10) from exc
                 if not response.headers.get("content-type", "").lower().startswith("image/"):
                     raise HTTPException(502, "Veyon не вернул изображение экрана")
+                if snapshot:
+                    if response.headers["content-type"].split(";", 1)[0].lower() != "image/png":
+                        raise HTTPException(502, "Veyon не вернул снимок в формате PNG")
+                    return response.content, response.headers["content-type"]
                 session.frame = (response.content, response.headers["content-type"])
                 session.frame_width = target.width
                 session.frame_at = time.monotonic()
@@ -299,6 +306,12 @@ async def delete_key(scope: Literal["router", "classroom"], scope_id: int):
 @app.post("/internal/device/frame")
 async def device_frame(payload: Target):
     content, media_type = await app.state.bridge.operate(payload)
+    return Response(content, media_type=media_type, headers={"Cache-Control": "no-store"})
+
+
+@app.post("/internal/device/snapshot")
+async def device_snapshot(payload: Target):
+    content, media_type = await app.state.bridge.operate(payload, snapshot=True)
     return Response(content, media_type=media_type, headers={"Cache-Control": "no-store"})
 
 

@@ -1001,6 +1001,15 @@ export async function getVeyonFrame(deviceId: number, signal: AbortSignal, width
     if (!response.headers.get("content-type")?.startsWith("image/")) throw new Error("Сервис не вернул изображение экрана");
     return response.blob();
 }
+export async function getVeyonSnapshot(deviceId: number, signal: AbortSignal): Promise<Blob> {
+    const token = getAccessToken();
+    const response = await fetch(`${API_BASE_URL}/api/devices/${deviceId}/veyon/snapshot`, {
+        signal, cache: "no-store", headers: token ? {Authorization: `Bearer ${token}`} : {},
+    });
+    if (!response.ok) throw new Error(await readErrorMessage(response));
+    if (response.headers.get("content-type")?.split(";", 1)[0].toLowerCase() !== "image/png") throw new Error("Сервис не вернул снимок PNG");
+    return response.blob();
+}
 export function powerVeyonDevice(deviceId: number, action: "power-down" | "reboot"): Promise<{accepted: boolean}> {
     return request(`/api/devices/${deviceId}/veyon/${action}`, {method: "POST"});
 }

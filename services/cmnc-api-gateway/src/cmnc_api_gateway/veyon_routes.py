@@ -131,6 +131,14 @@ def register_veyon_routes(app):
             raise HTTPException(502, "Veyon не вернул изображение")
         return gateway.Response(response.content, media_type=content_type, headers={"Cache-Control": "no-store"})
 
+    @app.get("/api/devices/{device_id}/veyon/snapshot")
+    async def device_snapshot(device_id: int, request: Request, authorization: str | None = Header(default=None)):
+        target = await authorized_target(device_id, request, authorization)
+        response = await service_call("POST", "/internal/device/snapshot", target)
+        if response.headers.get("content-type", "").split(";", 1)[0].lower() != "image/png":
+            raise HTTPException(502, "Veyon не вернул снимок в формате PNG")
+        return gateway.Response(response.content, media_type="image/png", headers={"Cache-Control": "no-store"})
+
     @app.post("/api/devices/{device_id}/veyon/control/{action}")
     async def device_control(device_id: int, action: Literal["start", "input", "stop"], payload: ControlInput,
                              request: Request, authorization: str | None = Header(default=None)):

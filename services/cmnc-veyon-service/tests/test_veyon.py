@@ -283,3 +283,61 @@ def test_additional_power_commands_select_native_veyon_feature(tmp_path,pem,acti
             assert result['accepted'] is True
             assert len(puts)==1
     asyncio.run(run())
+
+
+def test_snapshot_uses_native_png_and_never_reuses_monitoring_jpeg(tmp_path, pem):
+    async def run():
+        store = KeyStore(tmp_path)
+        store.save('router', 1, 'CMNC', pem)
+        image_requests = []
+
+        def handle(request):
+            if request.method == 'POST':
+                return httpx.Response(200, json={'connection-uid': 'snapshot-session'})
+            assert request.headers['Connection-Uid'] == 'snapshot-session'
+            params = dict(request.url.params)
+            image_requests.append(params)
+            if params['format'] == 'png':
+                assert params == {'format': 'png', 'compression': '5'}
+                return httpx.Response(200, content=b'native-png', headers={'content-type': 'image/png'})
+            assert params['width'] == '320'
+            return httpx.Response(200, content=b'thumbnail-jpeg', headers={'content-type': 'image/jpeg'})
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+            bridge = VeyonBridge(store, client)
+            target = Target(device_id=1, router_id=1, classroom_id=2, host='192.168.1.2', width=320)
+            await bridge.operate(target)
+            identity, _, _ = bridge.identity(target)
+            cached = bridge.sessions[identity].frame
+            assert await bridge.operate(target, snapshot=True) == (b'native-png', 'image/png')
+            assert await bridge.operate(target, snapshot=True) == (b'native-png', 'image/png')
+            assert bridge.sessions[identity].frame == cached
+            assert [params['format'] for params in image_requests] == ['jpeg', 'png', 'png']
+    asyncio.run(run())
+
+
+def test_snapshot_gateway_checks_device_access_and_png(monkeypatch):
+    async def run():
+        principal = PrincipalResponse(principal_type='user', id=1, role='teacher', display_name='Teacher', classroom_ids=[7], permissions=[])
+        classroom = {'id': 7, 'router_id': 1, 'subnet_cidr': '192.168.1.0/24'}
+        monkeypatch.setattr(gateway, 'get_current_principal', AsyncMock(return_value=principal))
+        monkeypatch.setattr(gateway, 'get_device_classroom_id', AsyncMock(return_value=7))
+        monkeypatch.setattr(gateway, 'get_classroom_or_404', AsyncMock(return_value=classroom))
+        monkeypatch.setattr(gateway, 'get_wol_classroom_layout', AsyncMock(return_value={
+            'classroom': classroom, 'devices': [{'id': 10, 'static_ip': '192.168.1.10'}]}))
+        service = AsyncMock(return_value=httpx.Response(200, content=b'native-png', headers={'content-type': 'image/png'}))
+        monkeypatch.setattr(veyon_routes, 'service_call', service)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=gateway.app), base_url='http://test') as client:
+            response = await client.get('/api/devices/10/veyon/snapshot')
+            assert response.status_code == 200 and response.content == b'native-png'
+            assert response.headers['content-type'] == 'image/png'
+            assert response.headers['cache-control'] == 'no-store'
+            service.assert_awaited_once_with('POST', '/internal/device/snapshot', {
+                'device_id': 10, 'classroom_id': 7, 'router_id': 1, 'host': '192.168.1.10'})
+            service.return_value = httpx.Response(200, content=b'jpeg', headers={'content-type': 'image/jpeg'})
+            assert (await client.get('/api/devices/10/veyon/snapshot')).status_code == 502
+            service.reset_mock()
+            principal.classroom_ids = []
+            assert (await client.get('/api/devices/10/veyon/snapshot')).status_code == 403
+            service.assert_not_awaited()
+    asyncio.run(run())

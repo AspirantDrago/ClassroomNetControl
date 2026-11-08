@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { formatStateDuration, formatStateTime } from "../../utils/deviceTiming";
 import type { DashboardDevice, DynamicDevice } from "../../api";
+import { getDeviceTitle } from "../../utils/devices";
 import { DeviceScreen } from "../Veyon/DeviceScreen";
 import "./DeviceFormModal.css";
 
@@ -121,7 +122,7 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                 {error && <div className="device-modal-error" role="alert">{error}</div>}
 
                 {tab === "screen" && form.mode === "edit-device" && <div role="tabpanel" id="device-screen-panel" aria-labelledby="device-screen-tab">
-                    <DeviceScreen key={form.device.id} deviceId={form.device.id} toolbarTarget={screenToolbar} />
+                    <DeviceScreen key={form.device.id} deviceId={form.device.id} deviceName={getDeviceTitle(form.device)} toolbarTarget={screenToolbar} />
                 </div>}
 
                 {tab === "control" && form.mode === "edit-device" && <div role="tabpanel" id="device-control-panel" aria-labelledby="device-control-tab">
