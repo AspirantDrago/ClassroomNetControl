@@ -5,7 +5,8 @@ import {
     wakeDevice,
     wakeClassroom,
     powerVeyonDevice,
-    powerDownVeyonClassroom,
+    powerVeyonClassroom,
+    type VeyonBulkPowerAction,
     blockClassroomWan,
     blockDeviceWan,
     cleanupStaleObservedDevices,
@@ -88,6 +89,7 @@ export function App() {
     const [error, setError] = useState<string | null>(null);
     const [busyDeviceId, setBusyDeviceId] = useState<number | null>(null);
     const [busyPower, setBusyPower] = useState(false);
+    const [busyClassroomPowerAction, setBusyClassroomPowerAction] = useState<VeyonBulkPowerAction | null>(null);
     const [busyWakeAction, setBusyWakeAction] = useState<number | "all" | null>(null);
     const [wakeMessage, setWakeMessage] = useState<string | null>(null);
     const [busyClassroomWanAction, setBusyClassroomWanAction] = useState<"block" | "allow" | null>(null);
@@ -572,19 +574,25 @@ export function App() {
         finally { setBusyPower(false); }
     }
 
-    async function handlePowerDownAll() {
+    async function handleClassroomPower(action: VeyonBulkPowerAction) {
         if (!dashboard || dashboard.classroom.id !== selectedClassroomId || busyPower) return;
-        const targets = dashboard.devices.filter((device) => !device.veyon_bulk_protected);
+        if (action === "install-updates-and-power-down" && principal?.role !== "admin" && principal?.role !== "superadmin") return;
+        const targets = dashboard.devices.filter((device) => device.is_pinned && !device.veyon_bulk_protected);
         if (!targets.length) return;
-        if (!window.confirm(`Выключить устройства аудитории «${dashboard.classroom.name}» (${targets.length})? Устройства с защитой от массового управления через Veyon будут пропущены. Несохранённые данные могут быть потеряны.`)) return;
-        setBusyPower(true); setError(null); setWakeMessage(null);
+        const labels = {
+            "power-down": {question: "Выключить", result: "выключения"},
+            "reboot": {question: "Перезагрузить", result: "перезагрузки"},
+            "install-updates-and-power-down": {question: "Установить обновления и выключить", result: "установки обновлений и выключения"},
+        }[action];
+        if (!window.confirm(`${labels.question} устройства аудитории «${dashboard.classroom.name}» (${targets.length})? Устройства с защитой от массового управления через Veyon будут пропущены. Несохранённые данные могут быть потеряны.`)) return;
+        setBusyPower(true); setBusyClassroomPowerAction(action); setError(null); setWakeMessage(null);
         try {
-            const result = await powerDownVeyonClassroom(dashboard.classroom.id);
+            const result = await powerVeyonClassroom(dashboard.classroom.id, action);
             const failure = result.results.find((item) => !item.accepted)?.error ?? "";
             if (!result.accepted_count && result.failed_count) throw new Error(failure);
-            setWakeMessage(`Команд выключения отправлено: ${result.accepted_count}.${result.skipped_count ? ` Пропущено защищённых: ${result.skipped_count}.` : ""}${result.failed_count ? ` Ошибок: ${result.failed_count}. ${failure}` : ""}`);
+            setWakeMessage(`Команд ${labels.result} отправлено: ${result.accepted_count}.${result.skipped_count ? ` Пропущено защищённых: ${result.skipped_count}.` : ""}${result.failed_count ? ` Ошибок: ${result.failed_count}. ${failure}` : ""}`);
         } catch (err) { setError(extractErrorDetail(err)); }
-        finally { setBusyPower(false); }
+        finally { setBusyPower(false); setBusyClassroomPowerAction(null); }
     }
 
     async function handleWake(deviceId?: number) {
@@ -1008,13 +1016,23 @@ export function App() {
                                             <div className="classroom-actions">
                                                 {hasPowerDownTargets && <button className="danger-button"
                                                     disabled={busyPower || dashboard.classroom.id !== selectedClassroomId}
-                                                    onClick={() => void handlePowerDownAll()}>
-                                                    {busyPower ? "Отправка команды..." : "Выключить все"}
+                                                    onClick={() => void handleClassroomPower("power-down")}>
+                                                    {busyClassroomPowerAction === "power-down" ? "Отправка команды..." : "Выключить все"}
+                                                </button>}
+                                                {hasPowerDownTargets && <button className="secondary-button"
+                                                    disabled={busyPower || dashboard.classroom.id !== selectedClassroomId}
+                                                    onClick={() => void handleClassroomPower("reboot")}>
+                                                    {busyClassroomPowerAction === "reboot" ? "Отправка команды..." : "Перезагрузить всё"}
                                                 </button>}
                                                 {hasWakeTargets && <button className="success-button"
                                                     disabled={busyWakeAction !== null || dashboard.classroom.id !== selectedClassroomId}
                                                     onClick={() => void handleWake()}>
                                                     {busyWakeAction === "all" ? "Отправка WoL..." : "Разбудить всё"}
+                                                </button>}
+                                                {hasPowerDownTargets && (principal.role === "admin" || principal.role === "superadmin") && <button className="danger-button"
+                                                    disabled={busyPower || dashboard.classroom.id !== selectedClassroomId}
+                                                    onClick={() => void handleClassroomPower("install-updates-and-power-down")}>
+                                                    {busyClassroomPowerAction === "install-updates-and-power-down" ? "Отправка команды..." : "Установить обновления и выключить все"}
                                                 </button>}
                                             </div>
                                         </section>

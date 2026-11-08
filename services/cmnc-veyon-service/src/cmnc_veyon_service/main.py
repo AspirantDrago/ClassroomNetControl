@@ -38,7 +38,7 @@ logger = logging.getLogger("uvicorn.error.veyon")
 
 
 AUTH_KEYS = "0c69b301-81b4-42d6-8fae-128cdd113314"
-FEATURES = {"power-down": "6f5a27a0-0e2f-496e-afcc-7aae62eede10", "reboot": "4f7d98f0-395a-4fff-b968-e49b8d0f748c"}
+FEATURES = {"power-down": "6f5a27a0-0e2f-496e-afcc-7aae62eede10", "reboot": "4f7d98f0-395a-4fff-b968-e49b8d0f748c", "install-updates-and-power-down": "09bcb3a1-fc11-4d03-8cf1-efd26be8655b"}
 WEBAPI = os.environ.get("CMNC_VEYON_WEBAPI_URL", "http://cmnc-veyon-proxy:11080").rstrip("/")
 TARGET_PORT = int(os.environ.get("CMNC_VEYON_TARGET_PORT", "11100"))
 FRAME_CACHE_SECONDS = 0.1
@@ -74,7 +74,7 @@ class Target(BaseModel):
 
 
 class PowerInput(Target):
-    action: Literal["power-down", "reboot"]
+    action: Literal["power-down", "reboot", "install-updates-and-power-down"]
 
 
 @dataclass

@@ -41,8 +41,9 @@ async def service_call(method, path, payload=None):
     return response
 
 
-async def authorized_layout(classroom_id, request, authorization):
-    principal = await gateway.get_current_principal(request, authorization)
+async def authorized_layout(classroom_id, request, authorization, principal=None):
+    if principal is None:
+        principal = await gateway.get_current_principal(request, authorization)
     await gateway.ensure_classroom_access(principal, classroom_id)
     return await gateway.get_wol_classroom_layout(classroom_id)
 
@@ -143,10 +144,16 @@ def register_veyon_routes(app):
         target = await authorized_target(device_id, request, authorization)
         return (await service_call("POST", "/internal/device/power", {**target, "action": action})).json()
 
-    @app.post("/api/classrooms/{classroom_id}/veyon/power-down-all")
-    async def classroom_power_down(classroom_id: int, payload: Confirmation, request: Request,
-                                   authorization: str | None = Header(default=None)):
-        layout = await authorized_layout(classroom_id, request, authorization)
+    @app.post("/api/classrooms/{classroom_id}/veyon/{action}")
+    async def classroom_power(classroom_id: int,
+                              action: Literal["power-down-all", "reboot-all", "install-updates-and-power-down-all"],
+                              payload: Confirmation, request: Request,
+                              authorization: str | None = Header(default=None)):
+        principal = await gateway.get_current_principal(request, authorization)
+        if action == "install-updates-and-power-down-all" and principal.role not in {"admin", "superadmin"}:
+            raise HTTPException(403, "Установка обновлений с выключением доступна только администраторам")
+        layout = await authorized_layout(classroom_id, request, authorization, principal)
+        operation = action.removesuffix("-all")
         semaphore = asyncio.Semaphore(4)
 
         async def send(device):
@@ -155,7 +162,7 @@ def register_veyon_routes(app):
                 async with asyncio.timeout(45):
                     async with semaphore:
                         target = device_target(layout, device)
-                        await service_call("POST", "/internal/device/power", {**target, "action": "power-down"})
+                        await service_call("POST", "/internal/device/power", {**target, "action": operation})
                 return {"device_id": device["id"], "accepted": True, "error": None}
             except HTTPException as exc:
                 return {"device_id": device["id"], "accepted": False, "error": str(exc.detail)}

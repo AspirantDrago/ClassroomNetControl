@@ -1004,10 +1004,11 @@ export async function getVeyonFrame(deviceId: number, signal: AbortSignal): Prom
 export function powerVeyonDevice(deviceId: number, action: "power-down" | "reboot"): Promise<{accepted: boolean}> {
     return request(`/api/devices/${deviceId}/veyon/${action}`, {method: "POST"});
 }
-export function powerDownVeyonClassroom(classroomId: number): Promise<{
+export type VeyonBulkPowerAction = "power-down" | "reboot" | "install-updates-and-power-down";
+export function powerVeyonClassroom(classroomId: number, action: VeyonBulkPowerAction): Promise<{
     accepted_count: number; failed_count: number; skipped_count: number; results: {device_id: number; accepted: boolean; error: string | null}[];
 }> {
-    return request(`/api/classrooms/${classroomId}/veyon/power-down-all`, {method: "POST", body: JSON.stringify({confirmed: true})});
+    return request(`/api/classrooms/${classroomId}/veyon/${action}-all`, {method: "POST", body: JSON.stringify({confirmed: true})});
 }
 
 

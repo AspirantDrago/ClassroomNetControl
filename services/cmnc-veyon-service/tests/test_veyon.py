@@ -256,3 +256,29 @@ def test_concurrent_viewers_share_frames_but_not_power_commands(tmp_path, pem):
             assert (await bridge.operate(target))[0] == b'frame-5'
             assert auth == 3
     asyncio.run(run())
+
+
+@pytest.mark.parametrize('action,feature',[
+    ('reboot','4f7d98f0-395a-4fff-b968-e49b8d0f748c'),
+    ('install-updates-and-power-down','09bcb3a1-fc11-4d03-8cf1-efd26be8655b'),
+])
+def test_additional_power_commands_select_native_veyon_feature(tmp_path,pem,action,feature):
+    async def run():
+        store=KeyStore(tmp_path)
+        store.save('router',1,'CMNC',pem)
+        puts=[]
+        def handle(request):
+            if request.method=='POST':
+                return httpx.Response(200,json={'connection-uid':'test-session'})
+            if request.method=='PUT':
+                puts.append(request)
+                assert request.url.path=='/api/v1/feature/'+feature
+                assert request.headers['Connection-Uid']=='test-session'
+                assert json.loads(request.content)=={'active':True,'arguments':{}}
+            return httpx.Response(200,json={})
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+            bridge=VeyonBridge(store,client)
+            result=await bridge.operate(Target(device_id=1,router_id=1,classroom_id=1,host='192.168.1.2'),action)
+            assert result['accepted'] is True
+            assert len(puts)==1
+    asyncio.run(run())
