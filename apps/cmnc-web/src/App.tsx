@@ -88,10 +88,7 @@ export function App() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [busyDeviceId, setBusyDeviceId] = useState<number | null>(null);
-    const [showDeviceThumbnails, setShowDeviceThumbnails] = useState(() => {
-        try { return window.localStorage.getItem("cmnc_device_view_mode") !== "description"; }
-        catch { return true; }
-    });
+    const [showDeviceThumbnails, setShowDeviceThumbnails] = useState(true);
     const [busyPower, setBusyPower] = useState(false);
     const [busyClassroomPowerAction, setBusyClassroomPowerAction] = useState<VeyonBulkPowerAction | null>(null);
     const [busyWakeAction, setBusyWakeAction] = useState<number | "all" | null>(null);
@@ -962,16 +959,6 @@ export function App() {
                                     </div>
 
                                     <div className="classroom-actions">
-                                        <div className="device-view-switch">
-                                            <span>Описание</span>
-                                            <button type="button" role="switch" aria-label="Миниатюры экранов" aria-checked={showDeviceThumbnails}
-                                                onClick={() => {
-                                                    const next = !showDeviceThumbnails;
-                                                    setShowDeviceThumbnails(next);
-                                                    try { window.localStorage.setItem("cmnc_device_view_mode", next ? "thumbnails" : "description"); } catch { /* Browsing without storage still works. */ }
-                                                }}><span /></button>
-                                            <span>Миниатюры</span>
-                                        </div>
                                         <ClassroomStatisticsButton
                                             key={dashboard.classroom.id}
                                             classroomId={dashboard.classroom.id}
@@ -1051,6 +1038,18 @@ export function App() {
                                             </div>
                                         </section>
                                     )}
+                                </div>
+
+                                <div className="device-view-controls">
+                                        <div className="device-view-switch">
+                                            <span>Описание</span>
+                                            <button type="button" role="switch" aria-label="Миниатюры экранов" aria-checked={showDeviceThumbnails}
+                                                onClick={() => {
+                                                    const next = !showDeviceThumbnails;
+                                                    setShowDeviceThumbnails(next);
+                                                }}><span /></button>
+                                            <span>Миниатюры</span>
+                                        </div>
                                 </div>
 
                                 <DeviceGrid

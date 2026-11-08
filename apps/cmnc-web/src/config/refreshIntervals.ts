@@ -40,3 +40,13 @@ export const REFRESH_INTERVALS = Object.freeze({
         30_000,
     ),
 });
+
+
+export const THUMBNAIL_CONCURRENCY = (() => {
+    const raw = import.meta.env.VITE_THUMBNAIL_CONCURRENCY;
+    if (raw === undefined || raw.trim() === "") return 4;
+    const value = Number(raw);
+    if (Number.isSafeInteger(value) && value > 0) return value;
+    console.warn(`Некорректное число одновременных загрузок миниатюр "${raw}". Используется 4.`);
+    return 4;
+})();

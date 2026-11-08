@@ -1,10 +1,11 @@
+import { THUMBNAIL_CONCURRENCY } from "../../config/refreshIntervals";
 import { getVeyonFrame } from "../../api";
 
 type Job = { signal: AbortSignal; start: () => void; cancel: () => void };
 let active = 0;
 const waiting: Job[] = [];
 function pump() {
-    while (active < 4 && waiting.length) {
+    while (active < THUMBNAIL_CONCURRENCY && waiting.length) {
         const job = waiting.shift()!;
         if (job.signal.aborted) job.cancel();
         else job.start();

@@ -6,7 +6,11 @@
 
 .device-grid-cell {
     min-width: 0;
+    display: flex;
 }
+
+.device-grid-cell > .device-card,
+.device-grid-cell > .empty-device-cell { flex: 1; }
 
 .empty-device-cell {
     min-height: 128px;

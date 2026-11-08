@@ -113,3 +113,5 @@
 .device-view-switch > button > span { display: block; width: 20px; height: 20px; border-radius: 50%; background: #fff; transform: translateX(0); transition: transform 150ms; }
 .device-view-switch > button[aria-checked="true"] > span { transform: translateX(18px); }
 .device-view-switch > button:focus-visible { outline: 2px solid #60a5fa; outline-offset: 3px; }
+
+.device-view-controls { display: flex; justify-content: flex-end; margin-bottom: 14px; }

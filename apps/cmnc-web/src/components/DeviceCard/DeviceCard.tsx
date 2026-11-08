@@ -36,22 +36,18 @@ export function DeviceCard(props: DeviceCardProps) {
                 aria-label={`Открыть устройство ${getDeviceTitle(device)}`}
                 onClick={(event) => { event.stopPropagation(); onEdit(device); }} />
             <div className="device-card-content">
-            <div className="device-card-header">
-                <div className="device-title">{getDeviceTitle(device)}</div>
-
-
-            </div>
-
-            <div className="device-info">
-                <div className="device-subtitle">{device.mac_address}</div>
-                <div className="device-subtitle">{device.static_ip ?? "-"}</div>
-                <div className="device-subtitle">
-                    {device.observed_hostname ?? device.hostname ?? "-"}
+                {showThumbnails && device.online && device.static_ip && <DeviceThumbnail
+                    key={`${device.id}:${device.static_ip}`} deviceId={device.id} title={getDeviceTitle(device)} cardRef={cardRef} />}
+                <div className="device-description">
+                    <div className="device-card-header">
+                        <div className="device-title">{getDeviceTitle(device)}</div>
+                    </div>
+                    <div className="device-info">
+                        <div className="device-subtitle">{device.mac_address}</div>
+                        <div className="device-subtitle">{device.static_ip ?? "-"}</div>
+                        <div className="device-subtitle">{device.observed_hostname ?? device.hostname ?? "-"}</div>
+                    </div>
                 </div>
-            </div>
-
-            {showThumbnails && device.online && device.static_ip && <DeviceThumbnail
-                key={`${device.id}:${device.static_ip}`} deviceId={device.id} title={getDeviceTitle(device)} cardRef={cardRef} />}
             </div>
 
             {device.sync_error && <div className="error-text">{device.sync_error}</div>}
