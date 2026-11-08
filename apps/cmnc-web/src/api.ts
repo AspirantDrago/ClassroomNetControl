@@ -1009,3 +1009,13 @@ export function powerDownVeyonClassroom(classroomId: number): Promise<{
 }> {
     return request(`/api/classrooms/${classroomId}/veyon/power-down-all`, {method: "POST", body: JSON.stringify({confirmed: true})});
 }
+
+
+export type VeyonInputEvent =
+    | {type: "key"; key: number; pressed: boolean}
+    | {type: "pointer"; x: number; y: number; buttons: number};
+export function veyonControl(deviceId: number, action: "start" | "input" | "stop", payload: {token?: string; events?: VeyonInputEvent[]}): Promise<{token?: string; accepted?: boolean}> {
+    return request(`/api/devices/${deviceId}/veyon/control/${action}`, {
+        method: "POST", body: JSON.stringify(payload), keepalive: action === "stop",
+    });
+}

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { extractErrorDetail, getVeyonFrame } from "../../api";
 import "./Veyon.css";
+import { RemoteControlImage } from "./RemoteControlImage";
 
-export function DeviceScreen({ deviceId, standalone = false }: { deviceId: number; standalone?: boolean }) {
+export function DeviceScreen({ deviceId, standalone = false, control = false }: { deviceId: number; standalone?: boolean; control?: boolean }) {
     const [source, setSource] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [popup, setPopup] = useState<Window | null>(null);
@@ -72,6 +73,7 @@ export function DeviceScreen({ deviceId, standalone = false }: { deviceId: numbe
         url.search = "";
         url.hash = "";
         url.searchParams.set("veyon_device", String(deviceId));
+        if (control) url.searchParams.set("veyon_control", "1");
         const next = window.open(url.href, "_blank", "popup,width=1280,height=800");
         if (!next) { setError("Разрешите всплывающие окна для просмотра экрана в отдельном окне."); return; }
         next.opener = null;
@@ -82,7 +84,7 @@ export function DeviceScreen({ deviceId, standalone = false }: { deviceId: numbe
     const screen = <div className="device-screen">
         {error && <div className="device-modal-error" role="alert">{error}</div>}
         {!source && !error && <p role="status">Подключение к экрану...</p>}
-        {source && <img ref={imageRef} src={source} alt="Экран устройства" />}
+        {source && (control ? <RemoteControlImage deviceId={deviceId} source={source} imageRef={imageRef} /> : <img ref={imageRef} src={source} alt="Экран устройства" />)}
         {error && source && <p className="muted">Показан последний полученный кадр.</p>}
         <div className="device-screen-toolbar">
             <button type="button" className="secondary-button" disabled={!source} onClick={() => void toggleFullscreen()}>На весь экран</button>
@@ -90,7 +92,7 @@ export function DeviceScreen({ deviceId, standalone = false }: { deviceId: numbe
         </div>
     </div>;
     return popup ? <>
-        <p role="status">Экран открыт в отдельном окне.</p>
+        <p role="status">{control ? "Управление открыто в отдельном окне." : "Экран открыт в отдельном окне."}</p>
         <div className="device-screen-toolbar">
             <button type="button" className="secondary-button" onClick={() => popup.focus()}>Показать окно</button>
             <button type="button" className="secondary-button" onClick={() => { popup.close(); setPopup(null); }}>Вернуть в окно устройства</button>

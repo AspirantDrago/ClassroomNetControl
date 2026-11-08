@@ -48,7 +48,7 @@ type DeviceFormModalProps = {
 export function DeviceFormModal(props: DeviceFormModalProps) {
     const { form, busy, canManage, canControlWan, wanBusy, onToggleWan, error,
         onChange, onClose, onSubmit, onUnpin, wakeBusy, onWake, wakeMessage, powerBusy, onPower } = props;
-    const [selectedTab, setSelectedTab] = useState<"info" | "settings" | "screen">(
+    const [selectedTab, setSelectedTab] = useState<"info" | "settings" | "screen" | "control">(
         canManage ? "settings" : "info",
     );
     const tab = !canManage && selectedTab === "settings" ? "info" : selectedTab;
@@ -62,7 +62,7 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
     return (
         <div className="modal-backdrop" onMouseDown={onClose}>
             <form
-                className={`modal-card${tab === "screen" ? " device-modal-screen" : ""}`}
+                className={`modal-card${(tab === "screen" || tab === "control") ? " device-modal-screen" : ""}`}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="device-dialog-title"
@@ -105,6 +105,9 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                     {form.mode === "edit-device" && <button type="button" role="tab" id="device-screen-tab"
                         aria-selected={tab === "screen"} aria-controls="device-screen-panel"
                         onClick={() => setSelectedTab("screen")}>Экран</button>}
+                    {form.mode === "edit-device" && <button type="button" role="tab" id="device-control-tab"
+                        aria-selected={tab === "control"} aria-controls="device-control-panel"
+                        onClick={() => setSelectedTab("control")}>Управление</button>}
                     {canManage && <button type="button" role="tab" id="device-settings-tab"
                         aria-selected={tab === "settings"} aria-controls="device-settings-panel"
                         onClick={() => setSelectedTab("settings")}>Настройка</button>}
@@ -114,6 +117,10 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
 
                 {tab === "screen" && form.mode === "edit-device" && <div role="tabpanel" id="device-screen-panel" aria-labelledby="device-screen-tab">
                     <DeviceScreen key={form.device.id} deviceId={form.device.id} />
+                </div>}
+
+                {tab === "control" && form.mode === "edit-device" && <div role="tabpanel" id="device-control-panel" aria-labelledby="device-control-tab">
+                    <DeviceScreen key={form.device.id} deviceId={form.device.id} control />
                 </div>}
 
                 {tab === "info" && <div role="tabpanel" id="device-info-panel" aria-labelledby="device-info-tab">

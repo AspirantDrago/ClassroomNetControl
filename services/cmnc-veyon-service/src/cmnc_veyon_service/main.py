@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field, field_validator
 
 from cmnc_veyon_service.key_store import KeyStore
+from cmnc_veyon_service.control import RemoteControl, InputEvent
 
 
 class HealthCheckAccessFilter(logging.Filter):
@@ -244,9 +245,17 @@ async def lifespan(application):
         bridge = VeyonBridge(application.state.store, client)
         application.state.bridge = bridge
         cleaner = asyncio.create_task(bridge.cleanup())
+        application.state.control = RemoteControl(bridge)
+        control_cleaner = asyncio.create_task(application.state.control.cleanup())
         try:
             yield
         finally:
+            control_cleaner.cancel()
+            with suppress(asyncio.CancelledError):
+                await control_cleaner
+            for identity, lease in list(application.state.control.leases.items()):
+                with suppress(HTTPException):
+                    await application.state.control.release(identity, lease)
             cleaner.cancel()
             with suppress(asyncio.CancelledError):
                 await cleaner
@@ -294,3 +303,14 @@ async def device_frame(payload: Target):
 @app.post("/internal/device/power")
 async def device_power(payload: PowerInput):
     return await app.state.bridge.operate(payload, payload.action)
+
+
+class ControlInput(Target):
+    owner: str = Field(min_length=1, max_length=128)
+    token: str | None = Field(default=None, max_length=128)
+    events: list[InputEvent] = Field(default_factory=list, max_length=64)
+
+
+@app.post("/internal/device/control/{action}")
+async def device_control(action: Literal["start", "input", "stop"], payload: ControlInput):
+    return await app.state.control.operate(payload, payload.owner, action, payload.token, payload.events)

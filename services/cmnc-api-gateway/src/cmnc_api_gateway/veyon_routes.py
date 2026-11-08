@@ -1,6 +1,6 @@
 import asyncio
 import ipaddress
-from typing import Literal
+from typing import Literal, Any
 
 import httpx
 from fastapi import Header, HTTPException, Request
@@ -12,6 +12,11 @@ from cmnc_api_gateway import main as gateway
 class KeyInput(BaseModel):
     key_name: str = Field(default="CMNC", min_length=1, max_length=128, pattern=r"^[\w.-]+$")
     private_key: str = Field(min_length=1, max_length=65536, repr=False)
+
+
+class ControlInput(BaseModel):
+    token: str | None = Field(default=None, max_length=128)
+    events: list[dict[str, Any]] = Field(default_factory=list, max_length=64)
 
 
 class Confirmation(BaseModel):
@@ -62,9 +67,10 @@ def device_target(layout, device):
             "router_id": gateway.get_classroom_router_id(classroom), "host": str(address)}
 
 
-async def authorized_target(device_id, request, authorization):
+async def authorized_target(device_id, request, authorization, principal=None):
     # Resolve server-owned device IDs; never accept a host/IP or private key from viewers.
-    principal = await gateway.get_current_principal(request, authorization)
+    if principal is None:
+        principal = await gateway.get_current_principal(request, authorization)
     try:
         classroom_id = await gateway.get_device_classroom_id(device_id)
     except httpx.HTTPError as exc:
@@ -121,6 +127,15 @@ def register_veyon_routes(app):
         if not content_type.lower().startswith("image/"):
             raise HTTPException(502, "Veyon не вернул изображение")
         return gateway.Response(response.content, media_type=content_type, headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/devices/{device_id}/veyon/control/{action}")
+    async def device_control(device_id: int, action: Literal["start", "input", "stop"], payload: ControlInput,
+                             request: Request, authorization: str | None = Header(default=None)):
+        principal = await gateway.get_current_principal(request, authorization)
+        target = await authorized_target(device_id, request, authorization, principal)
+        owner = f"{principal.principal_type}:{principal.id}"
+        return (await service_call("POST", f"/internal/device/control/{action}",
+                {**target, **payload.model_dump(), "owner": owner})).json()
 
     @app.post("/api/devices/{device_id}/veyon/{action}")
     async def device_power(device_id: int, action: Literal["power-down", "reboot"], request: Request,

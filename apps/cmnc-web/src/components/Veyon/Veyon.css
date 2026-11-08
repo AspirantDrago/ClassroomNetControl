@@ -50,3 +50,7 @@
     object-fit: contain;
     background: #000;
 }
+
+.device-control-image { touch-action: none; user-select: none; cursor: crosshair; }
+.device-control-image:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.device-control-image:fullscreen { outline: none; }
