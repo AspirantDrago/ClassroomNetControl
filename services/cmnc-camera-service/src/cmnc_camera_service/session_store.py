@@ -16,8 +16,8 @@ class CameraSession:
 
 
 class CameraSessionStore:
-    def __init__(self, ttl_seconds: int) -> None:
-        self._ttl_seconds = ttl_seconds
+    def __init__(self, ttl_seconds: int, idle_timeout_seconds: int | None = None) -> None:
+        self._ttl_seconds = min(ttl_seconds, idle_timeout_seconds or ttl_seconds)
         self._sessions: dict[str, CameraSession] = {}
 
     def create(
@@ -49,9 +49,10 @@ class CameraSessionStore:
             return None
 
         if session.expires_at <= datetime.now(timezone.utc):
-            self._sessions.pop(session_id, None)
+            # Cleanup must release this session from its shared stream.
             return None
 
+        session.expires_at = datetime.now(timezone.utc) + timedelta(seconds=self._ttl_seconds)
         return session
 
     def delete(self, session_id: str) -> CameraSession | None:

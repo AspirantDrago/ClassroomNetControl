@@ -105,6 +105,7 @@ export function ClassroomCameraPanel({
         return null;
     }, [camera.default_quality, camera.qualities]);
 
+    const [sessionVersion, setSessionVersion] = useState(0);
     const [isOpen, setIsOpen] = useState(false);
     const [isMuted, setIsMuted] = useState(true);
     const [selectedQuality, setSelectedQuality] = useState<CameraQuality | null>(
@@ -172,16 +173,22 @@ export function ClassroomCameraPanel({
             }
         }
 
+        const pageHide = () => { if (createdSessionId) void deleteCameraSession(createdSessionId).catch(() => {}); };
+        const pageShow = (event: PageTransitionEvent) => { if (event.persisted && isOpen) setSessionVersion(value => value + 1); };
+        window.addEventListener("pagehide", pageHide);
+        window.addEventListener("pageshow", pageShow);
         void openSession();
 
         return () => {
+            window.removeEventListener("pagehide", pageHide);
+            window.removeEventListener("pageshow", pageShow);
             cancelled = true;
 
             if (createdSessionId !== null) {
-                void deleteCameraSession(createdSessionId);
+                void deleteCameraSession(createdSessionId).catch(() => {});
             }
         };
-    }, [camera.id, classroomId, isOpen, selectedQuality]);
+    }, [camera.id, classroomId, isOpen, selectedQuality, sessionVersion]);
 
     const streamUrl = session ? getCameraStreamUrl(session.url) : null;
 
@@ -205,6 +212,18 @@ export function ClassroomCameraPanel({
         let hls: Hls | null = null;
         let stopped = false;
         let recoverMediaErrorCount = 0;
+        let lastPlaybackTime = 0;
+        let lastProgressAt = performance.now();
+        const playbackWatchdog = setInterval(() => {
+            if (stopped || document.hidden) { lastProgressAt = performance.now(); return; }
+            if (Math.abs(video.currentTime - lastPlaybackTime) > 0.1) {
+                lastPlaybackTime = video.currentTime;
+                lastProgressAt = performance.now();
+            } else if (performance.now() - lastProgressAt > 30_000) {
+                lastProgressAt = performance.now();
+                setSessionVersion(value => value + 1);
+            }
+        }, 5000);
 
         const handleVideoError = () => {
             if (!stopped) {
@@ -314,6 +333,7 @@ export function ClassroomCameraPanel({
 
             return () => {
                 stopped = true;
+                clearInterval(playbackWatchdog);
                 video.removeEventListener("error", handleVideoError);
                 hls?.destroy();
                 video.pause();
@@ -332,6 +352,7 @@ export function ClassroomCameraPanel({
 
             return () => {
                 stopped = true;
+                clearInterval(playbackWatchdog);
                 video.removeEventListener("error", handleVideoError);
                 video.removeEventListener("loadedmetadata", tryPlay);
                 video.removeEventListener("canplay", tryPlay);
@@ -345,6 +366,7 @@ export function ClassroomCameraPanel({
 
         return () => {
             stopped = true;
+            clearInterval(playbackWatchdog);
             video.removeEventListener("error", handleVideoError);
         };
     }, [streamUrl]);

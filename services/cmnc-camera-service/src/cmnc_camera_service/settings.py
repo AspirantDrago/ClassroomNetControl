@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     port: int = 8005
 
     session_ttl_seconds: int = Field(default=3600, ge=60)
+    viewer_idle_timeout_seconds: int = Field(default=90, ge=15)
+    stream_stall_timeout_seconds: float = Field(default=30, ge=10)
+    ffmpeg_threads: int = Field(default=2, ge=1, le=16)
     cleanup_interval_seconds: int = Field(default=60, ge=10)
 
     ffmpeg_path: str = "ffmpeg"
@@ -34,6 +37,11 @@ class Settings(BaseSettings):
     #         but usually will not play through hls.js in Chrome/Edge.
     # - hevc: transcode to H.265. Mostly useful for VLC/Safari-like clients, not hls.js.
     video_mode: Literal["h264", "copy", "hevc"] | None = None
+
+    @field_validator("video_mode", mode="before")
+    @classmethod
+    def empty_video_mode(cls, value):
+        return None if value == "" else value
 
     # Backward-compatible switch. Used only when video_mode is not set.
     # true -> h264, false -> copy.

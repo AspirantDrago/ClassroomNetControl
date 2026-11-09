@@ -4,6 +4,7 @@ import logging
 import re
 import shutil
 import shlex
+from time import monotonic
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
@@ -25,7 +26,7 @@ from cmnc_camera_service.settings import settings
 
 logger = logging.getLogger("cmnc_camera_service")
 
-session_store = CameraSessionStore(ttl_seconds=settings.session_ttl_seconds)
+session_store = CameraSessionStore(ttl_seconds=settings.session_ttl_seconds, idle_timeout_seconds=settings.viewer_idle_timeout_seconds)
 hls_root_dir = Path(settings.hls_root_dir)
 
 
@@ -41,6 +42,7 @@ class SharedCameraStream:
     process: asyncio.subprocess.Process | None = None
     restart_task: asyncio.Task[None] | None = None
     last_viewer_left_at: datetime | None = None
+    generation: int = 0
 
 
 shared_streams: dict[str, SharedCameraStream] = {}
@@ -49,7 +51,7 @@ shared_streams_lock = asyncio.Lock()
 
 async def cleanup_expired_sessions() -> None:
     while True:
-        await asyncio.sleep(settings.cleanup_interval_seconds)
+        await asyncio.sleep(min(settings.cleanup_interval_seconds, 10))
 
         for session in session_store.pop_expired():
             await release_session(session)
@@ -151,7 +153,7 @@ async def create_camera_session(
         mode="hls",
         quality=session.quality,
         stream_path=f"/internal/camera/sessions/{session.id}/hls/index.m3u8",
-        expires_in_seconds=settings.session_ttl_seconds,
+        expires_in_seconds=min(settings.session_ttl_seconds, settings.viewer_idle_timeout_seconds),
     )
 
 
@@ -185,6 +187,8 @@ async def get_camera_hls_file(session_id: str, filename: str) -> FileResponse:
 
     if filename == "index.m3u8":
         await wait_for_file(path)
+        if path.exists() and datetime.now(timezone.utc).timestamp() - path.stat().st_mtime > settings.stream_stall_timeout_seconds:
+            raise HTTPException(status_code=503, detail="Camera stream is reconnecting")
 
     if not path.exists() or not path.is_file():
         raise HTTPException(status_code=404, detail="HLS file not found")
@@ -253,7 +257,7 @@ async def get_or_start_shared_stream(rtsp_url: str, quality: str) -> SharedCamer
 
 def build_ffmpeg_command(stream: SharedCameraStream) -> list[str]:
     playlist_path = stream.hls_dir / "index.m3u8"
-    segment_path = stream.hls_dir / "segment_%05d.ts"
+    segment_path = stream.hls_dir / f"segment_{stream.generation:08d}_%05d.ts"
     fps = settings.transcode_fps
     keyframe_interval = max(settings.hls_time_seconds * fps, fps)
     video_mode = get_video_mode()
@@ -269,8 +273,8 @@ def build_ffmpeg_command(stream: SharedCameraStream) -> list[str]:
         str(int(settings.rtsp_timeout_seconds * 1_000_000)),
         "-fflags",
         "+discardcorrupt+genpts",
-        "-use_wallclock_as_timestamps",
-        "1",
+        "-threads",
+        str(settings.ffmpeg_threads),
         "-i",
         stream.rtsp_url,
         "-map",
@@ -353,6 +357,8 @@ def build_ffmpeg_command(stream: SharedCameraStream) -> list[str]:
             f"keyint={keyframe_interval}:min-keyint={keyframe_interval}:scenecut=0:force-cfr=1",
         ])
 
+    if video_mode != "copy":
+        command.extend(["-threads:v", str(settings.ffmpeg_threads), "-filter_threads", "1"])
     add_audio_options(command)
 
     command.extend([
@@ -367,7 +373,8 @@ def build_ffmpeg_command(stream: SharedCameraStream) -> list[str]:
         "-hls_segment_type",
         "mpegts",
         "-hls_flags",
-        "delete_segments+omit_endlist+independent_segments+temp_file+append_list",
+        "delete_segments+omit_endlist+independent_segments+temp_file+append_list+discont_start",
+
         "-hls_allow_cache",
         "0",
         "-hls_segment_filename",
@@ -389,7 +396,7 @@ def get_video_mode() -> str:
 
 
 def build_video_filter(fps: int) -> str:
-    filters = [f"fps={fps}"]
+    filters = ["setpts='if(eq(N,0),0,PREV_OUTPTS+max(0,min(PTS-PREV_INPTS,2/TB)))'", f"fps={fps}"]
 
     if settings.transcode_max_width > 0:
         filters.append(f"scale='min({settings.transcode_max_width},iw)':-2")
@@ -409,7 +416,7 @@ def add_audio_options(command: list[str]) -> None:
 
     command.extend([
         "-af",
-        "aresample=async=1:first_pts=0",
+        "asetpts=N/SR/TB,aresample=async=1:first_pts=0",
         "-c:a",
         "aac",
         "-b:a",
@@ -449,6 +456,7 @@ async def cleanup_idle_streams() -> None:
     async with shared_streams_lock:
         for stream_key, stream in list(shared_streams.items()):
             if stream.viewer_session_ids:
+                prune_old_hls_segments(stream)
                 continue
 
             if stream.last_viewer_left_at is None:
@@ -506,12 +514,17 @@ async def stop_process(process: asyncio.subprocess.Process) -> None:
     if process.returncode is not None:
         return
 
-    process.terminate()
+    try:
+        process.terminate()
+    except ProcessLookupError:
+        await process.wait()
+        return
 
     try:
         await asyncio.wait_for(process.wait(), timeout=settings.stop_timeout_seconds)
     except asyncio.TimeoutError:
-        process.kill()
+        with suppress(ProcessLookupError):
+            process.kill()
         await process.wait()
 
 
@@ -530,9 +543,39 @@ async def log_ffmpeg_stderr(stream_id: str, process: asyncio.subprocess.Process)
             logger.warning("ffmpeg[%s]: %s", stream_id, sanitize_rtsp_urls(message))
 
 
+async def wait_for_stream_progress(stream_key: str, process: asyncio.subprocess.Process) -> int:
+    waiter = asyncio.create_task(process.wait())
+    changed_at = monotonic()
+    stamp = None
+    try:
+        while True:
+            done, _ = await asyncio.wait({waiter}, timeout=5)
+            if done:
+                return waiter.result()
+            stream = shared_streams.get(stream_key)
+            if stream is None or stream.process is not process:
+                return await waiter
+            try:
+                new_stamp = (stream.hls_dir / "index.m3u8").stat().st_mtime_ns
+            except FileNotFoundError:
+                new_stamp = None
+            if new_stamp is not None and new_stamp != stamp:
+                stamp = new_stamp
+                changed_at = monotonic()
+            if monotonic() - changed_at > max(settings.stream_stall_timeout_seconds, settings.hls_start_timeout_seconds):
+                logger.warning("Restarting stalled camera stream[%s]: no HLS progress", stream.id)
+                await stop_process(process)
+                return await waiter
+    finally:
+        if not waiter.done():
+            waiter.cancel()
+            with suppress(asyncio.CancelledError):
+                await waiter
+
+
 async def watch_ffmpeg_process(stream_key: str, stream_id: str, process: asyncio.subprocess.Process) -> None:
     while True:
-        returncode = await process.wait()
+        returncode = await wait_for_stream_progress(stream_key, process)
         async with shared_streams_lock:
             stream = shared_streams.get(stream_key)
             if stream is None or stream.process is not process:
@@ -546,6 +589,9 @@ async def watch_ffmpeg_process(stream_key: str, stream_id: str, process: asyncio
         # Keep the session and playlist so every attached viewer can continue.
         logger.warning("ffmpeg[%s] exited with code %s; reconnecting", stream_id, returncode)
         prune_old_hls_segments(stream)
+        # Preserve sequence/discontinuity history for hls.js, while a distinct
+        # filename namespace prevents worker restarts from overwriting old media.
+        stream.generation += 1
         delay = settings.rtsp_reconnect_delay_seconds
         while True:
             await asyncio.sleep(delay)

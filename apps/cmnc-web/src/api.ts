@@ -350,6 +350,7 @@ export function createClassroomCameraSession(
 export function deleteCameraSession(sessionId: string): Promise<undefined> {
     return request<undefined>(`/api/camera/sessions/${encodeURIComponent(sessionId)}`, {
         method: "DELETE",
+        keepalive: true,
     });
 }
 

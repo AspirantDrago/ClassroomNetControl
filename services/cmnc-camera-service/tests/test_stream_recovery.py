@@ -136,7 +136,53 @@ class StreamRecoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("append_list", command[command.index("-hls_flags") + 1])
         self.assertEqual(command[command.index("-timeout") + 1], "10000000")
         if camera.settings.audio_mode == "aac":
-            self.assertIn("aresample=async=1:first_pts=0", command)
+            self.assertIn("asetpts=N/SR/TB,aresample=async=1:first_pts=0", command)
+
+    async def test_stalled_worker_is_terminated(self):
+        process = FakeProcess()
+        self.stream.process = process
+        with patch.object(camera, "monotonic", side_effect=[0, 100]), patch.object(camera.asyncio, "wait", new_callable=AsyncMock, return_value=(set(), set())):
+            result = await camera.wait_for_stream_progress(self.key, process)
+        self.assertEqual(result, -15)
+
+    async def test_restart_preserves_playlist_continuity(self):
+        playlist = self.stream.hls_dir / "index.m3u8"
+        playlist.write_text("#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:0\nsegment_00000.ts\n")
+        await self.start_recovery(0)
+        self.assertTrue(playlist.exists())
+        self.assertEqual(self.stream.generation, 1)
+
+    async def test_worker_uses_unique_segment_numbers_and_bounded_threads(self):
+        command = camera.build_ffmpeg_command(self.stream)
+        original_path = command[command.index("-hls_segment_filename") + 1]
+        self.stream.generation += 1
+        new_command = camera.build_ffmpeg_command(self.stream)
+        self.assertNotEqual(original_path, new_command[new_command.index("-hls_segment_filename") + 1])
+        self.assertNotIn("-use_wallclock_as_timestamps", command)
+        self.assertIn("discont_start", command[command.index("-hls_flags") + 1])
+        self.assertEqual(command[command.index("-threads") + 1], str(camera.settings.ffmpeg_threads))
+
+    async def test_expired_get_does_not_orphan_stream_viewer(self):
+        from cmnc_camera_service.session_store import CameraSessionStore
+        from datetime import timedelta
+        store = CameraSessionStore(3600, 90)
+        session = store.create(rtsp_url=self.url, quality="main", stream_key=self.key, hls_dir=self.stream.hls_dir)
+        self.stream.viewer_session_ids = {session.id}
+        session.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        self.assertIsNone(store.get(session.id))
+        expired = store.pop_expired()
+        self.assertEqual(len(expired), 1)
+        await camera.release_session(expired[0])
+        self.assertFalse(self.stream.viewer_session_ids)
+
+    async def test_active_viewer_refreshes_idle_deadline(self):
+        from cmnc_camera_service.session_store import CameraSessionStore
+        from datetime import timedelta
+        store = CameraSessionStore(3600, 90)
+        session = store.create(rtsp_url=self.url, quality="main", stream_key=self.key, hls_dir=self.stream.hls_dir)
+        session.expires_at = datetime.now(timezone.utc) + timedelta(seconds=1)
+        self.assertIs(store.get(session.id), session)
+        self.assertGreater((session.expires_at - datetime.now(timezone.utc)).total_seconds(), 80)
 
     async def test_log_redaction(self):
         text = camera.sanitize_rtsp_urls("Input: " + self.url)
