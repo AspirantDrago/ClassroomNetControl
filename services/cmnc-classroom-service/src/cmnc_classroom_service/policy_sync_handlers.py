@@ -1,12 +1,12 @@
 import logging
 
 from aio_pika import IncomingMessage
-from sqlalchemy import update
+from sqlalchemy import select, tuple_, update
 
 from cmnc_contracts.events import PolicySyncCompletedEvent, PolicySyncFailedEvent
 
 from cmnc_classroom_service.db import async_session_maker
-from cmnc_classroom_service.models import Device
+from cmnc_classroom_service.models import Classroom, Device
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +21,18 @@ async def handle_policy_sync_completed(message: IncomingMessage) -> None:
             event.policy_generation,
         )
 
+        if event.device_generations is None:
+            logger.warning("Ignoring legacy sync result without device snapshot: router_id=%s", event.router_id)
+            return
+        if not event.device_generations:
+            return
+
         async with async_session_maker() as session:
             result = await session.execute(
                 update(Device)
-                .where(Device.sync_status == "pending")
-                .where(Device.policy_generation <= event.policy_generation)
+                .where(Device.sync_status.in_(["pending", "failed"]))
+                .where(Device.classroom_id.in_(select(Classroom.id).where(Classroom.router_id == event.router_id)))
+                .where(tuple_(Device.id, Device.policy_generation).in_(list(event.device_generations.items())))
                 .values(
                     sync_status="applied",
                     sync_error=None,
@@ -51,11 +58,18 @@ async def handle_policy_sync_failed(message: IncomingMessage) -> None:
             event.error,
         )
 
+        if event.device_generations is None:
+            logger.warning("Ignoring legacy sync result without device snapshot: router_id=%s", event.router_id)
+            return
+        if not event.device_generations:
+            return
+
         async with async_session_maker() as session:
             result = await session.execute(
                 update(Device)
                 .where(Device.sync_status == "pending")
-                .where(Device.policy_generation <= event.policy_generation)
+                .where(Device.classroom_id.in_(select(Classroom.id).where(Classroom.router_id == event.router_id)))
+                .where(tuple_(Device.id, Device.policy_generation).in_(list(event.device_generations.items())))
                 .values(
                     sync_status="failed",
                     sync_error=event.error,

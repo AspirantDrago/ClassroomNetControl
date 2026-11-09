@@ -90,6 +90,9 @@ class PolicySyncCompletedEvent(BaseEvent):
     # Версия политики, которая была применена.
     policy_generation: int
 
+    # Exact versions read by the worker; absent in legacy results.
+    device_generations: dict[int, int] | None = None
+
     # Сколько записей добавлено в address-list.
     added: int = 0
 
@@ -112,6 +115,9 @@ class PolicySyncFailedEvent(BaseEvent):
 
     # Версия политики, которую пытались применить.
     policy_generation: int
+
+    # Exact versions read by the worker; absent in legacy results.
+    device_generations: dict[int, int] | None = None
 
     # Текст ошибки: timeout, ошибка авторизации, недоступен MikroTik и т.п.
     error: str

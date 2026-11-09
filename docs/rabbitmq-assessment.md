@@ -77,3 +77,5 @@ TCP-проверка подтверждает доступность AMQP-пор
 - RabbitMQ, Consumer Acknowledgements and Publisher Confirms: https://www.rabbitmq.com/docs/confirms
 - PostgreSQL, SELECT (`SKIP LOCKED`, queue-like tables): https://www.postgresql.org/docs/current/sql-select.html
 - PostgreSQL, NOTIFY (границы БД и хранение данных в таблице): https://www.postgresql.org/docs/current/sql-notify.html
+
+Статус обнаруженного multi-router дефекта: обработчики исправлены, подтверждение теперь привязано к router_id и точным ревизиям устройств из снимка. Подробности — policy-sync-results.md.

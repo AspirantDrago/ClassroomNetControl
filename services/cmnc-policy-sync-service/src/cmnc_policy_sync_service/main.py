@@ -341,6 +341,7 @@ async def publish_sync_completed(
     completed_event = PolicySyncCompletedEvent(
         router_id=router_id,
         policy_generation=desired.policy_generation,
+        device_generations=desired.device_generations,
         added=result.added,
         removed=result.removed,
         connections_killed=result.connections_killed,
@@ -359,10 +360,12 @@ async def publish_sync_failed(
     router_id: int,
     policy_generation: int,
     error: str,
+    device_generations: dict[int, int] | None = None,
 ) -> None:
     failed_event = PolicySyncFailedEvent(
         router_id=router_id,
         policy_generation=policy_generation,
+        device_generations=device_generations,
         error=error,
     )
 
@@ -394,10 +397,16 @@ async def sync_router_policy(
         len(desired_blocklist.blocked),
     )
 
-    result = await mikrotik_client.apply_desired_blocklist(
-        desired=desired_blocklist,
-        kill_connections_on_block=settings.kill_connections_on_block,
-    )
+    try:
+        result = await mikrotik_client.apply_desired_blocklist(
+            desired=desired_blocklist,
+            kill_connections_on_block=settings.kill_connections_on_block,
+        )
+    except Exception as exc:
+        await publish_sync_failed(rabbitmq=rabbitmq, router_id=router.id,
+            policy_generation=desired_blocklist.policy_generation,
+            device_generations=desired_blocklist.device_generations, error=str(exc))
+        raise
 
     duration_ms = int((perf_counter() - started) * 1000)
 
@@ -422,6 +431,7 @@ async def sync_router_policy(
             rabbitmq=rabbitmq,
             router_id=router.id,
             policy_generation=desired_blocklist.policy_generation,
+            device_generations=desired_blocklist.device_generations,
             error=error,
         )
         raise RuntimeError(error)

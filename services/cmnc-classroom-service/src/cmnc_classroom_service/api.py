@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -395,7 +395,7 @@ async def set_device_wan_state(
     device_id: int,
     wan_allowed: bool,
 ) -> WanPolicyChangeResponse:
-    device = await session.get(Device, device_id)
+    device = await session.get(Device, device_id, with_for_update=True)
 
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found")
@@ -504,6 +504,7 @@ async def set_classroom_wan_state(
         .where(Device.is_pinned.is_(True))
         .where(Device.wan_protected.is_(False))
         .order_by(Device.id)
+        .with_for_update()
     )
     devices = list(result.scalars().all())
 
@@ -568,25 +569,17 @@ async def get_desired_blocklist(
     router_id: int,
     session: AsyncSession = Depends(get_session),
 ) -> DesiredBlocklistResponse:
-    generation_result = await session.execute(
-        select(func.coalesce(func.max(Device.policy_generation), 0))
-        .join(Classroom, Classroom.id == Device.classroom_id)
-        .where(Classroom.router_id == router_id)
-        .where(Device.is_pinned.is_(True))
-        .where(Device.static_ip.is_not(None))
-    )
-    policy_generation = int(generation_result.scalar_one())
-
+    # Read state and per-device versions in one consistent SQL snapshot.
     result = await session.execute(
         select(Device)
         .join(Classroom, Classroom.id == Device.classroom_id)
         .where(Classroom.router_id == router_id)
-        .where(Device.wan_allowed.is_(False))
-        .where(Device.is_pinned.is_(True))
-        .where(Device.static_ip.is_not(None))
         .order_by(Device.id)
     )
-    blocked_devices = list(result.scalars().all())
+    devices = list(result.scalars().all())
+    policy_generation = max((device.policy_generation for device in devices), default=0)
+    blocked_devices = [device for device in devices
+                       if not device.wan_allowed and device.is_pinned and device.static_ip is not None]
 
     blocked = [
         DesiredBlocklistItem(
@@ -607,6 +600,7 @@ async def get_desired_blocklist(
     return DesiredBlocklistResponse(
         router_id=router_id,
         policy_generation=policy_generation,
+        device_generations={device.id: device.policy_generation for device in devices},
         address_list_name=settings.managed_address_list_name,
         blocked=blocked,
     )
@@ -791,7 +785,7 @@ async def update_device(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> DeviceRead:
-    device = await session.get(Device, device_id)
+    device = await session.get(Device, device_id, with_for_update=True)
 
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found")
@@ -804,14 +798,20 @@ async def update_device(
     if "mac_address" in update_data and update_data["mac_address"] is not None:
         update_data["mac_address"] = normalize_mac_address(update_data["mac_address"])
 
-    should_publish_policy_event = False
+    policy_fields = {"classroom_id", "mac_address", "static_ip", "is_pinned", "wan_protected"}
+    should_publish_policy_event = any(
+        field in policy_fields and getattr(device, field) != value
+        for field, value in update_data.items()
+    )
 
     if update_data.get("wan_protected") is True and device.wan_allowed is False:
         device.wan_allowed = True
+        should_publish_policy_event = True
+
+    if should_publish_policy_event:
         device.policy_generation += 1
         device.sync_status = "pending"
         device.sync_error = None
-        should_publish_policy_event = True
 
     for field_name, value in update_data.items():
         setattr(device, field_name, value)
@@ -852,7 +852,7 @@ async def pin_device(
 ) -> DeviceRead:
     await ensure_classroom_exists(session, payload.classroom_id)
 
-    device = await session.get(Device, device_id)
+    device = await session.get(Device, device_id, with_for_update=True)
 
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found")
@@ -863,6 +863,7 @@ async def pin_device(
     device.static_ip = payload.static_ip
     device.row_index = payload.row_index
     device.column_index = payload.column_index
+    device.policy_generation += 1
     device.is_pinned = True
     device.veyon_bulk_protected = payload.veyon_bulk_protected
     device.wol_protected = payload.wol_protected
@@ -884,7 +885,7 @@ async def unpin_device(
     device_id: int,
     session: AsyncSession = Depends(get_session),
 ) -> DeviceRead:
-    device = await session.get(Device, device_id)
+    device = await session.get(Device, device_id, with_for_update=True)
 
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found")
@@ -895,6 +896,7 @@ async def unpin_device(
             detail="Cannot unpin device while WAN is blocked. Allow WAN first.",
         )
 
+    device.policy_generation += 1
     device.is_pinned = False
     device.row_index = None
     device.column_index = None

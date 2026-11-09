@@ -11,5 +11,6 @@ class DesiredBlocklistItem(BaseModel):
 class DesiredBlocklistResponse(BaseModel):
     router_id: int
     policy_generation: int
+    device_generations: dict[int, int] | None = None
     address_list_name: str
     blocked: list[DesiredBlocklistItem]
