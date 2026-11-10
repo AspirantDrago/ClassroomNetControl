@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import random
+import weakref
 import signal
 import uuid
 from contextlib import suppress
@@ -65,6 +67,28 @@ app = FastAPI(title=settings.service_name)
 
 SERVICE_NAME: Final[str] = "policy_sync"
 _shutdown_event: Final[asyncio.Event] = asyncio.Event()
+_router_locks = weakref.WeakKeyDictionary()
+
+def router_lock(router_id: int) -> asyncio.Lock:
+    locks = _router_locks.setdefault(asyncio.get_running_loop(), {})
+    return locks.setdefault(router_id, asyncio.Lock())
+
+def retry_delay(failures: int) -> float:
+    base = settings.retry_base_seconds * (2 ** min(max(failures - 1, 0), 12))
+    return min(max(settings.retry_base_seconds, settings.retry_max_seconds),
+               base * random.uniform(1.0, 1.2))
+
+class SyncResultDeliveryError(RuntimeError):
+    """Router policy applied, but its completion could not be delivered."""
+    def __init__(self, details):
+        super().__init__("Policy applied; completion event delivery failed")
+        self.details = details
+
+async def publish_failure_safely(**kwargs):
+    try:
+        await publish_sync_failed(**kwargs)
+    except Exception:
+        logger.warning("Could not deliver policy failure event: router_id=%s", kwargs.get("router_id"), exc_info=True)
 
 
 @dataclass(slots=True)
@@ -189,59 +213,100 @@ async def sync_router_policy_manual(
         managed_comment_prefix=settings.managed_comment_prefix,
     )
 
-    last_attempt_at = now_utc()
-    await update_status_safely(
-        inventory_client,
-        router_id=router.id,
-        worker_id=worker_id,
-        status="starting",
-        is_running=router.sync_enabled,
-        heartbeat_at=last_attempt_at,
-        last_started_at=started_at,
-        last_attempt_at=last_attempt_at,
-        consecutive_failures=0,
-        details=base_details,
-    )
-
     try:
-        result_details = await sync_router_policy(
-            router=router,
-            classroom_client=classroom_client,
-            mikrotik_client=mikrotik_client,
-            rabbitmq=rabbitmq,
+        last_attempt_at = now_utc()
+        await update_status_safely(
+            inventory_client,
+            router_id=router.id,
+            worker_id=worker_id,
+            status="starting",
+            is_running=router.sync_enabled,
+            heartbeat_at=last_attempt_at,
+            last_started_at=started_at,
+            last_attempt_at=last_attempt_at,
+            consecutive_failures=0,
+            details=base_details,
         )
-    except Exception as exc:
-        finished_at = now_utc()
-        duration_ms = int((finished_at - last_attempt_at).total_seconds() * 1000)
-        error_text = f"{type(exc).__name__}: {exc}"
-        details: dict[str, Any] = {
-            **base_details,
-            "duration_ms": duration_ms,
-        }
 
-        logger.exception(
-            "Manual policy sync failed: router_id=%s, router_name=%s",
-            router.id,
-            router.name,
-        )
+        try:
+            result_details = await sync_router_policy(
+                router=router,
+                classroom_client=classroom_client,
+                mikrotik_client=mikrotik_client,
+                rabbitmq=rabbitmq,
+            )
+        except Exception as exc:
+            finished_at = now_utc()
+            duration_ms = int((finished_at - last_attempt_at).total_seconds() * 1000)
+            error_text = f"{type(exc).__name__}: {exc}"
+            delivery_error = isinstance(exc, SyncResultDeliveryError)
+            details: dict[str, Any] = {
+                **base_details,
+                **(exc.details if delivery_error else {}),
+                "duration_ms": duration_ms,
+            }
+            if delivery_error:
+                details["result_delivery_error"] = True
+
+            logger.exception(
+                "Manual policy sync request incomplete: router_id=%s, router_name=%s",
+                router.id,
+                router.name,
+            )
+
+            await update_status_safely(
+                inventory_client,
+                router_id=router.id,
+                worker_id=worker_id,
+                status="warning" if delivery_error else "error",
+                is_running=router.sync_enabled,
+                heartbeat_at=finished_at,
+                last_started_at=started_at,
+                last_attempt_at=last_attempt_at,
+                last_error_at=finished_at,
+                last_error=error_text,
+                last_success_at=finished_at if delivery_error else None,
+                consecutive_failures=0 if delivery_error else 1,
+                details=details,
+            )
+
+            return {
+                "ok": False,
+                "router_id": router.id,
+                "router_name": router.name,
+                "policy_generation": details.get("policy_generation"),
+                "desired_count": details.get("desired_count"),
+                "added_count": details.get("added_count"),
+                "removed_count": details.get("removed_count"),
+                "updated_count": details.get("updated_count"),
+                "connections_killed_count": details.get("connections_killed_count"),
+                "duration_ms": duration_ms,
+                "error": error_text,
+                "details": details,
+            }
+
+        finished_at = now_utc()
+        details = {
+            **result_details,
+            "manual": True,
+        }
 
         await update_status_safely(
             inventory_client,
             router_id=router.id,
             worker_id=worker_id,
-            status="error",
+            status="ok",
             is_running=router.sync_enabled,
             heartbeat_at=finished_at,
             last_started_at=started_at,
             last_attempt_at=last_attempt_at,
-            last_error_at=finished_at,
-            last_error=error_text,
-            consecutive_failures=1,
+            last_success_at=finished_at,
+            consecutive_failures=0,
             details=details,
         )
 
         return {
-            "ok": False,
+            "ok": True,
             "router_id": router.id,
             "router_name": router.name,
             "policy_generation": details.get("policy_generation"),
@@ -250,45 +315,12 @@ async def sync_router_policy_manual(
             "removed_count": details.get("removed_count"),
             "updated_count": details.get("updated_count"),
             "connections_killed_count": details.get("connections_killed_count"),
-            "duration_ms": duration_ms,
-            "error": error_text,
+            "duration_ms": details.get("duration_ms"),
+            "error": None,
             "details": details,
         }
-
-    finished_at = now_utc()
-    details = {
-        **result_details,
-        "manual": True,
-    }
-
-    await update_status_safely(
-        inventory_client,
-        router_id=router.id,
-        worker_id=worker_id,
-        status="ok",
-        is_running=router.sync_enabled,
-        heartbeat_at=finished_at,
-        last_started_at=started_at,
-        last_attempt_at=last_attempt_at,
-        last_success_at=finished_at,
-        consecutive_failures=0,
-        details=details,
-    )
-
-    return {
-        "ok": True,
-        "router_id": router.id,
-        "router_name": router.name,
-        "policy_generation": details.get("policy_generation"),
-        "desired_count": details.get("desired_count"),
-        "added_count": details.get("added_count"),
-        "removed_count": details.get("removed_count"),
-        "updated_count": details.get("updated_count"),
-        "connections_killed_count": details.get("connections_killed_count"),
-        "duration_ms": details.get("duration_ms"),
-        "error": None,
-        "details": details,
-    }
+    finally:
+        await mikrotik_client.close()
 
 
 async def update_status_safely(
@@ -375,7 +407,14 @@ async def publish_sync_failed(
     )
 
 
-async def sync_router_policy(
+async def sync_router_policy(*, router: RouterConnection, classroom_client: ClassroomServiceClient,
+                             mikrotik_client: MikroTikClient, rabbitmq: RabbitMqClient) -> dict[str, object]:
+    async with router_lock(router.id):
+        return await _sync_router_policy_locked(router=router, classroom_client=classroom_client,
+            mikrotik_client=mikrotik_client, rabbitmq=rabbitmq)
+
+
+async def _sync_router_policy_locked(
     *,
     router: RouterConnection,
     classroom_client: ClassroomServiceClient,
@@ -403,7 +442,7 @@ async def sync_router_policy(
             kill_connections_on_block=settings.kill_connections_on_block,
         )
     except Exception as exc:
-        await publish_sync_failed(rabbitmq=rabbitmq, router_id=router.id,
+        await publish_failure_safely(rabbitmq=rabbitmq, router_id=router.id,
             policy_generation=desired_blocklist.policy_generation,
             device_generations=desired_blocklist.device_generations, error=str(exc))
         raise
@@ -427,7 +466,7 @@ async def sync_router_policy(
 
     if result.errors:
         error = "; ".join(result.errors)
-        await publish_sync_failed(
+        await publish_failure_safely(
             rabbitmq=rabbitmq,
             router_id=router.id,
             policy_generation=desired_blocklist.policy_generation,
@@ -436,12 +475,11 @@ async def sync_router_policy(
         )
         raise RuntimeError(error)
 
-    await publish_sync_completed(
-        rabbitmq=rabbitmq,
-        router_id=router.id,
-        desired=desired_blocklist,
-        result=result,
-    )
+    try:
+        await publish_sync_completed(rabbitmq=rabbitmq, router_id=router.id,
+            desired=desired_blocklist, result=result)
+    except Exception as exc:
+        raise SyncResultDeliveryError(details) from exc
 
     logger.info(
         "Policy sync completed: router_id=%s, added=%s, removed=%s, updated=%s, "
@@ -467,6 +505,8 @@ async def wait_for_trigger_or_timeout(
     except TimeoutError:
         return None
 
+    if settings.trigger_debounce_seconds:
+        await asyncio.sleep(settings.trigger_debounce_seconds)
     latest_event = event
 
     while True:
@@ -494,6 +534,8 @@ async def sync_router_worker(
     last_error_at: datetime | None = None
     last_error: str | None = None
     consecutive_failures = 0
+    first_attempt = True
+    retry_not_before = 0.0
     details: dict[str, object] = {
         "api_host": router.api_host,
         "api_port": router.api_port,
@@ -536,7 +578,7 @@ async def sync_router_worker(
                 inventory_client,
                 router_id=router.id,
                 worker_id=worker_id,
-                status="ok" if consecutive_failures == 0 else "warning",
+                status="ok" if last_error is None else "warning",
                 is_running=True,
                 heartbeat_at=heartbeat_at,
                 last_started_at=started_at,
@@ -548,7 +590,25 @@ async def sync_router_worker(
                 details=details,
             )
 
-            trigger_event = await wait_for_trigger_or_timeout(trigger_queue)
+            trigger_event = None if first_attempt else await wait_for_trigger_or_timeout(trigger_queue)
+            first_attempt = False
+            # New events may update desired state, but cannot hammer an unavailable
+            # router through an exponential retry cooldown. Keep heartbeats alive.
+            while perf_counter() < retry_not_before and not _shutdown_event.is_set():
+                delay = min(10.0, retry_not_before - perf_counter())
+                try:
+                    await asyncio.wait_for(_shutdown_event.wait(), timeout=delay)
+                except TimeoutError:
+                    await update_status_safely(inventory_client, router_id=router.id,
+                        worker_id=worker_id, status="warning", is_running=True,
+                        heartbeat_at=now_utc(), consecutive_failures=consecutive_failures,
+                        last_error=last_error, details=details)
+            # The snapshot will be read now, so triggers accumulated during the
+            # cooldown/status I/O are already covered by this next read.
+            while not trigger_queue.empty():
+                next_event = trigger_queue.get_nowait()
+                if next_event is not None:
+                    trigger_event = next_event
             if _shutdown_event.is_set():
                 break
 
@@ -566,6 +626,7 @@ async def sync_router_worker(
                 last_error_at = None
                 consecutive_failures = 0
                 details = result_details
+                retry_not_before = 0.0
 
                 await update_status_safely(
                     inventory_client,
@@ -580,6 +641,17 @@ async def sync_router_worker(
                     consecutive_failures=0,
                     details=details,
                 )
+            except SyncResultDeliveryError as exc:
+                # Publication failure is not a RouterOS failure. Do not publish a
+                # false failed result or immediately repeat the physical operation.
+                last_success_at = now_utc()
+                details = {**exc.details, "result_delivery_error": True}
+                consecutive_failures = 0
+                last_error = str(exc)
+                await update_status_safely(inventory_client, router_id=router.id,
+                    worker_id=worker_id, status="warning", is_running=True,
+                    heartbeat_at=last_success_at, last_success_at=last_success_at,
+                    last_error=last_error, details=details)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
@@ -587,7 +659,7 @@ async def sync_router_worker(
                 last_error = f"{type(exc).__name__}: {exc}"
                 consecutive_failures += 1
                 status: RouterServiceStatus = "warning" if consecutive_failures < 3 else "error"
-                policy_generation = trigger_event.policy_generation if trigger_event is not None else 0
+                retry_not_before = perf_counter() + retry_delay(consecutive_failures)
 
                 logger.exception(
                     "Policy sync failed: router_id=%s, router_name=%s, failures=%s",
@@ -595,14 +667,6 @@ async def sync_router_worker(
                     router.name,
                     consecutive_failures,
                 )
-
-                if trigger_event is not None:
-                    await publish_sync_failed(
-                        rabbitmq=rabbitmq,
-                        router_id=router.id,
-                        policy_generation=policy_generation,
-                        error=last_error,
-                    )
 
                 await update_status_safely(
                     inventory_client,
@@ -620,6 +684,7 @@ async def sync_router_worker(
                     details=details,
                 )
     finally:
+        await mikrotik_client.close()
         stopped_at = now_utc()
         await update_status_safely(
             inventory_client,
@@ -645,12 +710,18 @@ async def sync_router_worker(
 
 async def cancel_worker(state: SyncWorkerState) -> None:
     state.task.cancel()
-    with suppress(asyncio.CancelledError):
+    try:
         await state.task
+    except asyncio.CancelledError:
+        pass
+    except Exception:
+        logger.exception("Stopped policy worker had failed: router_id=%s", state.router.id)
 
 
 def router_config_changed(old: RouterConnection, new: RouterConnection) -> bool:
-    return old != new
+    fields = ("api_host", "api_port", "api_use_ssl", "api_verify_tls",
+              "api_username", "api_password", "is_enabled", "sync_enabled")
+    return any(getattr(old, field) != getattr(new, field) for field in fields)
 
 
 async def handle_wan_policy_changed(
@@ -679,6 +750,9 @@ async def handle_wan_policy_changed(
             )
             return
 
+        # One pending wake-up is enough: reconcile always reads current state.
+        while not state.trigger_queue.empty():
+            state.trigger_queue.get_nowait()
         try:
             state.trigger_queue.put_nowait(event)
         except asyncio.QueueFull:
@@ -698,98 +772,104 @@ async def supervisor(
     rabbitmq: RabbitMqClient,
     workers: dict[int, SyncWorkerState],
 ) -> None:
-    while not _shutdown_event.is_set():
-        try:
-            routers = await inventory_client.get_active_routers()
-        except Exception:
-            logger.exception("Failed to load active routers from inventory service")
-            routers = []
+    try:
+        while not _shutdown_event.is_set():
+            try:
+                routers = await inventory_client.get_active_routers()
+            except Exception:
+                logger.exception("Failed to load active routers from inventory service")
+                routers = None
 
-        routers_by_id = {router.id: router for router in routers}
+            if routers is not None:
+                routers_by_id = {router.id: router for router in routers}
 
-        for router in routers:
-            existing = workers.get(router.id)
+                for router in routers:
+                    existing = workers.get(router.id)
 
-            if not router.sync_enabled:
-                if existing is not None:
-                    logger.info(
-                        "Stopping policy sync worker because sync is disabled: router_id=%s",
-                        router.id,
-                    )
-                    await cancel_worker(existing)
-                    workers.pop(router.id, None)
+                    if not router.sync_enabled:
+                        if existing is not None:
+                            logger.info(
+                                "Stopping policy sync worker because sync is disabled: router_id=%s",
+                                router.id,
+                            )
+                            await cancel_worker(existing)
+                            workers.pop(router.id, None)
 
-                await update_status_safely(
-                    inventory_client,
-                    router_id=router.id,
-                    worker_id=None,
-                    status="disabled",
-                    is_running=False,
-                    heartbeat_at=now_utc(),
-                    consecutive_failures=0,
-                    details={
-                        "reason": "sync_enabled is false",
-                        "api_host": router.api_host,
-                        "api_port": router.api_port,
-                        "api_use_ssl": router.api_use_ssl,
-                    },
+                        await update_status_safely(
+                            inventory_client,
+                            router_id=router.id,
+                            worker_id=None,
+                            status="disabled",
+                            is_running=False,
+                            heartbeat_at=now_utc(),
+                            consecutive_failures=0,
+                            details={
+                                "reason": "sync_enabled is false",
+                                "api_host": router.api_host,
+                                "api_port": router.api_port,
+                                "api_use_ssl": router.api_use_ssl,
+                            },
+                        )
+                        continue
+
+                    if existing is not None and router_config_changed(existing.router, router):
+                        logger.info(
+                            "Restarting policy sync worker because router settings changed: router_id=%s",
+                            router.id,
+                        )
+                        await cancel_worker(existing)
+                        workers.pop(router.id, None)
+                        existing = None
+
+                    if existing is None or existing.task.done():
+                        if existing is not None and existing.task.done():
+                            logger.warning(
+                                "Restarting stopped policy sync worker: router_id=%s",
+                                router.id,
+                            )
+                            await cancel_worker(existing)
+                            workers.pop(router.id, None)
+
+                        trigger_queue: asyncio.Queue[WanPolicyChangedEvent | None] = asyncio.Queue(
+                            maxsize=settings.router_event_queue_max_size,
+                        )
+                        task = asyncio.create_task(
+                            sync_router_worker(
+                                router=router,
+                                trigger_queue=trigger_queue,
+                                inventory_client=inventory_client,
+                                classroom_client=classroom_client,
+                                rabbitmq=rabbitmq,
+                            )
+                        )
+                        workers[router.id] = SyncWorkerState(
+                            router=router,
+                            task=task,
+                            trigger_queue=trigger_queue,
+                        )
+
+                for router_id, state in list(workers.items()):
+                    if router_id not in routers_by_id:
+                        logger.info(
+                            "Stopping policy sync worker because router is not active: router_id=%s",
+                            router_id,
+                        )
+                        await cancel_worker(state)
+                        workers.pop(router_id, None)
+
+
+            try:
+                await asyncio.wait_for(
+                    _shutdown_event.wait(),
+                    timeout=settings.supervisor_interval_seconds,
                 )
-                continue
+            except TimeoutError:
+                pass
 
-            if existing is not None and router_config_changed(existing.router, router):
-                logger.info(
-                    "Restarting policy sync worker because router settings changed: router_id=%s",
-                    router.id,
-                )
-                await cancel_worker(existing)
-                workers.pop(router.id, None)
-                existing = None
-
-            if existing is None or existing.task.done():
-                if existing is not None and existing.task.done():
-                    logger.warning(
-                        "Restarting stopped policy sync worker: router_id=%s",
-                        router.id,
-                    )
-                    workers.pop(router.id, None)
-
-                trigger_queue: asyncio.Queue[WanPolicyChangedEvent | None] = asyncio.Queue(
-                    maxsize=settings.router_event_queue_max_size,
-                )
-                task = asyncio.create_task(
-                    sync_router_worker(
-                        router=router,
-                        trigger_queue=trigger_queue,
-                        inventory_client=inventory_client,
-                        classroom_client=classroom_client,
-                        rabbitmq=rabbitmq,
-                    )
-                )
-                workers[router.id] = SyncWorkerState(
-                    router=router,
-                    task=task,
-                    trigger_queue=trigger_queue,
-                )
-
-        for router_id, state in list(workers.items()):
-            if router_id not in routers_by_id:
-                logger.info(
-                    "Stopping policy sync worker because router is not active: router_id=%s",
-                    router_id,
-                )
-                await cancel_worker(state)
-                workers.pop(router_id, None)
-
-        try:
-            await asyncio.wait_for(
-                _shutdown_event.wait(),
-                timeout=settings.supervisor_interval_seconds,
-            )
-        except TimeoutError:
-            pass
-
-    for state in list(workers.values()):
-        await cancel_worker(state)
+    finally:
+        for state in list(workers.values()):
+            await cancel_worker(state)
+        workers.clear()
 
 
 async def main() -> None:
@@ -859,9 +939,11 @@ async def main() -> None:
                 task.cancel()
 
         for task in (supervisor_task, api_task):
-            with suppress(asyncio.CancelledError):
+            with suppress(asyncio.CancelledError, Exception):
                 await task
 
+        await inventory_client.close()
+        await classroom_client.close()
         await rabbitmq.close()
 
 

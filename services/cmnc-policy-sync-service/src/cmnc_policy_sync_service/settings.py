@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     supervisor_interval_seconds: float = 10.0
     reconcile_interval_seconds: float = 30.0
     router_event_queue_max_size: int = 1000
+    connection_query_batch_size: int = Field(default=32, ge=1, le=64)
+    connection_delete_concurrency: int = Field(default=2, ge=1, le=4)
+    trigger_debounce_seconds: float = Field(default=0.1, ge=0, le=1)
+    retry_max_seconds: float = Field(default=120, ge=1)
+    retry_base_seconds: float = Field(default=5, ge=0.1)
+
 
     managed_comment_prefix: str = "managed-by=cmnc;"
     kill_connections_on_block: bool = True

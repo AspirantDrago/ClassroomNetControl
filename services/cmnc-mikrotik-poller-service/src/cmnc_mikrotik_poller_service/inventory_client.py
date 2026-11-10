@@ -55,11 +55,23 @@ class InventoryClient:
     def __init__(self, base_url: str, timeout_seconds: float = 10.0) -> None:
         self._base_url = base_url.rstrip("/")
         self._timeout_seconds = timeout_seconds
+        self._client: httpx.AsyncClient | None = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient(timeout=self._timeout_seconds, trust_env=False,
+                limits=httpx.Limits(max_connections=30, max_keepalive_connections=10))
+        return self._client
+
+    async def close(self) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
 
     async def get_active_routers(self) -> list[RouterConnection]:
-        async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
-            response = await client.get(f"{self._base_url}/internal/routers/active")
-            response.raise_for_status()
+        client = self._get_client()
+        response = await client.get(f"{self._base_url}/internal/routers/active")
+        response.raise_for_status()
 
         data = response.json()
         if not isinstance(data, list):
@@ -73,11 +85,11 @@ class InventoryClient:
         return routers
 
     async def get_router_connection(self, router_id: int) -> RouterConnection:
-        async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
-            response = await client.get(
-                f"{self._base_url}/internal/routers/{router_id}/connection"
-            )
-            response.raise_for_status()
+        client = self._get_client()
+        response = await client.get(
+            f"{self._base_url}/internal/routers/{router_id}/connection"
+        )
+        response.raise_for_status()
 
         data = response.json()
         if not isinstance(data, dict):
@@ -117,9 +129,9 @@ class InventoryClient:
             "details": details or {},
         }
 
-        async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
-            response = await client.put(
-                f"{self._base_url}/internal/routers/{router_id}/status/{service_name}",
-                json=payload,
-            )
-            response.raise_for_status()
+        client = self._get_client()
+        response = await client.put(
+            f"{self._base_url}/internal/routers/{router_id}/status/{service_name}",
+            json=payload,
+        )
+        response.raise_for_status()

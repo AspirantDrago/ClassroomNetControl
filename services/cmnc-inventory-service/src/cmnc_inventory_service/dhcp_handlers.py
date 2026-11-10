@@ -1,89 +1,63 @@
 import logging
+from datetime import timezone
 
 from aio_pika import IncomingMessage
 from sqlalchemy import select
 
 from cmnc_contracts.events import DhcpLeasesObservedEvent
-
 from cmnc_inventory_service.db import async_session_maker
-from cmnc_inventory_service.models import ObservedDevice
+from cmnc_inventory_service.models import ObservedDevice, Router
 
 logger = logging.getLogger(__name__)
 
+def utc(value):
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
 
 async def handle_dhcp_leases_observed(message: IncomingMessage) -> None:
     async with message.process(requeue=False):
         event = DhcpLeasesObservedEvent.model_validate_json(message.body)
-
-        logger.info(
-            "Received DHCP leases observed event: router_id=%s, leases=%s",
-            event.router_id,
-            len(event.leases),
-        )
-
-        seen_macs = {
-            lease.mac
-            for lease in event.leases
-            if lease.mac
-        }
-
-        created = 0
-        updated = 0
-        marked_inactive = 0
-
         async with async_session_maker() as session:
-            for lease in event.leases:
-                result = await session.execute(
-                    select(ObservedDevice)
-                    .where(ObservedDevice.router_id == event.router_id)
-                    .where(ObservedDevice.mac_address == lease.mac)
-                )
-                observed_device = result.scalar_one_or_none()
-
-                if observed_device is None:
-                    observed_device = ObservedDevice(
-                        router_id=event.router_id,
-                        mac_address=lease.mac,
-                        active_ip=lease.active_ip,
-                        hostname=lease.hostname,
-                        dynamic=lease.dynamic,
-                        active=lease.active,
-                        raw=lease.raw,
-                        last_seen_at=event.occurred_at,
-                    )
-                    session.add(observed_device)
+            # Serialize snapshots of the same router, including empty snapshots.
+            result = await session.execute(select(Router).where(Router.id == event.router_id).with_for_update())
+            router = result.scalar_one_or_none()
+            if router is None:
+                logger.warning("Ignoring DHCP snapshot for removed router_id=%s", event.router_id)
+                return
+            observed_at = utc(event.occurred_at)
+            if router.dhcp_snapshot_at is not None and observed_at <= utc(router.dhcp_snapshot_at):
+                logger.info("Ignoring stale DHCP snapshot router_id=%s", event.router_id)
+                return
+            result = await session.execute(select(ObservedDevice).where(ObservedDevice.router_id == event.router_id))
+            existing = {device.mac_address: device for device in result.scalars().all()}
+            # Bootstrap protection for pre-migration records; future comparisons use
+            # the explicit watermark even when all devices are absent/inactive.
+            if router.dhcp_snapshot_at is None:
+                previous = [utc(device.last_seen_at) for device in existing.values() if device.last_seen_at is not None]
+                if previous and observed_at < max(previous):
+                    logger.info("Ignoring pre-watermark stale DHCP snapshot router_id=%s", event.router_id)
+                    return
+            leases = {lease.mac: lease for lease in event.leases if lease.mac}
+            created = updated = inactive = 0
+            for mac, lease in leases.items():
+                device = existing.get(mac)
+                if device is None:
+                    device = ObservedDevice(router_id=event.router_id, mac_address=mac,
+                        first_seen_at=observed_at, last_seen_at=observed_at)
+                    session.add(device)
                     created += 1
-                    continue
-
-                observed_device.active_ip = lease.active_ip
-                observed_device.hostname = lease.hostname
-                observed_device.dynamic = lease.dynamic
-                observed_device.active = lease.active
-                observed_device.raw = lease.raw
-
+                else:
+                    updated += 1
+                device.active_ip = lease.active_ip
+                device.hostname = lease.hostname
+                device.dynamic = lease.dynamic
+                device.active = lease.active
+                device.raw = lease.raw
                 if lease.active:
-                    observed_device.last_seen_at = event.occurred_at
-
-                updated += 1
-
-            if seen_macs:
-                result = await session.execute(
-                    select(ObservedDevice)
-                    .where(ObservedDevice.router_id == event.router_id)
-                    .where(ObservedDevice.mac_address.not_in(seen_macs))
-                    .where(ObservedDevice.active.is_(True))
-                )
-                missing_devices = list(result.scalars().all())
-
-                for observed_device in missing_devices:
-                    observed_device.active = False
-                    marked_inactive += 1
-
+                    device.last_seen_at = observed_at
+            for mac, device in existing.items():
+                if mac not in leases and device.active:
+                    device.active = False
+                    inactive += 1
+            router.dhcp_snapshot_at = observed_at
             await session.commit()
-
-        logger.info(
-            "DHCP leases saved: created=%s, updated=%s, marked_inactive=%s",
-            created,
-            updated,
-            marked_inactive,
-        )
+        logger.info("DHCP snapshot saved router_id=%s created=%s updated=%s inactive=%s", event.router_id, created, updated, inactive)

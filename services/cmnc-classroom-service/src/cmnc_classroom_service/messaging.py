@@ -5,6 +5,7 @@ from aio_pika import DeliveryMode, ExchangeType, Message
 from pydantic import BaseModel
 
 from cmnc_contracts.exchanges import CMNC_EVENTS_EXCHANGE
+from cmnc_contracts.amqp import publish_bounded, reliable_queue
 
 logger = logging.getLogger(__name__)
 
@@ -13,21 +14,28 @@ class RabbitMqClient:
     def __init__(self, url: str) -> None:
         self._url = url
         self._connection: aio_pika.abc.AbstractRobustConnection | None = None
+        self._publish_channel: aio_pika.abc.AbstractRobustChannel | None = None
         self._channel: aio_pika.abc.AbstractRobustChannel | None = None
         self._exchange: aio_pika.abc.AbstractRobustExchange | None = None
 
     async def connect(self) -> None:
-        self._connection = await aio_pika.connect_robust(self._url)
-        self._channel = await self._connection.channel()
-        await self._channel.set_qos(prefetch_count=10)
+        try:
+            self._connection = await aio_pika.connect_robust(self._url)
+            self._channel = await self._connection.channel(publisher_confirms=False)
+            await self._channel.set_qos(prefetch_count=10)
 
-        self._exchange = await self._channel.declare_exchange(
-            CMNC_EVENTS_EXCHANGE,
-            ExchangeType.TOPIC,
-            durable=True,
-        )
+            self._publish_channel = await self._connection.channel(publisher_confirms=True, on_return_raises=True)
 
-        logger.info("RabbitMQ client connected")
+            self._exchange = await self._publish_channel.declare_exchange(
+                CMNC_EVENTS_EXCHANGE,
+                ExchangeType.TOPIC,
+                durable=True,
+            )
+
+            logger.info("RabbitMQ client connected")
+        except BaseException:
+            await self.close()
+            raise
 
     async def close(self) -> None:
         if self._connection is not None:
@@ -35,6 +43,7 @@ class RabbitMqClient:
 
         self._connection = None
         self._channel = None
+        self._publish_channel = None
         self._exchange = None
 
         logger.info("RabbitMQ client closed")
@@ -47,23 +56,11 @@ class RabbitMqClient:
         if self._channel is None or self._exchange is None:
             raise RuntimeError("RabbitMQ client is not connected")
 
-        queue = await self._channel.declare_queue(
-            queue_name,
-            durable=True,
-        )
+        if self._publish_channel is None:
+            raise RuntimeError("RabbitMQ publisher is not connected")
+        return await reliable_queue(self._channel, self._publish_channel,
+            queue_name, self._exchange, routing_key)
 
-        await queue.bind(
-            self._exchange,
-            routing_key=routing_key,
-        )
-
-        logger.info(
-            "Declared queue %s bound to %s",
-            queue_name,
-            routing_key,
-        )
-
-        return queue
 
     async def publish_event(
         self,
@@ -86,10 +83,7 @@ class RabbitMqClient:
             type=str(event_type) if event_type is not None else None,
         )
 
-        await self._exchange.publish(
-            message,
-            routing_key=routing_key,
-        )
+        await publish_bounded(self._exchange, message, routing_key)
 
         logger.info(
             "Published event %s with routing key %s",

@@ -1,3 +1,5 @@
+import asyncio
+import ipaddress
 import logging
 from dataclasses import dataclass
 from typing import Any
@@ -16,6 +18,8 @@ class AddressListEntry:
     list_name: str
     address: str
     comment: str | None
+    disabled: bool = False
+    dynamic: bool = False
 
 
 @dataclass(frozen=True)
@@ -43,6 +47,20 @@ class MikroTikClient:
         self._verify_tls = verify_tls
         self._timeout_seconds = timeout_seconds
         self._managed_comment_prefix = managed_comment_prefix
+        self._client: httpx.AsyncClient | None = None
+
+    def _http(self) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient(timeout=self._timeout_seconds,
+                verify=self._verify_tls, trust_env=False,
+                auth=(self._username, self._password.get_secret_value()),
+                limits=httpx.Limits(max_connections=4, max_keepalive_connections=4))
+        return self._client
+
+    async def close(self) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
 
     async def get_address_list_entries(
             self,
@@ -53,6 +71,7 @@ class MikroTikClient:
             path="/ip/firewall/address-list",
             params={
                 "list": address_list_name,
+                ".proplist": ".id,list,address,comment,disabled,dynamic",
             },
         )
 
@@ -79,6 +98,8 @@ class MikroTikClient:
                     list_name=str(list_name),
                     address=str(address),
                     comment=str(comment) if comment is not None else None,
+                    disabled=str(item.get("disabled", "false")).lower() == "true",
+                    dynamic=str(item.get("dynamic", "false")).lower() == "true",
                 )
             )
 
@@ -135,34 +156,57 @@ class MikroTikClient:
             path=f"/ip/firewall/address-list/{routeros_id}",
         )
 
-    async def remove_connections_by_src_ip(
-            self,
-            src_ip: str,
-    ) -> int:
-        connections = await self.get_connections_by_src_ip(src_ip)
-        removed = 0
+    async def remove_connections_by_src_ip(self, src_ip: str) -> int:
+        return await self.remove_connections_by_src_ips([src_ip])
 
-        for connection in connections:
-            routeros_id = connection.get(".id")
+    async def remove_connections_by_src_ips(self, src_ips: list[str]) -> int:
+        from cmnc_policy_sync_service.settings import settings
+        targets = sorted({str(ipaddress.IPv4Address(ip)) for ip in src_ips})
+        connections: dict[str, dict[str, Any]] = {}
+        size = settings.connection_query_batch_size
+        for offset in range(0, len(targets), size):
+            batch = targets[offset:offset + size]
+            query: list[str] = []
+            for index, ip in enumerate(batch):
+                query.extend([f"src-address={ip}", f">src-address={ip}:", f"<src-address={ip};", "#&", "#|"])
+                if index:
+                    query.append("#|")
+            data = await self._request_json("POST", "/ip/firewall/connection/print",
+                json={".proplist": [".id", "src-address"], ".query": query})
+            if not isinstance(data, list):
+                raise TypeError("MikroTik connections response is not a list")
+            for item in data:
+                if not isinstance(item, dict) or not item.get(".id"):
+                    continue
+                source = str(item.get("src-address", ""))
+                if any(source == ip or source.startswith(ip + ":") for ip in batch):
+                    connections[str(item[".id"])] = item
+        pending = asyncio.Queue()
+        for identifier in connections:
+            pending.put_nowait(identifier)
+        interrupted = asyncio.Event()
+        async def remove_worker() -> int:
+            removed = 0
+            while not pending.empty() and not interrupted.is_set():
+                try:
+                    identifier = pending.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+                try:
+                    await self._request("DELETE", f"/ip/firewall/connection/{identifier}")
+                    removed += 1
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code == 429:
+                        interrupted.set()
+                    if exc.response.status_code != 404:
+                        logger.warning("Connection removal rejected: id=%s status=%s", identifier, exc.response.status_code)
+                except httpx.HTTPError:
+                    interrupted.set()
+                    logger.warning("Connection removal interrupted: id=%s", identifier)
+            return removed
+        workers = min(settings.connection_delete_concurrency, len(connections))
+        return sum(await asyncio.gather(*(remove_worker() for _ in range(workers))))
 
-            if not routeros_id:
-                continue
-
-            try:
-                await self._request(
-                    method="DELETE",
-                    path=f"/ip/firewall/connection/{routeros_id}",
-                )
-                removed += 1
-            except httpx.HTTPStatusError as exc:
-                logger.warning(
-                    "Failed to delete connection %s for %s: %s",
-                    routeros_id,
-                    src_ip,
-                    exc,
-                )
-
-        return removed
 
     async def get_connections_by_src_ip(
             self,
@@ -308,126 +352,75 @@ class MikroTikClient:
 
             await self.delete_address_list_entry(entry.routeros_id)
 
-    async def apply_desired_blocklist(
-            self,
-            desired: DesiredBlocklistResponse,
-            kill_connections_on_block: bool,
-    ) -> PolicyApplyResult:
-        current_entries = await self.get_address_list_entries(
-            desired.address_list_name,
-        )
-
-        managed_entries = [
-            entry
-            for entry in current_entries
-            if (entry.comment or "").startswith(self._managed_comment_prefix)
-        ]
-
-        desired_by_ip = {
-            item.ip_address: item
-            for item in desired.blocked
-            if item.ip_address
-        }
-
-        managed_by_ip = {
-            entry.address: entry
-            for entry in managed_entries
-        }
-
-        desired_ips = set(desired_by_ip)
-        current_ips = set(managed_by_ip)
-
-        ips_to_add = sorted(desired_ips - current_ips)
-        ips_to_remove = sorted(current_ips - desired_ips)
-        ips_to_keep = sorted(desired_ips & current_ips)
-
-        added = 0
-        removed = 0
-        updated = 0
-        connections_killed = 0
+    async def apply_desired_blocklist(self, desired: DesiredBlocklistResponse,
+                                     kill_connections_on_block: bool) -> PolicyApplyResult:
+        current = await self.get_address_list_entries(desired.address_list_name)
+        managed: dict[str, list[AddressListEntry]] = {}
+        for entry in current:
+            if (entry.comment or "").startswith(self._managed_comment_prefix) and not entry.dynamic:
+                managed.setdefault(entry.address, []).append(entry)
+        wanted = {item.ip_address: item for item in desired.blocked if item.ip_address}
+        added = removed = updated = 0
         errors: list[str] = []
-
-        for ip in ips_to_add:
-            item = desired_by_ip[ip]
-
-            entry_added = False
-
-            try:
-                await self.add_address_list_entry(
-                    address_list_name=desired.address_list_name,
-                    address=ip,
-                    comment=item.comment,
-                )
-                entry_added = True
+        newly_blocked: list[str] = []
+        for ip, item in sorted(wanted.items()):
+            entries = managed.get(ip, [])
+            if not entries:
+                try:
+                    await self.add_address_list_entry(desired.address_list_name, ip, item.comment)
+                except Exception as exc:
+                    # A timed-out write may have succeeded. Never mistake a foreign,
+                    # dynamic or disabled record for confirmation of our operation.
+                    try:
+                        observed = await self.get_address_list_entries(desired.address_list_name)
+                        confirmed = any(e.address == ip and e.comment == item.comment
+                            and not e.disabled and not e.dynamic for e in observed)
+                    except Exception:
+                        confirmed = False
+                    if not confirmed:
+                        errors.append(f"failed to add {ip}: {type(exc).__name__}")
+                        continue
                 added += 1
-
-            except Exception as exc:
-                if await self.address_list_entry_exists(
-                    address_list_name=desired.address_list_name,
-                    address=ip,
-                ):
-                    entry_added = True
-                    added += 1
-                    logger.warning(
-                        "MikroTik add request for %s failed after the entry was applied: %r",
-                        ip,
-                        exc,
-                    )
-                else:
-                    error = f"failed to add {ip}: {exc}"
-                    logger.exception(error)
-                    errors.append(error)
-
-            if entry_added and kill_connections_on_block:
-                try:
-                    connections_killed += await self.remove_connections_by_src_ip(ip)
-                except Exception as exc:
-                    logger.warning(
-                        "Failed to remove active connections for %s after blocking. "
-                        "The address-list entry is already applied, so policy sync is not failed: %s",
-                        ip,
-                        exc.__class__.__name__,
-                    )
-                    logger.debug(
-                        "Connection cleanup traceback for %s",
-                        ip,
-                        exc_info=True,
-                    )
-
-        for ip in ips_to_keep:
-            item = desired_by_ip[ip]
-            entry = managed_by_ip[ip]
-
-            if entry.comment != item.comment:
-                try:
-                    await self.update_address_list_comment(
-                        routeros_id=entry.routeros_id,
-                        comment=item.comment,
-                    )
-                    updated += 1
-                except Exception as exc:
-                    error = f"failed to update comment for {ip}: {exc}"
-                    logger.exception(error)
-                    errors.append(error)
-
-        for ip in ips_to_remove:
-            entry = managed_by_ip[ip]
-
+                newly_blocked.append(ip)
+                continue
+            entries.sort(key=lambda e: (e.disabled, e.comment != item.comment, e.routeros_id))
+            primary, *duplicates = entries
             try:
-                await self.delete_address_list_entry(entry.routeros_id)
-                removed += 1
+                if primary.disabled or primary.comment != item.comment:
+                    await self._request_json("PATCH", f"/ip/firewall/address-list/{primary.routeros_id}",
+                        json={"comment": item.comment, "disabled": "false"})
+                    updated += 1
+                    if primary.disabled:
+                        newly_blocked.append(ip)
             except Exception as exc:
-                error = f"failed to remove {ip}: {exc}"
-                logger.exception(error)
-                errors.append(error)
-
-        return PolicyApplyResult(
-            added=added,
-            removed=removed,
-            updated=updated,
-            connections_killed=connections_killed,
-            errors=errors,
-        )
+                errors.append(f"failed to enable/update {ip}: {type(exc).__name__}")
+                continue
+            for duplicate in duplicates:
+                try:
+                    await self.delete_address_list_entry(duplicate.routeros_id)
+                    removed += 1
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code != 404:
+                        errors.append(f"failed to remove duplicate {ip}: HTTP {exc.response.status_code}")
+                except Exception as exc:
+                    errors.append(f"failed to remove duplicate {ip}: {type(exc).__name__}")
+        for ip in sorted(set(managed) - set(wanted)):
+            for entry in managed[ip]:
+                try:
+                    await self.delete_address_list_entry(entry.routeros_id)
+                    removed += 1
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code != 404:
+                        errors.append(f"failed to remove {ip}: HTTP {exc.response.status_code}")
+                except Exception as exc:
+                    errors.append(f"failed to remove {ip}: {type(exc).__name__}")
+        killed = 0
+        if newly_blocked and kill_connections_on_block:
+            try:
+                killed = await self.remove_connections_by_src_ips(newly_blocked)
+            except Exception as exc:
+                logger.warning("Connection cleanup incomplete after applying blocklist: %s", type(exc).__name__)
+        return PolicyApplyResult(added, removed, updated, killed, errors)
 
     async def _request_json(
             self,
@@ -457,17 +450,7 @@ class MikroTikClient:
     ) -> httpx.Response:
         url = f"{self._base_url}{path}"
 
-        async with httpx.AsyncClient(
-                timeout=self._timeout_seconds,
-                verify=self._verify_tls,
-                auth=(self._username, self._password.get_secret_value()),
-        ) as client:
-            response = await client.request(
-                method=method,
-                url=url,
-                params=params,
-                json=json,
-            )
+        response = await self._http().request(method=method, url=url, params=params, json=json)
 
         response.raise_for_status()
         return response

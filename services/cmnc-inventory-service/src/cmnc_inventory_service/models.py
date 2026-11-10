@@ -48,6 +48,7 @@ class Router(Base):
         server_default=text("true"),
         default=True,
     )
+    dhcp_snapshot_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     poll_interval_seconds: Mapped[int] = mapped_column(
         Integer,
         nullable=False,

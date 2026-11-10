@@ -5,6 +5,7 @@ from aio_pika import DeliveryMode, ExchangeType, Message
 from pydantic import BaseModel
 
 from cmnc_contracts.exchanges import CMNC_EVENTS_EXCHANGE
+from cmnc_contracts.amqp import publish_bounded, reliable_queue
 
 logger = logging.getLogger(__name__)
 
@@ -13,20 +14,25 @@ class RabbitMqClient:
     def __init__(self, url: str) -> None:
         self._url = url
         self._connection: aio_pika.abc.AbstractRobustConnection | None = None
+        self._publish_channel: aio_pika.abc.AbstractRobustChannel | None = None
         self._channel: aio_pika.abc.AbstractRobustChannel | None = None
         self._exchange: aio_pika.abc.AbstractRobustExchange | None = None
 
     async def connect(self) -> None:
-        self._connection = await aio_pika.connect_robust(self._url)
-        self._channel = await self._connection.channel(publisher_confirms=True)
+        try:
+            self._connection = await aio_pika.connect_robust(self._url)
+            self._publish_channel = await self._connection.channel(publisher_confirms=True, on_return_raises=True)
 
-        self._exchange = await self._channel.declare_exchange(
-            CMNC_EVENTS_EXCHANGE,
-            ExchangeType.TOPIC,
-            durable=True,
-        )
+            self._exchange = await self._publish_channel.declare_exchange(
+                CMNC_EVENTS_EXCHANGE,
+                ExchangeType.TOPIC,
+                durable=True,
+            )
 
-        logger.info("RabbitMQ client connected")
+            logger.info("RabbitMQ client connected")
+        except BaseException:
+            await self.close()
+            raise
 
     async def close(self) -> None:
         if self._connection is not None:
@@ -34,6 +40,7 @@ class RabbitMqClient:
 
         self._connection = None
         self._channel = None
+        self._publish_channel = None
         self._exchange = None
 
         logger.info("RabbitMQ client closed")
@@ -59,10 +66,7 @@ class RabbitMqClient:
             type=str(event_type) if event_type is not None else None,
         )
 
-        await self._exchange.publish(
-            message,
-            routing_key=routing_key,
-        )
+        await publish_bounded(self._exchange, message, routing_key)
 
         logger.info(
             "Published event %s with routing key %s",

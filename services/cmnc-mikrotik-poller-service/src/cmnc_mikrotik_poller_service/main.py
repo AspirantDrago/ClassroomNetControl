@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import signal
+import random
 import uuid
 from time import perf_counter
 from contextlib import suppress
@@ -198,114 +199,186 @@ async def poll_router_once_manual(
         timeout_seconds=settings.mikrotik_timeout_seconds,
     )
 
-    last_attempt_at = now_utc()
-    await update_status_safely(
-        inventory_client,
-        router_id=router.id,
-        worker_id=worker_id,
-        status="starting",
-        is_running=router.poll_enabled,
-        heartbeat_at=last_attempt_at,
-        last_started_at=started_at,
-        last_attempt_at=last_attempt_at,
-        consecutive_failures=0,
-        details={
-            "manual": True,
-            "api_host": router.api_host,
-            "api_port": router.api_port,
-            "api_use_ssl": router.api_use_ssl,
-            "api_verify_tls": router.api_verify_tls,
-        },
-    )
-
-    started_perf = perf_counter()
-
     try:
-        result_details = await poll_once(
-            router=router,
-            mikrotik_client=mikrotik_client,
-            rabbitmq_client=rabbitmq_client,
+        last_attempt_at = now_utc()
+        await update_status_safely(
+            inventory_client,
+            router_id=router.id,
+            worker_id=worker_id,
+            status="starting",
+            is_running=router.poll_enabled,
+            heartbeat_at=last_attempt_at,
+            last_started_at=started_at,
+            last_attempt_at=last_attempt_at,
+            consecutive_failures=0,
+            details={
+                "manual": True,
+                "api_host": router.api_host,
+                "api_port": router.api_port,
+                "api_use_ssl": router.api_use_ssl,
+                "api_verify_tls": router.api_verify_tls,
+            },
         )
-    except Exception as exc:
+
+        started_perf = perf_counter()
+
+        try:
+            result_details = await poll_once(
+                router=router,
+                mikrotik_client=mikrotik_client,
+                rabbitmq_client=rabbitmq_client,
+            )
+        except Exception as exc:
+            finished_at = now_utc()
+            duration_ms = int((perf_counter() - started_perf) * 1000)
+            error_text = f"{type(exc).__name__}: {exc}"
+            details: dict[str, Any] = {
+                "manual": True,
+                "duration_ms": duration_ms,
+                "api_host": router.api_host,
+                "api_port": router.api_port,
+                "api_use_ssl": router.api_use_ssl,
+                "api_verify_tls": router.api_verify_tls,
+            }
+
+            logger.exception(
+                "Manual MikroTik polling failed: router_id=%s, router_name=%s",
+                router.id,
+                router.name,
+            )
+
+            await update_status_safely(
+                inventory_client,
+                router_id=router.id,
+                worker_id=worker_id,
+                status="error",
+                is_running=router.poll_enabled,
+                heartbeat_at=finished_at,
+                last_started_at=started_at,
+                last_attempt_at=last_attempt_at,
+                last_error_at=finished_at,
+                last_error=error_text,
+                consecutive_failures=1,
+                details=details,
+            )
+
+            return {
+                "ok": False,
+                "router_id": router.id,
+                "router_name": router.name,
+                "leases_count": None,
+                "snapshot_published": None,
+                "duration_ms": duration_ms,
+                "error": error_text,
+                "details": details,
+            }
+
         finished_at = now_utc()
         duration_ms = int((perf_counter() - started_perf) * 1000)
-        error_text = f"{type(exc).__name__}: {exc}"
-        details: dict[str, Any] = {
+        details = {
+            **(result_details or {}),
             "manual": True,
             "duration_ms": duration_ms,
-            "api_host": router.api_host,
-            "api_port": router.api_port,
-            "api_use_ssl": router.api_use_ssl,
-            "api_verify_tls": router.api_verify_tls,
         }
-
-        logger.exception(
-            "Manual MikroTik polling failed: router_id=%s, router_name=%s",
-            router.id,
-            router.name,
-        )
 
         await update_status_safely(
             inventory_client,
             router_id=router.id,
             worker_id=worker_id,
-            status="error",
+            status="ok",
             is_running=router.poll_enabled,
             heartbeat_at=finished_at,
             last_started_at=started_at,
             last_attempt_at=last_attempt_at,
-            last_error_at=finished_at,
-            last_error=error_text,
-            consecutive_failures=1,
+            last_success_at=finished_at,
+            consecutive_failures=0,
             details=details,
         )
 
         return {
-            "ok": False,
+            "ok": True,
             "router_id": router.id,
             "router_name": router.name,
-            "leases_count": None,
-            "snapshot_published": None,
+            "leases_count": details.get("leases_count"),
+            "snapshot_published": details.get("snapshot_published"),
             "duration_ms": duration_ms,
-            "error": error_text,
+            "error": None,
             "details": details,
         }
-
-    finished_at = now_utc()
-    duration_ms = int((perf_counter() - started_perf) * 1000)
-    details = {
-        **(result_details or {}),
-        "manual": True,
-        "duration_ms": duration_ms,
-    }
-
-    await update_status_safely(
-        inventory_client,
-        router_id=router.id,
-        worker_id=worker_id,
-        status="ok",
-        is_running=router.poll_enabled,
-        heartbeat_at=finished_at,
-        last_started_at=started_at,
-        last_attempt_at=last_attempt_at,
-        last_success_at=finished_at,
-        consecutive_failures=0,
-        details=details,
-    )
-
-    return {
-        "ok": True,
-        "router_id": router.id,
-        "router_name": router.name,
-        "leases_count": details.get("leases_count"),
-        "snapshot_published": details.get("snapshot_published"),
-        "duration_ms": duration_ms,
-        "error": None,
-        "details": details,
-    }
+    finally:
+        await mikrotik_client.close()
 
 
-async def poll_once(
+# Single flight spans both RouterOS read and publication, preserving snapshot order.
+_poll_flights: dict[int, tuple[tuple[object, ...], asyncio.Task]] = {}
+
+
+def router_connection_fingerprint(router: RouterConnection) -> tuple[object, ...]:
+    return (router.api_host, router.api_port, router.api_use_ssl, router.api_verify_tls,
+            router.api_username, router.api_password)
+
+
+async def poll_once(*, router: RouterConnection, mikrotik_client: MikroTikClient,
+                    rabbitmq_client: RabbitMqClient) -> dict[str, object] | None:
+    fingerprint = router_connection_fingerprint(router)
+    while True:
+        flight = _poll_flights.get(router.id)
+        if flight is not None and not flight[1].done():
+            if flight[0] == fingerprint:
+                task = flight[1]
+                break
+            # A changed address/account must not overtake the previous snapshot.
+            try:
+                await asyncio.shield(flight[1])
+            except asyncio.CancelledError:
+                if asyncio.current_task().cancelling():
+                    raise
+            except Exception:
+                pass
+            continue
+        task = asyncio.create_task(_poll_once(router=router, mikrotik_client=mikrotik_client,
+                                             rabbitmq_client=rabbitmq_client))
+        _poll_flights[router.id] = (fingerprint, task)
+        def finished(completed, router_id=router.id):
+            current = _poll_flights.get(router_id)
+            if current is not None and current[1] is completed:
+                _poll_flights.pop(router_id, None)
+            if not completed.cancelled():
+                completed.exception()  # retrieve errors if all HTTP waiters went away
+        task.add_done_callback(finished)
+        break
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        # The owner's HTTP client remains alive until coalesced waiters finish.
+        with suppress(Exception, asyncio.CancelledError):
+            await asyncio.shield(task)
+        raise
+
+
+def retry_delay_seconds(interval: float, failures: int) -> float:
+    base = max(interval, 1.0)
+    if failures <= 0:
+        return base
+    ceiling = max(base, settings.error_backoff_max_seconds)
+    delay = min(ceiling, base * (2 ** min(failures, 10)))
+    return min(ceiling, delay * random.uniform(1.0, 1.0 + settings.error_backoff_jitter_fraction))
+
+
+async def wait_for_next_poll(delay: float, heartbeat) -> None:
+    deadline = asyncio.get_running_loop().time() + delay
+    while not _shutdown_event.is_set():
+        remaining = deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            return
+        try:
+            await asyncio.wait_for(_shutdown_event.wait(), timeout=min(remaining, settings.heartbeat_interval_seconds))
+        except TimeoutError:
+            if asyncio.get_running_loop().time() < deadline:
+                await heartbeat()
+
+
+async def _poll_once(
     *,
     router: RouterConnection,
     mikrotik_client: MikroTikClient,
@@ -385,26 +458,25 @@ async def poll_router_worker(
         router.base_url,
     )
 
-    await update_status_safely(
-        inventory_client,
-        router_id=router.id,
-        worker_id=worker_id,
-        status="starting",
-        is_running=True,
-        heartbeat_at=started_at,
-        last_started_at=started_at,
-        consecutive_failures=0,
-        details=details,
-    )
-
     try:
+        await update_status_safely(
+            inventory_client,
+            router_id=router.id,
+            worker_id=worker_id,
+            status="starting",
+            is_running=True,
+            heartbeat_at=started_at,
+            last_started_at=started_at,
+            consecutive_failures=0,
+            details=details,
+        )
         while not _shutdown_event.is_set():
             heartbeat_at = now_utc()
             await update_status_safely(
                 inventory_client,
                 router_id=router.id,
                 worker_id=worker_id,
-                status="ok" if consecutive_failures == 0 else "warning",
+                status="ok" if consecutive_failures == 0 else ("error" if consecutive_failures >= 3 else "warning"),
                 is_running=True,
                 heartbeat_at=heartbeat_at,
                 last_started_at=started_at,
@@ -475,14 +547,16 @@ async def poll_router_worker(
                     details=details,
                 )
 
-            try:
-                await asyncio.wait_for(
-                    _shutdown_event.wait(),
-                    timeout=max(router.poll_interval_seconds, 1),
-                )
-            except TimeoutError:
-                pass
+            async def heartbeat() -> None:
+                await update_status_safely(inventory_client, router_id=router.id,
+                    worker_id=worker_id, status="ok" if consecutive_failures == 0 else ("error" if consecutive_failures >= 3 else "warning"),
+                    is_running=True, heartbeat_at=now_utc(), last_started_at=started_at,
+                    last_attempt_at=last_attempt_at, last_success_at=last_success_at,
+                    last_error_at=last_error_at, last_error=last_error,
+                    consecutive_failures=consecutive_failures, details=details)
+            await wait_for_next_poll(retry_delay_seconds(router.poll_interval_seconds, consecutive_failures), heartbeat)
     finally:
+        await mikrotik_client.close()
         stopped_at = now_utc()
         await update_status_safely(
             inventory_client,
@@ -508,12 +582,18 @@ async def poll_router_worker(
 
 async def cancel_worker(state: PollerWorkerState) -> None:
     state.task.cancel()
-    with suppress(asyncio.CancelledError):
+    try:
         await state.task
+    except asyncio.CancelledError:
+        pass
+    except Exception:
+        logger.exception("Poller worker failed before stopping: router_id=%s", state.router.id)
 
 
 def router_config_changed(old: RouterConnection, new: RouterConnection) -> bool:
-    return old != new
+    return router_connection_fingerprint(old) != router_connection_fingerprint(new) or (
+        old.is_enabled, old.poll_enabled, old.poll_interval_seconds
+    ) != (new.is_enabled, new.poll_enabled, new.poll_interval_seconds)
 
 
 async def supervisor(
@@ -523,89 +603,98 @@ async def supervisor(
 ) -> None:
     workers: dict[int, PollerWorkerState] = {}
 
-    while not _shutdown_event.is_set():
-        try:
-            routers = await inventory_client.get_active_routers()
-        except Exception:
-            logger.exception("Failed to load active routers from inventory service")
-            routers = []
+    try:
+        while not _shutdown_event.is_set():
+            try:
+                routers = await inventory_client.get_active_routers()
+            except Exception:
+                logger.exception("Failed to load active routers from inventory service")
+                try:
+                    await asyncio.wait_for(_shutdown_event.wait(), timeout=settings.supervisor_interval_seconds)
+                except TimeoutError:
+                    pass
+                continue
 
-        routers_by_id = {router.id: router for router in routers}
+            routers_by_id = {router.id: router for router in routers}
 
-        for router in routers:
-            existing = workers.get(router.id)
+            for router in routers:
+                existing = workers.get(router.id)
 
-            if not router.poll_enabled:
-                if existing is not None:
+                if not router.poll_enabled:
+                    if existing is not None:
+                        logger.info(
+                            "Stopping poller worker because polling is disabled: router_id=%s",
+                            router.id,
+                        )
+                        await cancel_worker(existing)
+                        workers.pop(router.id, None)
+
+                    await update_status_safely(
+                        inventory_client,
+                        router_id=router.id,
+                        worker_id=None,
+                        status="disabled",
+                        is_running=False,
+                        heartbeat_at=now_utc(),
+                        consecutive_failures=0,
+                        details={
+                            "reason": "poll_enabled is false",
+                            "api_host": router.api_host,
+                            "api_port": router.api_port,
+                            "api_use_ssl": router.api_use_ssl,
+                        },
+                    )
+                    continue
+
+                if existing is not None and router_config_changed(existing.router, router):
                     logger.info(
-                        "Stopping poller worker because polling is disabled: router_id=%s",
+                        "Restarting poller worker because router settings changed: router_id=%s",
                         router.id,
                     )
                     await cancel_worker(existing)
                     workers.pop(router.id, None)
+                    existing = None
 
-                await update_status_safely(
-                    inventory_client,
-                    router_id=router.id,
-                    worker_id=None,
-                    status="disabled",
-                    is_running=False,
-                    heartbeat_at=now_utc(),
-                    consecutive_failures=0,
-                    details={
-                        "reason": "poll_enabled is false",
-                        "api_host": router.api_host,
-                        "api_port": router.api_port,
-                        "api_use_ssl": router.api_use_ssl,
-                    },
-                )
-                continue
+                if existing is None or existing.task.done():
+                    if existing is not None and existing.task.done():
+                        logger.warning(
+                            "Restarting stopped poller worker: router_id=%s",
+                            router.id,
+                        )
+                        workers.pop(router.id, None)
 
-            if existing is not None and router_config_changed(existing.router, router):
-                logger.info(
-                    "Restarting poller worker because router settings changed: router_id=%s",
-                    router.id,
-                )
-                await cancel_worker(existing)
-                workers.pop(router.id, None)
-                existing = None
-
-            if existing is None or existing.task.done():
-                if existing is not None and existing.task.done():
-                    logger.warning(
-                        "Restarting stopped poller worker: router_id=%s",
-                        router.id,
+                    task = asyncio.create_task(
+                        poll_router_worker(
+                            router=router,
+                            inventory_client=inventory_client,
+                            rabbitmq_client=rabbitmq_client,
+                        )
                     )
-                    workers.pop(router.id, None)
+                    workers[router.id] = PollerWorkerState(router=router, task=task)
 
-                task = asyncio.create_task(
-                    poll_router_worker(
-                        router=router,
-                        inventory_client=inventory_client,
-                        rabbitmq_client=rabbitmq_client,
+            for router_id, state in list(workers.items()):
+                if router_id not in routers_by_id:
+                    logger.info(
+                        "Stopping poller worker because router is not active: router_id=%s",
+                        router_id,
                     )
+                    await cancel_worker(state)
+                    workers.pop(router_id, None)
+
+            try:
+                await asyncio.wait_for(
+                    _shutdown_event.wait(),
+                    timeout=settings.supervisor_interval_seconds,
                 )
-                workers[router.id] = PollerWorkerState(router=router, task=task)
-
-        for router_id, state in list(workers.items()):
-            if router_id not in routers_by_id:
-                logger.info(
-                    "Stopping poller worker because router is not active: router_id=%s",
-                    router_id,
-                )
-                await cancel_worker(state)
-                workers.pop(router_id, None)
-
-        try:
-            await asyncio.wait_for(
-                _shutdown_event.wait(),
-                timeout=settings.supervisor_interval_seconds,
-            )
-        except TimeoutError:
-            pass
-
-    for state in list(workers.values()):
-        await cancel_worker(state)
+            except TimeoutError:
+                pass
+    finally:
+        # Cancel every worker before waiting so shutdown scales with the slowest,
+        # rather than the sum of all outstanding RouterOS deadlines.
+        states = list(workers.values())
+        for state in states:
+            state.task.cancel()
+        await asyncio.gather(*(state.task for state in states), return_exceptions=True)
 
 
 async def main() -> None:
@@ -665,6 +754,7 @@ async def main() -> None:
             with suppress(asyncio.CancelledError):
                 await task
 
+        await inventory_client.close()
         await rabbitmq_client.close()
 
 

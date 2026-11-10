@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 
 import httpx
@@ -26,17 +27,29 @@ class MikroTikClient:
         self._password = password
         self._verify_tls = verify_tls
         self._timeout_seconds = timeout_seconds
+        self._client: httpx.AsyncClient | None = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                timeout=self._timeout_seconds, verify=self._verify_tls,
+                auth=(self._username, self._password.get_secret_value()),
+                trust_env=False, limits=httpx.Limits(max_connections=2, max_keepalive_connections=2),
+            )
+        return self._client
+
+    async def close(self) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
 
     async def get_dhcp_leases_raw(self) -> list[dict[str, Any]]:
         url = f"{self._base_url}/ip/dhcp-server/lease"
 
-        async with httpx.AsyncClient(
-                timeout=self._timeout_seconds,
-                verify=self._verify_tls,
-                auth=(self._username, self._password.get_secret_value()),
-        ) as client:
-            response = await client.get(url)
-            response.raise_for_status()
+        # httpx read deadlines apply per chunk; bound the entire response as well.
+        async with asyncio.timeout(self._timeout_seconds):
+            response = await self._get_client().get(url)
+        response.raise_for_status()
 
         data = response.json()
 
