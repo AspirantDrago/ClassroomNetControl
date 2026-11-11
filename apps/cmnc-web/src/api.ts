@@ -1018,9 +1018,7 @@ export function powerVeyonDevice(deviceId: number, action: "power-down" | "reboo
     return request(`/api/devices/${deviceId}/veyon/${action}`, {method: "POST"});
 }
 export type VeyonBulkPowerAction = "power-down" | "reboot" | "install-updates-and-power-down";
-export function powerVeyonClassroom(classroomId: number, action: VeyonBulkPowerAction): Promise<{
-    accepted_count: number; failed_count: number; skipped_count: number; results: {device_id: number; accepted: boolean; error: string | null}[];
-}> {
+export function powerVeyonClassroom(classroomId: number, action: VeyonBulkPowerAction): Promise<VeyonBulkActionResult> {
     return request(`/api/classrooms/${classroomId}/veyon/${action}-all`, {method: "POST", body: JSON.stringify({confirmed: true})});
 }
 
@@ -1033,7 +1031,7 @@ export function runVeyonAction(deviceId: number, payload: {action: VeyonDeviceAc
     return request(`/api/devices/${deviceId}/veyon/action`, {method: "POST", body: JSON.stringify(payload)});
 }
 export type VeyonBulkActionResult = {
-    accepted_count: number; failed_count: number; skipped_count: number;
+    accepted_count: number; failed_count: number; skipped_count: number; timeout_count?: number;
     results: {device_id: number; accepted: boolean; error: string | null}[];
 };
 export function runVeyonClassroomAction(classroomId: number, payload: Parameters<typeof runVeyonAction>[1]): Promise<VeyonBulkActionResult> {

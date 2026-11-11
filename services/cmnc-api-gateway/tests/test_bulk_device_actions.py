@@ -84,10 +84,12 @@ def test_bulk_invalid_input_never_dispatches(monkeypatch, extra):
     asyncio.run(run())
 
 
-def test_bulk_partial_failure_stays_bounded_and_does_not_retry(monkeypatch):
+@pytest.mark.parametrize("concurrency", [4, 30])
+def test_bulk_partial_failure_stays_bounded_and_does_not_retry(monkeypatch, concurrency):
     async def run():
         _, layout = setup(monkeypatch)
-        layout['devices'] += [{'id': i, 'static_ip': f'192.168.1.{i}'} for i in range(12, 24)]
+        monkeypatch.setattr(gateway.settings, 'veyon_bulk_concurrency', concurrency)
+        layout['devices'] += [{'id': i, 'static_ip': f'192.168.1.{i}'} for i in range(12, 52)]
         layout['devices'].append({'id': 99, 'static_ip': '192.168.2.99'})
         active = peak = 0
         calls = []
@@ -110,11 +112,13 @@ def test_bulk_partial_failure_stays_bounded_and_does_not_retry(monkeypatch):
             response = await client.post('/api/classrooms/7/veyon/action', json={'action': 'screen-on', 'confirmed': True})
         assert response.status_code == 200
         result = response.json()
-        assert result['accepted_count'] == 11
+        assert result['accepted_count'] == 39
         assert result['failed_count'] == 3
+        assert result['timeout_count'] == 1
+        assert next(item for item in result['results'] if item['device_id'] == 12)['timed_out'] is True
         assert result['skipped_count'] == 1
-        assert peak == 4
-        assert len(calls) == len(set(calls)) == 13
+        assert peak == concurrency
+        assert len(calls) == len(set(calls)) == 41
         assert not {10, 99} & set(calls)
     asyncio.run(run())
 
@@ -129,4 +133,19 @@ def test_bulk_website_defaults_to_http_before_dispatch(monkeypatch):
                 json={'action': 'website', 'text': 'example.com/path', 'confirmed': True})
         assert response.status_code == 200
         assert service.call_args.args[2]['text'] == 'http://example.com/path'
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("response_status", [None, 504])
+def test_service_timeout_remains_distinct_from_other_errors(monkeypatch, response_status):
+    async def run():
+        client = AsyncMock()
+        if response_status is None:
+            client.request.side_effect = httpx.ReadTimeout("slow upstream")
+        else:
+            client.request.return_value = httpx.Response(response_status, json={"detail": "timeout"})
+        monkeypatch.setattr(gateway.app.state, "veyon_http", client, raising=False)
+        with pytest.raises(gateway.HTTPException) as error:
+            await veyon_routes.service_call("POST", "/internal/device/action", {})
+        assert error.value.status_code == 504
     asyncio.run(run())

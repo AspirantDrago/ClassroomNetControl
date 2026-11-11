@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,6 +14,7 @@ class Settings(BaseSettings):
     policy_sync_service_url: str = "http://localhost:8007"
     maintenance_service_url: str = "http://localhost:8004"
     camera_service_url: str = "http://localhost:8005"
+    veyon_bulk_concurrency: int = Field(default=30, ge=1, le=128)
     veyon_service_url: str = "http://cmnc-veyon-service:8008"
 
 

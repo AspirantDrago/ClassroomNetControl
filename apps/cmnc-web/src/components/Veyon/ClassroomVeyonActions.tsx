@@ -1,3 +1,4 @@
+import { useNotify, bulkNotification } from "../Notifications/notificationContext";
 import { useState, type ReactNode } from "react";
 import { extractErrorDetail, runVeyonClassroomAction, type VeyonDeviceAction } from "../../api";
 import { ActionDialog, actionTitles, type ActionPayload } from "./ActionDialog";
@@ -18,20 +19,20 @@ export function ClassroomVeyonActions({classroomId, classroomName, targetCount, 
     const [dialog, setDialog] = useState<VeyonDeviceAction | null>(null);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [message, setMessage] = useState<string | null>(null);
+    const notify = useNotify();
     const admin = role === "admin" || role === "superadmin";
     const description = `Аудитория «${classroomName}»: устройств ${targetCount}. Устройства с защитой от массового управления через Veyon будут пропущены.`;
 
     async function send(payload: ActionPayload) {
         if (busy || disabled) return;
-        setBusy(true); onBusyChange(true); setError(null); setMessage(null);
+        setBusy(true); onBusyChange(true); setError(null);
+        setDialog(null);
+
         try {
             const result = await runVeyonClassroomAction(classroomId, payload);
-            const failure = result.results.find(item => !item.accepted)?.error ?? "";
-            if (!result.accepted_count && result.failed_count) throw new Error(failure || "Не удалось отправить команды");
-            setDialog(null);
-            setMessage(`«${titles[payload.action]}»: отправлено ${result.accepted_count}. Пропущено защищённых: ${result.skipped_count}.${result.failed_count ? ` Ошибок: ${result.failed_count}. ${failure}` : ""}`);
-        } catch (err) { setError(extractErrorDetail(err)); }
+            const notification = bulkNotification(`${classroomName}: ${titles[payload.action]}`, result);
+            notify(notification.text, notification.kind);
+        } catch (err) { notify(`${classroomName}: ${titles[payload.action]}. ${extractErrorDetail(err)}`, "error"); }
         finally {setBusy(false); onBusyChange(false);}
     }
     function button(action: VeyonDeviceAction, color: string, input = false) {
@@ -67,7 +68,6 @@ export function ClassroomVeyonActions({classroomId, classroomName, targetCount, 
             </section>
         </>}
         {error && !dialog && <div className="device-modal-error" role="alert">{error}</div>}
-        {message && <p role="status">{message}</p>}
         {dialog && <ActionDialog key={dialog} action={dialog} title={titles[dialog]} description={description} busy={busy} error={error}
             onClose={() => setDialog(null)} onSubmit={payload => void send(payload)}/>}
     </>;

@@ -102,3 +102,18 @@ def test_website_without_protocol_defaults_to_http(value, expected):
 def test_website_normalization_does_not_allow_unsupported_urls(value):
     with pytest.raises(ValidationError):
         DeviceAction(action='website', text=value)
+
+
+@pytest.mark.parametrize("response_status", [None, 408, 504])
+def test_proxy_timeout_is_reported_as_gateway_timeout(response_status):
+    async def run():
+        def handle(request):
+            if response_status is None:
+                raise httpx.ReadTimeout("slow proxy", request=request)
+            return httpx.Response(response_status, json={"error": {"message": "timeout"}})
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+            bridge = VeyonBridge(None, client)
+            with pytest.raises(gateway.HTTPException) as error:
+                await bridge.checked("POST", "/api/v1/authentication/test")
+            assert error.value.status_code == 504
+    asyncio.run(run())

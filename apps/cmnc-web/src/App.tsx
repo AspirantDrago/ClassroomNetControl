@@ -1,3 +1,4 @@
+import { useNotify, bulkNotification } from "./components/Notifications/notificationContext";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
     allowClassroomWan,
@@ -75,6 +76,7 @@ import {
 type AppPage = "dashboard" | "account" | "access" | "maintenance" | "routers";
 
 export function App() {
+    const notify = useNotify();
     const [principal, setPrincipal] = useState<CurrentPrincipal | null>(null);
     const [authChecked, setAuthChecked] = useState(false);
     const [authBusy, setAuthBusy] = useState(false);
@@ -590,10 +592,9 @@ export function App() {
         setBusyPower(true); setBusyClassroomPowerAction(action); setError(null); setWakeMessage(null);
         try {
             const result = await powerVeyonClassroom(dashboard.classroom.id, action);
-            const failure = result.results.find((item) => !item.accepted)?.error ?? "";
-            if (!result.accepted_count && result.failed_count) throw new Error(failure);
-            setWakeMessage(`Команд ${labels.result} отправлено: ${result.accepted_count}.${result.skipped_count ? ` Пропущено защищённых: ${result.skipped_count}.` : ""}${result.failed_count ? ` Ошибок: ${result.failed_count}. ${failure}` : ""}`);
-        } catch (err) { setError(extractErrorDetail(err)); }
+            const notification = bulkNotification(`${dashboard.classroom.name}: ${labels.question} все`, result);
+            notify(notification.text, notification.kind);
+        } catch (err) { notify(`${labels.question} все. ${extractErrorDetail(err)}`, "error"); }
         finally { setBusyPower(false); setBusyClassroomPowerAction(null); }
     }
 

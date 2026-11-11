@@ -43,6 +43,9 @@ AUTH_KEYS = "0c69b301-81b4-42d6-8fae-128cdd113314"
 FEATURES = {"power-down": "6f5a27a0-0e2f-496e-afcc-7aae62eede10", "reboot": "4f7d98f0-395a-4fff-b968-e49b8d0f748c", "install-updates-and-power-down": "09bcb3a1-fc11-4d03-8cf1-efd26be8655b"}
 FEATURES.update(FEATURE_IDS)
 WEBAPI = os.environ.get("CMNC_VEYON_WEBAPI_URL", "http://cmnc-veyon-proxy:11080").rstrip("/")
+ACTION_CONCURRENCY = int(os.environ.get("CMNC_VEYON_BULK_CONCURRENCY", "30"))
+if not 1 <= ACTION_CONCURRENCY <= 128:
+    raise ValueError("CMNC_VEYON_BULK_CONCURRENCY must be between 1 and 128")
 TARGET_PORT = int(os.environ.get("CMNC_VEYON_TARGET_PORT", "11100"))
 # Veyon waits up to 15 seconds for authentication methods on the target.
 AUTHENTICATION_TIMEOUT_SECONDS = 20
@@ -103,6 +106,7 @@ class VeyonBridge:
         self.sessions: dict[str, Connection] = {}
         self.locks: dict[str, asyncio.Lock] = {}
         self.capacity = asyncio.Semaphore(8)
+        self.action_capacity = asyncio.Semaphore(ACTION_CONCURRENCY)
 
     def identity(self, target: Target):
         name, pem = self.store.resolve(target.router_id, target.classroom_id)
@@ -112,6 +116,8 @@ class VeyonBridge:
     async def checked(self, method, path, **kwargs):
         try:
             response = await self.client.request(method, WEBAPI + path, **kwargs)
+        except httpx.TimeoutException as exc:
+            raise HTTPException(504, "Veyon: превышено время ожидания") from exc
         except httpx.HTTPError as exc:
             raise HTTPException(503, "Veyon недоступен: проверьте службу на устройстве и сетевое подключение") from exc
         if not response.is_success:
@@ -128,7 +134,7 @@ class VeyonBridge:
                     message = "Veyon: " + error["message"][:200]
             except (ValueError, AttributeError):
                 pass
-            raise VeyonError(503 if response.status_code in (408, 429, 503) else 502, message, error_code)
+            raise VeyonError(504 if response.status_code in (408, 504) else 503 if response.status_code in (429, 503) else 502, message, error_code)
         return response
 
     async def connection(self, identity, name, pem, target):
@@ -153,7 +159,7 @@ class VeyonBridge:
     async def operate(self, target: Target, action: str | None = None, *, snapshot: bool = False, arguments: dict | None = None, active: bool = True):
         identity, name, pem = self.identity(target)
         lock = self.locks.setdefault(identity, asyncio.Lock())
-        async with self.capacity, lock:
+        async with (self.action_capacity if action else self.capacity), lock:
             session = await self.connection(identity, name, pem, target)
             try:
                 headers = {"Connection-Uid": session.uid}

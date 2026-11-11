@@ -36,6 +36,8 @@ async def service_call(method, path, payload=None):
         else:
             async with httpx.AsyncClient(timeout=35, trust_env=False) as client:
                 response = await client.request(method, gateway.settings.veyon_service_url.rstrip("/") + path, json=payload)
+    except httpx.TimeoutException as exc:
+        raise HTTPException(504, "Veyon: превышено время ожидания") from exc
     except httpx.HTTPError as exc:
         raise HTTPException(503, "Сервис Veyon недоступен") from exc
     if not response.is_success:
@@ -46,7 +48,7 @@ async def service_call(method, path, payload=None):
                 detail = value
         except (ValueError, AttributeError):
             pass
-        raise HTTPException(response.status_code if response.status_code in {409, 422, 503} else 502, detail)
+        raise HTTPException(response.status_code if response.status_code in {409, 422, 503, 504} else 502, detail)
     return response
 
 
@@ -105,7 +107,7 @@ async def check_key_admin(scope, scope_id, request, authorization):
 
 
 async def dispatch_classroom_action(layout, operation: str, action_payload: DeviceAction | None = None):
-    semaphore = asyncio.Semaphore(4)
+    semaphore = asyncio.Semaphore(gateway.settings.veyon_bulk_concurrency)
     async def send(device):
         try:
             # Queueing and dispatch are bounded. Never retry remote actions.
@@ -117,12 +119,14 @@ async def dispatch_classroom_action(layout, operation: str, action_payload: Devi
                     await service_call("POST", path, {**target, **payload})
             return {"device_id": device["id"], "accepted": True, "error": None}
         except HTTPException as exc:
-            return {"device_id": device["id"], "accepted": False, "error": str(exc.detail)}
+            return {"device_id": device["id"], "accepted": False, "error": str(exc.detail), **({"timed_out": True} if exc.status_code == 504 else {})}
         except TimeoutError:
-            return {"device_id": device["id"], "accepted": False, "error": "Veyon: превышено время ожидания"}
+            return {"device_id": device["id"], "accepted": False, "error": "Veyon: превышено время ожидания", "timed_out": True}
     targets = bulk_veyon_devices(layout)
     results = await asyncio.gather(*(send(device) for device in targets))
-    return {"accepted_count": sum(item["accepted"] for item in results),
+    timeout_count = sum(item.get("timed_out", False) for item in results)
+    return {**({"timeout_count": timeout_count} if timeout_count else {}),
+            "accepted_count": sum(item["accepted"] for item in results),
             "failed_count": sum(not item["accepted"] for item in results),
             "skipped_count": len(layout["devices"]) - len(targets), "results": results}
 
