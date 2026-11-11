@@ -5,6 +5,7 @@ import {
     allowDeviceWan,
     wakeDevice,
     wakeClassroom,
+    getClassroomVeyonStatus,
     powerVeyonDevice,
     powerVeyonClassroom,
     type VeyonBulkPowerAction,
@@ -88,6 +89,17 @@ export function App() {
     const [routers, setRouters] = useState<AdminRouter[]>([]);
     const [selectedClassroomId, setSelectedClassroomId] = useState<number | null>(null);
     const [dashboard, setDashboard] = useState<ClassroomDashboard | null>(null);
+    const veyonConfigured = dashboard?.veyon_configured === true;
+    useEffect(() => {
+        if (!dashboard?.veyon_configuration_stale) return;
+        const classroomId = dashboard.classroom.id;
+        let stopped = false;
+        void getClassroomVeyonStatus(classroomId).then(status => {
+            if (!stopped) setDashboard(current => current?.classroom.id === classroomId
+                ? {...current, veyon_configured: status.configured, veyon_configuration_stale: false} : current);
+        }).catch(() => {});
+        return () => {stopped = true;};
+    }, [dashboard]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [busyDeviceId, setBusyDeviceId] = useState<number | null>(null);
@@ -873,7 +885,7 @@ export function App() {
     const userCanOpenRouters = userCanManageClassrooms;
     const userCanViewDynamicDevices = canViewDynamicDevices(principal);
     const userCanControlWan = canControlWanForClassroom(principal, selectedClassroomId);
-    const hasPowerDownTargets = dashboard?.devices.some((device) => device.is_pinned && !device.veyon_bulk_protected) ?? false;
+    const hasPowerDownTargets = veyonConfigured && (dashboard?.devices.some((device) => device.is_pinned && !device.veyon_bulk_protected) ?? false);
     const hasWakeTargets = dashboard?.devices.some((device) => device.is_pinned && !device.wol_protected) ?? false;
 
     useEffect(() => {
@@ -1014,7 +1026,7 @@ export function App() {
                                         </section>
                                     )}
                                     <ClassroomVeyonActions key={dashboard.classroom.id}
-                                        classroomId={dashboard.classroom.id} classroomName={dashboard.classroom.name}
+                                        classroomId={dashboard.classroom.id} classroomName={dashboard.classroom.name} veyonConfigured={veyonConfigured}
                                         targetCount={dashboard.devices.filter(device => device.is_pinned && !device.veyon_bulk_protected).length}
                                         showPowerRow={hasPowerDownTargets || hasWakeTargets} role={principal.role}
                                         disabled={busyPower || dashboard.classroom.id !== selectedClassroomId} onBusyChange={setBusyPower}>
@@ -1085,6 +1097,7 @@ export function App() {
 
             {deviceForm && (deviceForm.mode === "edit-device" || userCanManageWorkstations) && (
                 <DeviceFormModal
+                    veyonConfigured={veyonConfigured}
                     principalRole={principal.role}
                     classroomName={classrooms.find((classroom) => classroom.id === (deviceForm.mode === "edit-device" ? deviceForm.device.classroom_id : selectedClassroomId))?.name}
                     key={`${deviceForm.mode}:${deviceForm.device.id}`}

@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { extractErrorDetail, getCurrentPrincipal, runVeyonAction, type DashboardDevice, type VeyonDeviceAction } from "../../api";
 import { ActionDialog, actionTitles as titles, type ActionPayload as Payload } from "./ActionDialog";
 
-export function DeviceActions({device, canControlWan, wanBusy, wakeBusy, powerBusy, onToggleWan, onWake, onPower}: {
-    device: DashboardDevice; canControlWan: boolean; wanBusy: boolean; wakeBusy: boolean; powerBusy: boolean;
+export function DeviceActions({device, veyonConfigured, canControlWan, wanBusy, wakeBusy, powerBusy, onToggleWan, onWake, onPower}: {
+    device: DashboardDevice; veyonConfigured: boolean; canControlWan: boolean; wanBusy: boolean; wakeBusy: boolean; powerBusy: boolean;
     onToggleWan: (device: DashboardDevice) => void; onWake: (device: DashboardDevice) => void;
     onPower: (device: DashboardDevice, action: "power-down" | "reboot") => void;
 }) {
@@ -31,12 +31,15 @@ export function DeviceActions({device, canControlWan, wanBusy, wakeBusy, powerBu
         </div></section>
         <section><h4>Питание</h4><div className="device-action-buttons">
             <button type="button" className="success-button" disabled={wakeBusy} onClick={() => onWake(device)}>Разбудить</button>
+            {veyonConfigured && <>
             <button type="button" className="danger-button" disabled={powerBusy || busy} onClick={() => onPower(device, "power-down")}>Выключить</button>
             <button type="button" className="secondary-button" disabled={powerBusy || busy} onClick={() => onPower(device, "reboot")}>Перезагрузить</button>
             {admin && actionButton("install-updates-and-power-down", "danger-button")}
             {actionButton("power-down-confirmed", "orange-button")}
             {actionButton("power-down-delayed", "purple-button", true)}
+            </>}
         </div></section>
+        {veyonConfigured && <>
         <section><h4>Авторизация</h4><div className="device-action-buttons">
             {actionButton("login", "success-button", true)}{actionButton("logout", "danger-button", true)}
         </div></section>
@@ -47,6 +50,7 @@ export function DeviceActions({device, canControlWan, wanBusy, wakeBusy, powerBu
             {actionButton("message", "success-button", true)}{actionButton("website", "success-button", true)}
             {admin && actionButton("command", "danger-button", true)}
         </div></section>
-        {dialog && <ActionDialog key={dialog} action={dialog} busy={busy} error={error} onClose={() => setDialog(null)} onSubmit={payload => void send(payload)}/>}
+        </>}
+        {veyonConfigured && dialog && <ActionDialog key={dialog} action={dialog} busy={busy} error={error} onClose={() => setDialog(null)} onSubmit={payload => void send(payload)}/>}
     </div>;
 }

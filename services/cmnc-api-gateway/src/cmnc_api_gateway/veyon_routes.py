@@ -1,5 +1,6 @@
 import asyncio
 import ipaddress
+import time
 from typing import Literal, Any
 
 import httpx
@@ -131,7 +132,57 @@ async def dispatch_classroom_action(layout, operation: str, action_payload: Devi
             "skipped_count": len(layout["devices"]) - len(targets), "results": results}
 
 
+# Only configuration metadata is cached, never user permissions or private keys.
+_CONFIGURATION_TTL = 3600
+_configuration_cache: dict[tuple[int, int], tuple[float, bool]] = {}
+_configuration_locks: dict[tuple[int, int], asyncio.Lock] = {}
+_configuration_generation = 0
+
+
+def invalidate_veyon_configuration():
+    global _configuration_generation
+    _configuration_generation += 1
+    _configuration_cache.clear()
+
+
+def cached_veyon_configuration(classroom):
+    identity = (gateway.get_classroom_router_id(classroom), classroom["id"])
+    cached = _configuration_cache.get(identity)
+    return {"veyon_configured": cached[1] if cached else False,
+            "veyon_configuration_stale": not cached or cached[0] <= time.monotonic()}
+
+
+async def classroom_veyon_configured(classroom):
+    router_id = gateway.get_classroom_router_id(classroom)
+    classroom_id = classroom["id"]
+    identity = (router_id, classroom_id)
+    async with _configuration_locks.setdefault(identity, asyncio.Lock()):
+        cached = _configuration_cache.get(identity)
+        if cached and cached[0] > time.monotonic():
+            return cached[1]
+        generation = _configuration_generation
+        router_key = await service_call("GET", f"/internal/keys/router/{router_id}")
+        configured = router_key.json().get("configured") is True
+        if not configured:
+            classroom_key = await service_call("GET", f"/internal/keys/classroom/{classroom_id}")
+            configured = classroom_key.json().get("configured") is True
+        # A key may have changed while metadata requests were in flight.
+        if generation != _configuration_generation:
+            return False
+        now = time.monotonic()
+        for key in [key for key, entry in _configuration_cache.items() if entry[0] <= now]:
+            del _configuration_cache[key]
+        _configuration_cache[identity] = (now + _CONFIGURATION_TTL, configured)
+        return configured
+
+
 def register_veyon_routes(app):
+    @app.get("/api/classrooms/{classroom_id}/veyon/status")
+    async def classroom_veyon_status(classroom_id: int, request: Request,
+                                     authorization: str | None = Header(default=None)):
+        layout = await authorized_layout(classroom_id, request, authorization)
+        return {"configured": await classroom_veyon_configured(layout["classroom"])}
+
     @app.get("/api/admin/veyon/keys/{scope}/{scope_id}")
     async def key_info(scope: Literal["router", "classroom"], scope_id: int, request: Request,
                        authorization: str | None = Header(default=None)):
@@ -148,13 +199,16 @@ def register_veyon_routes(app):
                        request: Request, authorization: str | None = Header(default=None)):
         await check_key_admin(scope, scope_id, request, authorization)
         response = await service_call("PUT", f"/internal/keys/{scope}/{scope_id}", payload.model_dump())
+        invalidate_veyon_configuration()
         return response.json()
 
     @app.delete("/api/admin/veyon/keys/{scope}/{scope_id}")
     async def delete_key(scope: Literal["router", "classroom"], scope_id: int, request: Request,
                          authorization: str | None = Header(default=None)):
         await check_key_admin(scope, scope_id, request, authorization)
-        return (await service_call("DELETE", f"/internal/keys/{scope}/{scope_id}")).json()
+        response = await service_call("DELETE", f"/internal/keys/{scope}/{scope_id}")
+        invalidate_veyon_configuration()
+        return response.json()
 
     @app.post("/api/devices/{device_id}/veyon/action")
     async def device_action(device_id: int, payload: DeviceAction, request: Request,

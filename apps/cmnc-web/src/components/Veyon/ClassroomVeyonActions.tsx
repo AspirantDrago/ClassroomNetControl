@@ -12,8 +12,8 @@ const titles: Record<VeyonDeviceAction, string> = {
     message: "Сообщение всем", website: "Открыть сайт всем", command: "Выполнить команду всем",
 };
 
-export function ClassroomVeyonActions({classroomId, classroomName, targetCount, showPowerRow, role, disabled, onBusyChange, children}: {
-    classroomId: number; classroomName: string; targetCount: number; showPowerRow: boolean;
+export function ClassroomVeyonActions({classroomId, classroomName, targetCount, showPowerRow, veyonConfigured, role, disabled, onBusyChange, children}: {
+    classroomId: number; classroomName: string; targetCount: number; showPowerRow: boolean; veyonConfigured: boolean;
     role?: string; disabled: boolean; onBusyChange: (busy: boolean) => void; children: ReactNode;
 }) {
     const [dialog, setDialog] = useState<VeyonDeviceAction | null>(null);
@@ -47,13 +47,13 @@ export function ClassroomVeyonActions({classroomId, classroomName, targetCount, 
             <span className="classroom-action-label">Питание:</span>
             <div className="classroom-actions">
                 {children}
-                {targetCount > 0 && <>
+                {veyonConfigured && targetCount > 0 && <>
                     {button("power-down-confirmed", "orange-button")}
                     {button("power-down-delayed", "purple-button", true)}
                 </>}
             </div>
         </section>}
-        {targetCount > 0 && <>
+        {veyonConfigured && targetCount > 0 && <>
             <section className="classroom-action-row" aria-label="Авторизация">
                 <span className="classroom-action-label">Авторизация:</span>
                 <div className="classroom-actions">{button("login", "success-button", true)}{button("logout", "danger-button", true)}</div>

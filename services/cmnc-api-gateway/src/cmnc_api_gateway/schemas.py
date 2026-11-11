@@ -55,6 +55,8 @@ class ClassroomCameraResponse(BaseModel):
 
 
 class ClassroomDashboardResponse(BaseModel):
+    veyon_configured: bool = False
+    veyon_configuration_stale: bool = True
     classroom: dict[str, Any]
     devices: list[DashboardDevice]
     dynamic_devices: list[DynamicDevice]

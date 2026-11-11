@@ -68,6 +68,8 @@ export type CameraSessionResponse = {
 };
 
 export type ClassroomDashboard = {
+    veyon_configured: boolean;
+    veyon_configuration_stale: boolean;
     classroom: Classroom;
     devices: DashboardDevice[];
     dynamic_devices: DynamicDevice[];
@@ -982,6 +984,16 @@ function extractFilenameFromContentDisposition(value: string | null): string | n
     return plainMatch?.[1]?.trim() || null;
 }
 
+
+const pendingVeyonStatus = new Map<number, Promise<{configured: boolean}>>();
+export function getClassroomVeyonStatus(classroomId: number): Promise<{configured: boolean}> {
+    const pending = pendingVeyonStatus.get(classroomId);
+    if (pending) return pending;
+    const operation = request<{configured: boolean}>(`/api/classrooms/${classroomId}/veyon/status`)
+        .finally(() => pendingVeyonStatus.delete(classroomId));
+    pendingVeyonStatus.set(classroomId, operation);
+    return operation;
+}
 
 export type VeyonKeyInfo = { configured: boolean; key_name: string; router_override?: boolean };
 export function getVeyonKey(scope: "router" | "classroom", id: number): Promise<VeyonKeyInfo> {

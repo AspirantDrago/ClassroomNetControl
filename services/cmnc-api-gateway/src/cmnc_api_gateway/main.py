@@ -901,7 +901,10 @@ async def get_classroom_dashboard(
 
             dynamic_devices.append(DynamicDevice.model_validate(item))
 
+    from cmnc_api_gateway.veyon_routes import cached_veyon_configuration
+
     return ClassroomDashboardResponse(
+        **cached_veyon_configuration(classroom),
         classroom=serialize_classroom_for_principal(principal, classroom),
         devices=dashboard_devices,
         dynamic_devices=dynamic_devices,

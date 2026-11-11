@@ -30,6 +30,7 @@ export type DeviceFormState =
 
 type DeviceFormModalProps = {
     classroomName?: string;
+    veyonConfigured: boolean;
     principalRole?: string;
     form: DeviceFormState;
     busy: boolean;
@@ -141,7 +142,7 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
 
                 {tab === "actions" && form.mode === "edit-device" && <div role="tabpanel" id="device-actions-panel" aria-labelledby="device-actions-tab">
                     {wakeMessage && <p role="status">{wakeMessage}</p>}
-                    <DeviceActions device={form.device} canControlWan={canControlWan} wanBusy={wanBusy} wakeBusy={wakeBusy} powerBusy={powerBusy}
+                    <DeviceActions veyonConfigured={props.veyonConfigured} device={form.device} canControlWan={canControlWan} wanBusy={wanBusy} wakeBusy={wakeBusy} powerBusy={powerBusy}
                         onToggleWan={onToggleWan} onWake={onWake} onPower={onPower}/>
                 </div>}
                 {tab === "info" && <div role="tabpanel" id="device-info-panel" aria-labelledby="device-info-tab">
@@ -181,10 +182,12 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                 </div>}
                 {wakeMessage && <div className="device-wake-message muted" role="status">{wakeMessage}</div>}
                 {form.mode === "edit-device" && <div className="modal-actions device-power-actions">
+                    {props.veyonConfigured && <>
                     <button type="button" className="danger-button" disabled={powerBusy}
                         onClick={() => onPower(form.device, "power-down")}>Выключить</button>
                     <button type="button" className="secondary-button" disabled={powerBusy}
                         onClick={() => onPower(form.device, "reboot")}>Перезагрузить</button>
+                    </>}
                     <button type="button" className="success-button"
                         disabled={wakeBusy} onClick={() => onWake(form.device)}>
                         {wakeBusy ? "Отправка WoL..." : "Разбудить"}
