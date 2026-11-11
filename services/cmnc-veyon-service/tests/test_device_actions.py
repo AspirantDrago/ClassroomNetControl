@@ -80,3 +80,25 @@ def test_gateway_restricts_admin_actions(monkeypatch, role, allowed, action):
             target.assert_awaited_once()
             assert service.call_args.args[1] == '/internal/device/action'
     asyncio.run(run())
+
+
+@pytest.mark.parametrize('value,expected', [
+    ('example.com', 'http://example.com'),
+    (' example.com/path?q=1#part ', 'http://example.com/path?q=1#part'),
+    ('localhost:8080/path', 'http://localhost:8080/path'),
+    ('192.168.1.10:8080', 'http://192.168.1.10:8080'),
+    ('//example.com/path', 'http://example.com/path'),
+    ('http://example.com', 'http://example.com'),
+    ('https://example.com/path', 'https://example.com/path'),
+])
+def test_website_without_protocol_defaults_to_http(value, expected):
+    payload = DeviceAction(action='website', text=value)
+    assert payload.wire()['text'] == expected
+    assert payload.feature_arguments() == {'websiteUrls': [expected]}
+
+
+@pytest.mark.parametrize('value', ['javascript:alert(1)', 'data:text/html,test', 'ftp://example.com',
+    'file:///C:/test', 'http://user:pass@example.com', 'example.com:99999'])
+def test_website_normalization_does_not_allow_unsupported_urls(value):
+    with pytest.raises(ValidationError):
+        DeviceAction(action='website', text=value)

@@ -117,3 +117,16 @@ def test_bulk_partial_failure_stays_bounded_and_does_not_retry(monkeypatch):
         assert len(calls) == len(set(calls)) == 13
         assert not {10, 99} & set(calls)
     asyncio.run(run())
+
+
+def test_bulk_website_defaults_to_http_before_dispatch(monkeypatch):
+    async def run():
+        setup(monkeypatch)
+        service = AsyncMock(return_value=httpx.Response(200, json={'accepted': True}))
+        monkeypatch.setattr(veyon_routes, 'service_call', service)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=gateway.app), base_url='http://test') as client:
+            response = await client.post('/api/classrooms/7/veyon/action',
+                json={'action': 'website', 'text': 'example.com/path', 'confirmed': True})
+        assert response.status_code == 200
+        assert service.call_args.args[2]['text'] == 'http://example.com/path'
+    asyncio.run(run())

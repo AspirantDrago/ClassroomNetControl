@@ -10,6 +10,13 @@ export const actionTitles: Record<VeyonDeviceAction, string> = {
 };
 export type ActionPayload = Parameters<typeof runVeyonAction>[1];
 
+function normalizeWebsite(value: string): string {
+    const url = value.trim();
+    if (!url) return url;
+    if (url.startsWith("//")) return "http:" + url;
+    return !/^[A-Za-z][A-Za-z0-9+.-]*:/.test(url) || /^[^:/?#\s]+:\d+(?:[/?#]|$)/.test(url) ? "http://" + url : url;
+}
+
 export function ActionDialog({ action, title, description, busy, error, onClose, onSubmit }: {action: VeyonDeviceAction; title?: string; description?: string; busy: boolean; error: string | null; onClose: () => void; onSubmit: (payload: ActionPayload) => void}) {
     const titleId = useId();
     const ref = useRef<HTMLDialogElement>(null);
@@ -25,7 +32,7 @@ export function ActionDialog({ action, title, description, busy, error, onClose,
         onCancel={event => {event.preventDefault(); if (!busy) onClose();}} onKeyDown={event => event.stopPropagation()} onMouseDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()}>
         <h3 id={titleId}>{title ?? actionTitles[action]}</h3>
         {description && <p>{description}</p>}
-        <form onSubmit={event => {event.preventDefault(); event.stopPropagation(); if (valid && !busy) onSubmit({action, text, username, password: action === "login" ? password : undefined, seconds: action === "power-down-delayed" ? total : undefined, confirmed: action === "logout"});}}>
+        <form onSubmit={event => {event.preventDefault(); event.stopPropagation(); if (valid && !busy) onSubmit({action, text: action === "website" ? normalizeWebsite(text) : text, username, password: action === "login" ? password : undefined, seconds: action === "power-down-delayed" ? total : undefined, confirmed: action === "logout"});}}>
             {action === "login" ? <>
                 <label>Логин<input autoFocus required maxLength={256} autoComplete="off" value={username} onChange={event => setUsername(event.target.value)} disabled={busy}/></label>
                 <label>Пароль<input required type="password" autoComplete="new-password" value={password} onChange={event => setPassword(event.target.value)} disabled={busy}/></label>
@@ -33,8 +40,8 @@ export function ActionDialog({ action, title, description, busy, error, onClose,
                 <label>Часы<input autoFocus type="number" min="0" max="168" step="1" required value={hours} onChange={event => setHours(event.target.value)} disabled={busy}/></label>
                 <label>Минуты<input type="number" min="0" max="59" step="1" required value={minutes} onChange={event => setMinutes(event.target.value)} disabled={busy}/></label>
                 <label>Секунды<input type="number" min="0" max="59" step="1" required value={seconds} onChange={event => setSeconds(event.target.value)} disabled={busy}/></label>
-            </div> : action === "logout" ? <p>Завершить сеанс пользователя на удалённом ПК? Несохранённые данные могут быть потеряны.</p> : <label>{action === "website" ? "Адрес сайта (http:// или https://)" : action === "command" ? "Команда (PowerShell)" : "Текст сообщения"}
-                {action === "website" ? <input autoFocus type="url" required maxLength={16000} value={text} onChange={event => setText(event.target.value)} disabled={busy}/> : <textarea autoFocus required maxLength={16000} rows={7} value={text} onChange={event => setText(event.target.value)} disabled={busy}/>}
+            </div> : action === "logout" ? <p>Завершить сеанс пользователя на удалённом ПК? Несохранённые данные могут быть потеряны.</p> : <label>{action === "website" ? "Адрес сайта" : action === "command" ? "Команда (PowerShell)" : "Текст сообщения"}
+                {action === "website" ? <input autoFocus type="text" inputMode="url" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="example.com" required maxLength={16000} value={text} onChange={event => setText(event.target.value)} onBlur={() => setText(normalizeWebsite(text))} disabled={busy}/> : <textarea autoFocus required maxLength={16000} rows={7} value={text} onChange={event => setText(event.target.value)} disabled={busy}/>}
             </label>}
             {error && <div className="device-modal-error" role="alert">{error}</div>}
             <div className="recording-settings-actions">

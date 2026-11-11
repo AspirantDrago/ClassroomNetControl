@@ -1,3 +1,4 @@
+import re
 from typing import Literal
 from urllib.parse import urlsplit
 from pydantic import BaseModel, Field, SecretStr, model_validator
@@ -31,9 +32,17 @@ class DeviceAction(BaseModel):
         if self.action in {'message', 'website', 'command'} and not self.text.strip():
             raise ValueError('Введите текст')
         if self.action == 'website':
-            url = urlsplit(self.text.strip())
+            value = self.text.strip()
+            if value.startswith('//'):
+                value = 'http:' + value
+            elif not re.match(r'^[A-Za-z][A-Za-z0-9+.-]*:', value) or re.match(r'^[^:/?#\s]+:\d+(?:[/?#]|$)', value):
+                value = 'http://' + value
+            url = urlsplit(value)
             if url.scheme.lower() not in {'http', 'https'} or not url.hostname or url.username or url.password:
                 raise ValueError('Введите адрес сайта http:// или https://')
+            # Validate numeric port range as well as host:port shorthand.
+            _ = url.port
+            self.text = value
         if self.action == 'login' and (not self.username.strip() or self.password is None or not self.password.get_secret_value()):
             raise ValueError('Введите логин и пароль')
         if self.action == 'power-down-delayed' and self.seconds < 1:
