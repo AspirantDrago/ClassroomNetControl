@@ -30,6 +30,7 @@ export type DeviceFormState =
 
 type DeviceFormModalProps = {
     classroomName?: string;
+    principalRole?: string;
     form: DeviceFormState;
     busy: boolean;
     canManage: boolean;
@@ -52,7 +53,9 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
     const { form, busy, canManage, canControlWan, wanBusy, onToggleWan, error,
         onChange, onClose, onSubmit, onUnpin, wakeBusy, onWake, wakeMessage, powerBusy, onPower } = props;
     const [selectedTab, setSelectedTab] = useState<"info" | "settings" | "screen" | "control" | "actions">(
-        canManage ? "settings" : "info",
+        form.mode === "edit-device"
+            ? (props.principalRole === "admin" || props.principalRole === "superadmin" ? "actions" : "screen")
+            : (canManage ? "settings" : "info"),
     );
     const tab = !canManage && selectedTab === "settings" ? "info" : selectedTab;
     const [screenToolbar, setScreenToolbar] = useState<HTMLDivElement | null>(null);

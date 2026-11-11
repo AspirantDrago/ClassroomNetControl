@@ -1084,6 +1084,7 @@ export function App() {
 
             {deviceForm && (deviceForm.mode === "edit-device" || userCanManageWorkstations) && (
                 <DeviceFormModal
+                    principalRole={principal.role}
                     classroomName={classrooms.find((classroom) => classroom.id === (deviceForm.mode === "edit-device" ? deviceForm.device.classroom_id : selectedClassroomId))?.name}
                     key={`${deviceForm.mode}:${deviceForm.device.id}`}
                     form={deviceForm.mode === "edit-device" ? {
