@@ -96,8 +96,8 @@
 }
 
 .classroom-device-actions { display: grid; gap: 12px; margin-bottom: 18px; }
-.classroom-action-row { display: flex; align-items: center; gap: 12px; }
-.classroom-action-label { min-width: 90px; font-weight: 600; }
+.classroom-action-row { display: flex; align-items: flex-start; gap: 12px; }
+.classroom-action-label { width: 110px; min-width: 110px; flex-shrink: 0; font-weight: 600; }
 .classroom-action-row .classroom-actions { justify-content: flex-start; }
 
 @media (max-width: 640px) {

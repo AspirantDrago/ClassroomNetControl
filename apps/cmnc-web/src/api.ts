@@ -1032,6 +1032,13 @@ export type VeyonDeviceAction = "install-updates-and-power-down" | "power-down-c
 export function runVeyonAction(deviceId: number, payload: {action: VeyonDeviceAction; text?: string; username?: string; password?: string; seconds?: number; confirmed?: boolean}): Promise<{accepted: boolean}> {
     return request(`/api/devices/${deviceId}/veyon/action`, {method: "POST", body: JSON.stringify(payload)});
 }
+export type VeyonBulkActionResult = {
+    accepted_count: number; failed_count: number; skipped_count: number;
+    results: {device_id: number; accepted: boolean; error: string | null}[];
+};
+export function runVeyonClassroomAction(classroomId: number, payload: Parameters<typeof runVeyonAction>[1]): Promise<VeyonBulkActionResult> {
+    return request(`/api/classrooms/${classroomId}/veyon/action`, {method: "POST", body: JSON.stringify({...payload, confirmed: true})});
+}
 export type VeyonShortcut = "escape" | "ctrl-alt-delete";
 export function veyonShortcut(deviceId: number, shortcut: VeyonShortcut, token: string): Promise<{accepted: boolean}> {
     return request(`/api/devices/${deviceId}/veyon/shortcut/${shortcut}`, {method: "POST", body: JSON.stringify({token})});

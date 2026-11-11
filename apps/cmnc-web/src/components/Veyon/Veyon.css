@@ -86,7 +86,7 @@
 .screen-quality-button { display: inline-flex; align-items: center; justify-content: center; }
 
 .device-action-groups { display: grid; gap: 16px; }
-.device-action-groups section { border-top: 1px solid #334155; padding-top: 12px; }
+.device-action-groups section { padding-top: 0; }
 .device-action-groups h4 { margin: 0 0 10px; }
 .device-action-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .orange-button, .purple-button { border: 0; border-radius: 10px; padding: 10px 14px; color: white; cursor: pointer; }

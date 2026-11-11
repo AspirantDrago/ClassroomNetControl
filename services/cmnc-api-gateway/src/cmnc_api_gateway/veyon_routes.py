@@ -20,6 +20,10 @@ class ControlInput(BaseModel):
     events: list[dict[str, Any]] = Field(default_factory=list, max_length=64)
 
 
+class ClassroomDeviceAction(DeviceAction):
+    confirmed: Literal[True]
+
+
 class Confirmation(BaseModel):
     confirmed: Literal[True]
 
@@ -98,6 +102,29 @@ async def check_key_admin(scope, scope_id, request, authorization):
         return await gateway.get_classroom_or_404(scope_id)
     await gateway.get_router_connection_from_inventory(scope_id)
     return None
+
+
+async def dispatch_classroom_action(layout, operation: str, action_payload: DeviceAction | None = None):
+    semaphore = asyncio.Semaphore(4)
+    async def send(device):
+        try:
+            # Queueing and dispatch are bounded. Never retry remote actions.
+            async with asyncio.timeout(45):
+                async with semaphore:
+                    target = device_target(layout, device)
+                    path = "/internal/device/action" if action_payload is not None else "/internal/device/power"
+                    payload = action_payload.wire() if action_payload is not None else {"action": operation}
+                    await service_call("POST", path, {**target, **payload})
+            return {"device_id": device["id"], "accepted": True, "error": None}
+        except HTTPException as exc:
+            return {"device_id": device["id"], "accepted": False, "error": str(exc.detail)}
+        except TimeoutError:
+            return {"device_id": device["id"], "accepted": False, "error": "Veyon: превышено время ожидания"}
+    targets = bulk_veyon_devices(layout)
+    results = await asyncio.gather(*(send(device) for device in targets))
+    return {"accepted_count": sum(item["accepted"] for item in results),
+            "failed_count": sum(not item["accepted"] for item in results),
+            "skipped_count": len(layout["devices"]) - len(targets), "results": results}
 
 
 def register_veyon_routes(app):
@@ -183,6 +210,15 @@ def register_veyon_routes(app):
         target = await authorized_target(device_id, request, authorization)
         return (await service_call("POST", "/internal/device/power", {**target, "action": action})).json()
 
+    @app.post("/api/classrooms/{classroom_id}/veyon/action")
+    async def classroom_action(classroom_id: int, payload: ClassroomDeviceAction, request: Request,
+                               authorization: str | None = Header(default=None)):
+        principal = await gateway.get_current_principal(request, authorization)
+        if payload.action in ADMIN_ACTIONS and principal.role not in {"admin", "superadmin"}:
+            raise HTTPException(403, "Действие доступно только администраторам")
+        layout = await authorized_layout(classroom_id, request, authorization, principal)
+        return await dispatch_classroom_action(layout, payload.action, payload)
+
     @app.post("/api/classrooms/{classroom_id}/veyon/{action}")
     async def classroom_power(classroom_id: int,
                               action: Literal["power-down-all", "reboot-all", "install-updates-and-power-down-all"],
@@ -193,23 +229,4 @@ def register_veyon_routes(app):
             raise HTTPException(403, "Установка обновлений с выключением доступна только администраторам")
         layout = await authorized_layout(classroom_id, request, authorization, principal)
         operation = action.removesuffix("-all")
-        semaphore = asyncio.Semaphore(4)
-
-        async def send(device):
-            try:
-                # Bound queueing + request time; no retries of power commands.
-                async with asyncio.timeout(45):
-                    async with semaphore:
-                        target = device_target(layout, device)
-                        await service_call("POST", "/internal/device/power", {**target, "action": operation})
-                return {"device_id": device["id"], "accepted": True, "error": None}
-            except HTTPException as exc:
-                return {"device_id": device["id"], "accepted": False, "error": str(exc.detail)}
-            except TimeoutError:
-                return {"device_id": device["id"], "accepted": False, "error": "Veyon: превышено время ожидания"}
-
-        targets = bulk_veyon_devices(layout)
-        results = await asyncio.gather(*(send(device) for device in targets))
-        return {"accepted_count": sum(item["accepted"] for item in results),
-                "failed_count": sum(not item["accepted"] for item in results),
-                "skipped_count": len(layout["devices"]) - len(targets), "results": results}
+        return await dispatch_classroom_action(layout, operation)

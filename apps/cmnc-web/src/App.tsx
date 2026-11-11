@@ -34,6 +34,7 @@ import {
     updateDevice,
 } from "./api";
 import "./App.css";
+import { ClassroomVeyonActions } from "./components/Veyon/ClassroomVeyonActions";
 import { ClassroomTabs } from "./components/ClassroomTabs/ClassroomTabs";
 import { ClassroomCameraPanel } from "./components/ClassroomCameraPanel/ClassroomCameraPanel";
 import {
@@ -1011,10 +1012,11 @@ export function App() {
                                             </div>
                                         </section>
                                     )}
-                                    {(hasPowerDownTargets || hasWakeTargets) && (
-                                        <section className="classroom-action-row" aria-label="Питание">
-                                            <span className="classroom-action-label">Питание:</span>
-                                            <div className="classroom-actions">
+                                    <ClassroomVeyonActions key={dashboard.classroom.id}
+                                        classroomId={dashboard.classroom.id} classroomName={dashboard.classroom.name}
+                                        targetCount={dashboard.devices.filter(device => device.is_pinned && !device.veyon_bulk_protected).length}
+                                        showPowerRow={hasPowerDownTargets || hasWakeTargets} role={principal.role}
+                                        disabled={busyPower || dashboard.classroom.id !== selectedClassroomId} onBusyChange={setBusyPower}>
                                                 {hasPowerDownTargets && <button className="danger-button"
                                                     disabled={busyPower || dashboard.classroom.id !== selectedClassroomId}
                                                     onClick={() => void handleClassroomPower("power-down")}>
@@ -1035,9 +1037,7 @@ export function App() {
                                                     onClick={() => void handleClassroomPower("install-updates-and-power-down")}>
                                                     {busyClassroomPowerAction === "install-updates-and-power-down" ? "Отправка команды..." : "Установить обновления и выключить все"}
                                                 </button>}
-                                            </div>
-                                        </section>
-                                    )}
+                                    </ClassroomVeyonActions>
                                 </div>
 
                                 <div className="device-view-controls">
