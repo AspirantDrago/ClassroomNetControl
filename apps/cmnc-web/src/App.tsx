@@ -604,9 +604,9 @@ export function App() {
         setBusyPower(true); setBusyClassroomPowerAction(action); setError(null); setWakeMessage(null);
         try {
             const result = await powerVeyonClassroom(dashboard.classroom.id, action);
-            const notification = bulkNotification(`${dashboard.classroom.name}: ${labels.question} все`, result);
-            notify(notification.text, notification.kind);
-        } catch (err) { notify(`${labels.question} все. ${extractErrorDetail(err)}`, "error"); }
+            const notification = bulkNotification(dashboard.classroom.name, `${labels.question} все`, result);
+            notify(notification.content, notification.kind);
+        } catch (err) { notify({context: dashboard.classroom.name, action: `${labels.question} все`, items: [extractErrorDetail(err)]}, "error"); }
         finally { setBusyPower(false); setBusyClassroomPowerAction(null); }
     }
 

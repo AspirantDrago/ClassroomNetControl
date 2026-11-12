@@ -30,9 +30,9 @@ export function ClassroomVeyonActions({classroomId, classroomName, targetCount, 
 
         try {
             const result = await runVeyonClassroomAction(classroomId, payload);
-            const notification = bulkNotification(`${classroomName}: ${titles[payload.action]}`, result);
-            notify(notification.text, notification.kind);
-        } catch (err) { notify(`${classroomName}: ${titles[payload.action]}. ${extractErrorDetail(err)}`, "error"); }
+            const notification = bulkNotification(classroomName, titles[payload.action], result);
+            notify(notification.content, notification.kind);
+        } catch (err) { notify({context: classroomName, action: titles[payload.action], items: [extractErrorDetail(err)]}, "error"); }
         finally {setBusy(false); onBusyChange(false);}
     }
     function button(action: VeyonDeviceAction, color: string, input = false) {
