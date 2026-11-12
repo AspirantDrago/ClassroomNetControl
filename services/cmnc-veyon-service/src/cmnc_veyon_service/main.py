@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from cmnc_contracts.veyon_actions import DeviceAction, FEATURE_IDS
 
+from cmnc_veyon_service.command_jobs import CommandJobs, StartCommandJob, CommandResult
 from cmnc_veyon_service.key_store import KeyStore
 from cmnc_veyon_service.control import RemoteControl, InputEvent
 
@@ -277,12 +278,15 @@ async def lifespan(application):
     async with httpx.AsyncClient(timeout=12, trust_env=False) as client:
         bridge = VeyonBridge(application.state.store, client)
         application.state.bridge = bridge
+        application.state.command_jobs = CommandJobs(Path(os.environ.get("CMNC_VEYON_DATA_DIR", "/data")), bridge, Target,
+            int(os.environ.get("CMNC_VEYON_COMMAND_RESULT_TIMEOUT_SECONDS", "60")), ACTION_CONCURRENCY)
         cleaner = asyncio.create_task(bridge.cleanup())
         application.state.control = RemoteControl(bridge)
         control_cleaner = asyncio.create_task(application.state.control.cleanup())
         try:
             yield
         finally:
+            await application.state.command_jobs.close()
             control_cleaner.cancel()
             with suppress(asyncio.CancelledError):
                 await control_cleaner
@@ -368,3 +372,34 @@ class ControlInput(Target):
 @app.post("/internal/device/control/{action}")
 async def device_control(action: Literal["start", "input", "stop"], payload: ControlInput):
     return await app.state.control.operate(payload, payload.owner, action, payload.token, payload.events)
+
+
+class CommandJobReference(BaseModel):
+    job_id: str = Field(min_length=1, max_length=64)
+    device_id: int = Field(gt=0)
+    token: str = Field(min_length=1, max_length=128, repr=False)
+
+
+class CommandJobCallback(CommandJobReference, CommandResult):
+    pass
+
+
+@app.post("/internal/command-jobs")
+async def create_command_job(payload: StartCommandJob):
+    return app.state.command_jobs.create(payload)
+
+
+@app.get("/internal/command-jobs/{job_id}")
+async def get_command_job(job_id: str):
+    return app.state.command_jobs.get(job_id)
+
+
+@app.post("/internal/command-job-script")
+async def get_command_script(payload: CommandJobReference):
+    return {"script": app.state.command_jobs.script(payload.job_id, payload.device_id, payload.token)}
+
+
+@app.post("/internal/command-job-result")
+async def save_command_result(payload: CommandJobCallback):
+    result = CommandResult.model_validate(payload.model_dump())
+    return app.state.command_jobs.result(payload.job_id, payload.device_id, payload.token, result)

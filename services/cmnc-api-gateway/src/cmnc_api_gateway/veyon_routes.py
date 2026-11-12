@@ -49,7 +49,7 @@ async def service_call(method, path, payload=None):
                 detail = value
         except (ValueError, AttributeError):
             pass
-        raise HTTPException(response.status_code if response.status_code in {409, 422, 503, 504} else 502, detail)
+        raise HTTPException(response.status_code if response.status_code in {403, 404, 409, 410, 422, 429, 503, 504} else 502, detail)
     return response
 
 

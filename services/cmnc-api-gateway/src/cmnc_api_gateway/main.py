@@ -2934,4 +2934,7 @@ if __name__ == "__main__":
 
 from cmnc_api_gateway.veyon_routes import register_veyon_routes  # noqa: E402 - gateway definitions must exist first
 
+from cmnc_api_gateway.command_routes import register_command_routes
+
+register_command_routes(app)
 register_veyon_routes(app)

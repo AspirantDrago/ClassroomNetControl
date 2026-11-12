@@ -1,12 +1,28 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class HealthResponse(BaseModel):
     service: str
     status: str
+
+
+def normalize_callback_url(value):
+    if value is None or not value.strip():
+        return None
+    from urllib.parse import urlsplit
+    value = value.strip().rstrip("/")
+    parsed = urlsplit(value)
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("Некорректный порт обратного подключения") from exc
+    if (parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password
+            or parsed.query or parsed.fragment or any(char.isspace() for char in value)):
+        raise ValueError("Укажите HTTP/HTTPS адрес CMNC без логина, пароля и параметров")
+    return value
 
 
 class RouterRead(BaseModel):
@@ -18,6 +34,7 @@ class RouterRead(BaseModel):
     api_port: int
     api_use_ssl: bool
     api_verify_tls: bool
+    veyon_callback_url: str | None = None
     api_username: str
     is_enabled: bool
     poll_enabled: bool
@@ -38,6 +55,8 @@ class RouterCreate(BaseModel):
     api_use_ssl: bool = False
     api_verify_tls: bool = False
     api_username: str = Field(min_length=1, max_length=255)
+    veyon_callback_url: str | None = Field(default=None, max_length=2048)
+    _callback_url = field_validator("veyon_callback_url")(normalize_callback_url)
     api_password: str = Field(min_length=1, max_length=4096)
     is_enabled: bool = True
     poll_enabled: bool = True
@@ -52,6 +71,8 @@ class RouterUpdate(BaseModel):
     api_use_ssl: bool | None = None
     api_verify_tls: bool | None = None
     api_username: str | None = Field(default=None, min_length=1, max_length=255)
+    veyon_callback_url: str | None = Field(default=None, max_length=2048)
+    _callback_url = field_validator("veyon_callback_url")(normalize_callback_url)
     api_password: str | None = Field(default=None, min_length=1, max_length=4096)
     is_enabled: bool | None = None
     poll_enabled: bool | None = None

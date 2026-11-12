@@ -29,6 +29,7 @@ class Router(Base):
         default=False,
     )
     api_username: Mapped[str] = mapped_column(String(255), nullable=False)
+    veyon_callback_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     api_password: Mapped[str] = mapped_column(Text, nullable=False)
     is_enabled: Mapped[bool] = mapped_column(
         Boolean,

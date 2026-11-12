@@ -1,3 +1,4 @@
+import { CommandOutputDialog } from "./CommandOutputDialog";
 import { useNotify, bulkNotification } from "../Notifications/notificationContext";
 import { useState, type ReactNode } from "react";
 import { extractErrorDetail, runVeyonClassroomAction, type VeyonDeviceAction } from "../../api";
@@ -16,6 +17,7 @@ export function ClassroomVeyonActions({classroomId, classroomName, targetCount, 
     classroomId: number; classroomName: string; targetCount: number; showPowerRow: boolean; veyonConfigured: boolean;
     role?: string; disabled: boolean; onBusyChange: (busy: boolean) => void; children: ReactNode;
 }) {
+    const [outputDialog, setOutputDialog] = useState(false);
     const [dialog, setDialog] = useState<VeyonDeviceAction | null>(null);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -64,9 +66,10 @@ export function ClassroomVeyonActions({classroomId, classroomName, targetCount, 
             </section>
             <section className="classroom-action-row" aria-label="Команды">
                 <span className="classroom-action-label">Команды:</span>
-                <div className="classroom-actions">{button("message", "success-button", true)}{button("website", "success-button", true)}{admin && button("command", "danger-button", true)}</div>
+                <div className="classroom-actions">{button("message", "success-button", true)}{button("website", "success-button", true)}{admin && button("command", "danger-button", true)}{admin && <button type="button" className="danger-button" disabled={busy || disabled} onClick={() => setOutputDialog(true)}>Команда с выводом всем</button>}</div>
             </section>
         </>}
+        {veyonConfigured && outputDialog && <CommandOutputDialog scope="classrooms" targetId={classroomId} title={classroomName} onClose={() => setOutputDialog(false)}/>}
         {error && !dialog && <div className="device-modal-error" role="alert">{error}</div>}
         {dialog && <ActionDialog key={dialog} action={dialog} title={titles[dialog]} description={description} busy={busy} error={error}
             onClose={() => setDialog(null)} onSubmit={payload => void send(payload)}/>}

@@ -27,6 +27,7 @@ type RouterFormState = {
     router: AdminRouter | null;
     name: string;
     apiHost: string;
+    veyonCallbackUrl: string;
     apiPort: string;
     apiUseSsl: boolean;
     apiVerifyTls: boolean;
@@ -63,6 +64,7 @@ const EMPTY_FORM: RouterFormState = {
     router: null,
     name: "",
     apiHost: "",
+    veyonCallbackUrl: "",
     apiPort: "80",
     apiUseSsl: false,
     apiVerifyTls: false,
@@ -172,6 +174,7 @@ export function RoutersAdminPage() {
             router,
             name: router.name,
             apiHost: router.api_host,
+            veyonCallbackUrl: router.veyon_callback_url ?? "",
             apiPort: router.api_port.toString(),
             apiUseSsl: router.api_use_ssl,
             apiVerifyTls: router.api_verify_tls,
@@ -188,7 +191,7 @@ export function RoutersAdminPage() {
         setForm(null);
     }
 
-    function updateFormString(field: "name" | "apiHost" | "apiPort" | "apiUsername" | "apiPassword" | "pollIntervalSeconds", value: string) {
+    function updateFormString(field: "veyonCallbackUrl" | "name" | "apiHost" | "apiPort" | "apiUsername" | "apiPassword" | "pollIntervalSeconds", value: string) {
         setForm((current) => (current === null ? current : { ...current, [field]: value }));
     }
 
@@ -223,6 +226,7 @@ export function RoutersAdminPage() {
                 const payload: AdminRouterCreateRequest = {
                     name,
                     api_host: apiHost,
+                veyon_callback_url: form.veyonCallbackUrl.trim() || null,
                     api_port: apiPort,
                     api_use_ssl: form.apiUseSsl,
                     api_verify_tls: form.apiVerifyTls,
@@ -247,6 +251,7 @@ export function RoutersAdminPage() {
             const payload: AdminRouterUpdateRequest = {
                 name,
                 api_host: apiHost,
+                veyon_callback_url: form.veyonCallbackUrl.trim() || null,
                 api_port: apiPort,
                 api_use_ssl: form.apiUseSsl,
                 api_verify_tls: form.apiVerifyTls,
@@ -494,6 +499,14 @@ export function RoutersAdminPage() {
                                     />
                                 </label>
                             </div>
+
+                            <label className="router-callback-field">
+                                <span>Обратное подключение CMNC (Loopback)</span>
+                                <input type="url" value={form.veyonCallbackUrl} maxLength={2048}
+                                    placeholder="https://cmnc.example.local"
+                                    onChange={event => updateFormString("veyonCallbackUrl", event.target.value)}/>
+                                <small className="muted">Адрес сайта CMNC, доступный с ПК этого MikroTik. Нужен для команд с возвратом вывода.</small>
+                            </label>
 
                             <div className="routers-checkboxes">
                                 <BooleanCheckbox

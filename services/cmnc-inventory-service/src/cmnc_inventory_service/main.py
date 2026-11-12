@@ -310,6 +310,7 @@ async def create_router(
         api_verify_tls=payload.api_verify_tls,
         api_username=payload.api_username.strip(),
         api_password=payload.api_password,
+        veyon_callback_url=payload.veyon_callback_url,
         is_enabled=payload.is_enabled,
         poll_enabled=payload.poll_enabled,
         sync_enabled=payload.sync_enabled,

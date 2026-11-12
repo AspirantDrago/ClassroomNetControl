@@ -439,3 +439,8 @@
     gap: 8px;
     flex-wrap: wrap;
 }
+
+.router-callback-field { display: grid; gap: 8px; margin: 16px 0; color: #cbd5e1; font-weight: 700; }
+.router-callback-field input { width: 100%; min-width: 0; border: 1px solid #334155; border-radius: 10px; padding: 10px 12px; background: #020617; color: #f8fafc; font: inherit; }
+.router-callback-field small { font-weight: 400; }
+.router-callback-field input:focus { border-color: #2563eb; outline: none; box-shadow: 0 0 0 3px #2563eb40; }

@@ -683,6 +683,7 @@ export function updateAdminWorkstationClassrooms(
 export type AdminRouter = {
     id: number;
     name: string;
+    veyon_callback_url?: string | null;
     api_host: string;
     api_port: number;
     api_use_ssl: boolean;
@@ -698,6 +699,7 @@ export type AdminRouter = {
 
 export type AdminRouterCreateRequest = {
     name: string;
+    veyon_callback_url?: string | null;
     api_host: string;
     api_port: number;
     api_use_ssl: boolean;
@@ -1061,4 +1063,19 @@ export function veyonControl(deviceId: number, action: "start" | "input" | "stop
     return request(`/api/devices/${deviceId}/veyon/control/${action}`, {
         method: "POST", body: JSON.stringify(payload), keepalive: action === "stop",
     });
+}
+
+
+export type CommandOutputJob = {
+    id: string; classroom_id: number; created_at: number; deadline: number;
+    skipped_count: number; finished: boolean;
+    results: {device_id: number; name: string; host: string; state: "pending" | "completed" | "timed_out";
+        result_received: boolean; dispatch_error: string | null; stdout: string; stderr: string; exit_code: number | null;
+        stdout_truncated: boolean; stderr_truncated: boolean}[];
+};
+export function startOutputCommand(scope: "devices" | "classrooms", id: number, command: string): Promise<CommandOutputJob> {
+    return request(`/api/${scope}/${id}/veyon/command-with-output`, {method: "POST", body: JSON.stringify({command, confirmed: true})});
+}
+export function getOutputCommand(jobId: string, signal?: AbortSignal): Promise<CommandOutputJob> {
+    return request(`/api/veyon/command-jobs/${encodeURIComponent(jobId)}`, {signal});
 }

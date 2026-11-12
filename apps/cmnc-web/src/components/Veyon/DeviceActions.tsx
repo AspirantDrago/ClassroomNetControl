@@ -1,3 +1,4 @@
+import { CommandOutputDialog } from "./CommandOutputDialog";
 import { useEffect, useState } from "react";
 import { extractErrorDetail, getCurrentPrincipal, runVeyonAction, type DashboardDevice, type VeyonDeviceAction } from "../../api";
 import { ActionDialog, actionTitles as titles, type ActionPayload as Payload } from "./ActionDialog";
@@ -7,6 +8,7 @@ export function DeviceActions({device, veyonConfigured, canControlWan, wanBusy, 
     onToggleWan: (device: DashboardDevice) => void; onWake: (device: DashboardDevice) => void;
     onPower: (device: DashboardDevice, action: "power-down" | "reboot") => void;
 }) {
+    const [outputDialog, setOutputDialog] = useState(false);
     const [admin, setAdmin] = useState(false);
     const [dialog, setDialog] = useState<VeyonDeviceAction | null>(null);
     const [busy, setBusy] = useState(false);
@@ -49,8 +51,10 @@ export function DeviceActions({device, veyonConfigured, canControlWan, wanBusy, 
         <section><h4>Команды</h4><div className="device-action-buttons">
             {actionButton("message", "success-button", true)}{actionButton("website", "success-button", true)}
             {admin && actionButton("command", "danger-button", true)}
+            {admin && <button type="button" className="danger-button" onClick={() => setOutputDialog(true)}>Команда с выводом</button>}
         </div></section>
         </>}
+        {veyonConfigured && outputDialog && <CommandOutputDialog scope="devices" targetId={device.id} title={device.inventory_name || device.hostname || device.mac_address} onClose={() => setOutputDialog(false)}/>}
         {veyonConfigured && dialog && <ActionDialog key={dialog} action={dialog} busy={busy} error={error} onClose={() => setDialog(null)} onSubmit={payload => void send(payload)}/>}
     </div>;
 }
