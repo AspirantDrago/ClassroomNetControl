@@ -212,6 +212,17 @@ class VeyonBridge:
             finally:
                 session.last_used = time.monotonic()
 
+    async def refresh_framebuffer(self, target: Target):
+        identity, name, pem = self.identity(target)
+        lock = self.locks.setdefault(identity, asyncio.Lock())
+        async with self.capacity, lock:
+            session = await self.connection(identity, name, pem, target)
+            await self.checked("POST", "/api/v1/framebuffer/refresh", headers={"Connection-Uid": session.uid})
+            session.frame = None
+            session.frame_at = 0
+            session.last_used = time.monotonic()
+            return {"accepted": True, "device_id": target.device_id}
+
     async def log_missing_frame(self, target: Target, session: Connection):
         now = time.monotonic()
         if session.last_frame_warning and now - session.last_frame_warning < 60:
@@ -320,6 +331,11 @@ async def delete_key(scope: Literal["router", "classroom"], scope_id: int):
 async def device_frame(payload: Target):
     content, media_type = await app.state.bridge.operate(payload)
     return Response(content, media_type=media_type, headers={"Cache-Control": "no-store"})
+
+
+@app.post("/internal/device/refresh")
+async def refresh_device_framebuffer(payload: Target):
+    return await app.state.bridge.refresh_framebuffer(payload)
 
 
 @app.post("/internal/device/snapshot")

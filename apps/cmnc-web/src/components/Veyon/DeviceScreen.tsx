@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { extractErrorDetail, getVeyonFrame, getVeyonSnapshot, getCurrentPrincipal, type VeyonShortcut } from "../../api";
+import { extractErrorDetail, refreshVeyonScreen, getVeyonFrame, getVeyonSnapshot, getCurrentPrincipal, type VeyonShortcut } from "../../api";
 import "./Veyon.css";
 import { ScreenQualitySettings } from "./ScreenQualitySettings";
 import { SCREEN_QUALITIES, readScreenQuality, saveScreenQuality } from "./screenQuality";
@@ -126,6 +126,15 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
         };
     }, [deviceId, viewDocument, popup, capture, onRecordingFrame, onFps, screenQuality]);
 
+    const [refreshing, setRefreshing] = useState(false);
+    async function forceRefresh() {
+        if (refreshing) return;
+        setRefreshing(true);
+        try { await refreshVeyonScreen(deviceId); setError(null); }
+        catch (err) { setError(extractErrorDetail(err)); }
+        finally {setRefreshing(false);}
+    }
+
     async function toggleFullscreen() {
         try {
             if (viewDocument.fullscreenElement) await viewDocument.exitFullscreen();
@@ -168,6 +177,14 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
     </div>;
     const snapshotButton = !control && <button type="button" className="success-button" disabled={savingSnapshot}
         onClick={() => void saveSnapshot()}>{savingSnapshot ? "Сохранение…" : "Снимок"}</button>;
+    const refreshButton = <button type="button" className="secondary-button screen-quality-button"
+        aria-label="Обновить экран" title="Обновить экран" disabled={refreshing}
+        onMouseDown={event => event.preventDefault()} onClick={() => void forceRefresh()}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+            <path d="M20 7v5h-5M4 17v-5h5"/>
+            <path d="M6.1 7a7 7 0 0 1 11.6-1L20 9M4 15l2.3 3A7 7 0 0 0 17.9 17"/>
+        </svg>
+    </button>;
     const qualityButton = <button type="button" className="secondary-button screen-quality-button" aria-label="Качество экрана" title="Качество экрана" onClick={() => setQualitySettings(true)}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
             <path d="m9 3-.6 2.4-2 .9L4.2 6l-2 3.5 1.7 1.7v2l-1.7 1.7 2 3.5 2.2-.3 2 .9L9 21h4l.6-2.4 2-.9 2.2.3 2-3.5-1.7-1.7v-2l1.7-1.7-2-3.5-2.2.3-2-.9L13 3Z" />
@@ -179,6 +196,7 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
             {recordingControls}
         <button type="button" className="secondary-button" onClick={() => popup.focus()}>Показать окно</button>
         <button type="button" className="secondary-button" onClick={() => { popup.close(); setPopup(null); }}>Вернуть в окно устройства</button>
+        {refreshButton}
         {qualityButton}
     </div> : (
         <div className="device-screen-toolbar">
@@ -190,7 +208,8 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
                 onMouseDown={event => event.preventDefault()} onClick={() => void sendShortcut("ctrl-alt-delete")}>Ctrl+Alt+Del</button>}
             <button type="button" className="secondary-button" disabled={!source} onClick={() => void toggleFullscreen()}>На весь экран</button>
             {!standalone && <button type="button" className="secondary-button" disabled={recording.busy || !!recording.options} onClick={openWindow}>В отдельном окне</button>}
-            {qualityButton}
+            {refreshButton}
+        {qualityButton}
         </div>
     );
     return <>

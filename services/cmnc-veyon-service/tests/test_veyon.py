@@ -417,3 +417,59 @@ def test_control_shortcuts_enforce_role_and_forward_owned_lease(monkeypatch, rol
             assert response.status_code == 200
             assert [(event['key'], event['pressed']) for event in service.call_args.args[2]['events']] == [(0xff1b, True), (0xff1b, False)]
     asyncio.run(run())
+
+
+def test_full_refresh_keeps_connection_and_discards_cached_frame(tmp_path, pem):
+    async def run():
+        store = KeyStore(tmp_path)
+        store.save("router", 1, "CMNC", pem)
+        requests = []
+        def handle(request):
+            requests.append(request)
+            if "/authentication/" in request.url.path:
+                return httpx.Response(200, json={"connection-uid": "same-session"})
+            if request.url.path.endswith("/refresh"):
+                assert request.method == "POST"
+                assert request.headers["Connection-Uid"] == "same-session"
+                return httpx.Response(200, json={})
+            return httpx.Response(200, content=b"frame", headers={"content-type": "image/jpeg"})
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+            bridge = VeyonBridge(store, client)
+            target = Target(device_id=1, router_id=1, classroom_id=1, host="192.168.1.10")
+            await bridge.operate(target)
+            session = next(iter(bridge.sessions.values()))
+            assert session.frame is not None
+            result = await bridge.refresh_framebuffer(target)
+            assert result == {"accepted": True, "device_id": 1}
+            assert next(iter(bridge.sessions.values())) is session
+            assert session.frame is None
+            assert session.frame_at == 0
+            await bridge.operate(target)
+            assert sum("/authentication/" in r.url.path for r in requests) == 1
+            assert sum(r.url.path.endswith("/framebuffer") for r in requests) == 2
+            assert all(r.method != "DELETE" for r in requests)
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("role", ["teacher", "moderator", "workstation", "admin", "superadmin"])
+def test_refresh_requires_device_access_but_not_admin_role(monkeypatch, role):
+    async def run():
+        principal = PrincipalResponse(principal_type="user", id=1, role=role,
+            display_name="Test", classroom_ids=[7], permissions=[])
+        monkeypatch.setattr(gateway, "get_current_principal", AsyncMock(return_value=principal))
+        monkeypatch.setattr(gateway, "get_classroom_or_404", AsyncMock(return_value={"id": 7}))
+        monkeypatch.setattr(gateway, "get_device_classroom_id", AsyncMock(return_value=7))
+        monkeypatch.setattr(gateway, "get_wol_classroom_layout", AsyncMock(return_value={
+            "classroom": {"id": 7, "router_id": 2, "subnet_cidr": "192.168.1.0/24"},
+            "devices": [{"id": 10, "static_ip": "192.168.1.10", "veyon_bulk_protected": True}]}))
+        service = AsyncMock(return_value=httpx.Response(200, json={"accepted": True, "device_id": 10}))
+        monkeypatch.setattr(veyon_routes, "service_call", service)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=gateway.app), base_url="http://test") as client:
+            assert (await client.post("/api/devices/10/veyon/refresh")).status_code == 200
+            service.assert_awaited_once_with("POST", "/internal/device/refresh", {
+                "device_id": 10, "classroom_id": 7, "router_id": 2, "host": "192.168.1.10"})
+            service.reset_mock()
+            principal.classroom_ids = []
+            assert (await client.post("/api/devices/10/veyon/refresh")).status_code == 403
+            service.assert_not_awaited()
+    asyncio.run(run())

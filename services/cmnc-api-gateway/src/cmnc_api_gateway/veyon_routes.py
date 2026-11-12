@@ -219,6 +219,12 @@ def register_veyon_routes(app):
         target = await authorized_target(device_id, request, authorization, principal)
         return (await service_call("POST", "/internal/device/action", {**target, **payload.wire()})).json()
 
+    @app.post("/api/devices/{device_id}/veyon/refresh")
+    async def refresh_device_framebuffer(device_id: int, request: Request,
+                                         authorization: str | None = Header(default=None)):
+        target = await authorized_target(device_id, request, authorization)
+        return (await service_call("POST", "/internal/device/refresh", target)).json()
+
     @app.get("/api/devices/{device_id}/veyon/frame")
     async def device_frame(device_id: int, request: Request, authorization: str | None = Header(default=None),
                            width: int = Query(default=1280, ge=160, le=1920),

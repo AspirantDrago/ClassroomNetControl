@@ -1005,6 +1005,10 @@ export function saveVeyonKey(scope: "router" | "classroom", id: number, keyName:
 export function deleteVeyonKey(scope: "router" | "classroom", id: number): Promise<VeyonKeyInfo> {
     return request(`/api/admin/veyon/keys/${scope}/${id}`, {method: "DELETE"});
 }
+export function refreshVeyonScreen(deviceId: number): Promise<{accepted: boolean}> {
+    return request(`/api/devices/${deviceId}/veyon/refresh`, {method: "POST"});
+}
+
 export async function getVeyonFrame(deviceId: number, signal: AbortSignal, width?: number, quality?: number): Promise<Blob> {
     const token = getAccessToken();
     const params = new URLSearchParams();
