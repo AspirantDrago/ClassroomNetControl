@@ -64,7 +64,7 @@ export function CommandOutputDialog({scope, targetId, title, onClose}: {
                 {result.stdout && <><h5>Вывод</h5><pre>{result.stdout}</pre></>}
                 {result.stderr && <><h5>Ошибки</h5><pre className="command-output-stderr">{result.stderr}</pre></>}
                 {result.state === "completed" && !result.stdout && !result.stderr && <p className="muted">Команда не вернула текст.</p>}
-                {(result.stdout_truncated || result.stderr_truncated) && <p className="muted">Вывод обрезан: лимит 65 536 символов на поток.</p>}
+                {Boolean(result.stdout_truncated || result.stderr_truncated) && <p className="muted">Вывод обрезан: лимит 65 536 символов на поток.</p>}
             </section>)}</div>
             <div className="recording-settings-actions"><button type="button" className="secondary-button" onClick={onClose}>Закрыть</button></div>
             {!job.finished && <p className="muted">Закрытие окна не отменяет уже отправленные команды.</p>}

@@ -36,6 +36,7 @@ def test_output_jobs_are_durable_private_and_one_use(tmp_path):
         tokens = dict(captured)
         assert len(tokens) == 2 and tokens[10] != tokens[11]
         assert job["skipped_count"] == 1 and not job["finished"]
+        assert all(r["stdout_truncated"] is False and r["stderr_truncated"] is False for r in job["results"])
         with manager.db() as db:
             encrypted = db.execute("SELECT command FROM command_jobs").fetchone()[0]
             assert isinstance(encrypted, bytes) and b"secret-test-command" not in encrypted
@@ -45,7 +46,7 @@ def test_output_jobs_are_durable_private_and_one_use(tmp_path):
         assert denied.value.status_code == 403
         script = manager.script(job["id"], 10, tokens[10])
         assert "__CALLBACK__" not in script and "__COMMAND__" not in script
-        manager.result(job["id"], 10, tokens[10], CommandResult(stdout="Привет", stderr="Ошибка", exit_code=7))
+        manager.result(job["id"], 10, tokens[10], CommandResult(stdout="Привет", stderr="Ошибка", exit_code=7, stdout_truncated=True))
         with pytest.raises(HTTPException):
             manager.result(job["id"], 10, tokens[10], CommandResult(stdout="overwrite", exit_code=0))
         restored = CommandJobs(tmp_path, manager.bridge, Target)
@@ -54,6 +55,8 @@ def test_output_jobs_are_durable_private_and_one_use(tmp_path):
         assert result["results"][0]["stderr"] == "Ошибка"
         assert result["results"][0]["exit_code"] == 7
         assert result["results"][0]["result_received"]
+        assert result["results"][0]["stdout_truncated"] is True
+        assert result["results"][0]["stderr_truncated"] is False
         assert not restored.tasks  # Restart must never relaunch remote commands.
         restored.result(job["id"], 11, tokens[11], CommandResult(exit_code=0))
         assert restored.get(job["id"])["finished"]

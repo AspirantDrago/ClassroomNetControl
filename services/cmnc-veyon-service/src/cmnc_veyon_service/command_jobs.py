@@ -188,7 +188,8 @@ class CommandJobs:
             raise HTTPException(404, "Задание не найдено или срок хранения истёк")
         return {"id": job_id, "owner": job["owner"], "classroom_id": job["classroom_id"],
                 "created_at": job["created_at"], "deadline": job["deadline"], "skipped_count": job["skipped_count"],
-                "finished": all(r["state"] != "pending" for r in rows), "results": [{**dict(r), "result_received": bool(r["result_received"])} for r in rows]}
+                "finished": all(r["state"] != "pending" for r in rows), "results": [{**dict(r), "result_received": bool(r["result_received"]),
+                    "stdout_truncated": bool(r["stdout_truncated"]), "stderr_truncated": bool(r["stderr_truncated"])} for r in rows]}
 
     def authorized(self, db, job_id, device_id, token):
         job = db.execute("SELECT j.*,r.token_hash,r.state FROM command_jobs j JOIN command_results r ON j.id=r.job_id "
