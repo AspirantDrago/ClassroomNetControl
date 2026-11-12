@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { useFullFrameRefresh } from "./useFullFrameRefresh";
 import { ScreenIcon } from "./ScreenIcon";
-import { extractErrorDetail, refreshVeyonScreen, getVeyonFrame, getVeyonSnapshot, getCurrentPrincipal, type VeyonShortcut } from "../../api";
+import { extractErrorDetail, getVeyonFrame, getVeyonSnapshot, getCurrentPrincipal, type VeyonShortcut } from "../../api";
 import "./Veyon.css";
 import { ScreenQualitySettings } from "./ScreenQualitySettings";
 import { SCREEN_QUALITIES, readScreenQuality, saveScreenQuality } from "./screenQuality";
@@ -126,14 +127,7 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
         };
     }, [deviceId, viewDocument, popup, capture, onRecordingFrame, onFps, screenQuality]);
 
-    const [refreshing, setRefreshing] = useState(false);
-    async function forceRefresh() {
-        if (refreshing) return;
-        setRefreshing(true);
-        try { await refreshVeyonScreen(deviceId); setError(null); }
-        catch (err) { setError(extractErrorDetail(err)); }
-        finally {setRefreshing(false);}
-    }
+    const {refreshing, refresh: forceRefresh} = useFullFrameRefresh(deviceId, !popup, setError);
 
     async function toggleFullscreen() {
         try {
