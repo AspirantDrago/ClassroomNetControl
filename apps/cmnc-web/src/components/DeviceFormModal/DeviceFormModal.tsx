@@ -59,7 +59,6 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
             : (canManage ? "settings" : "info"),
     );
     const tab = !canManage && selectedTab === "settings" ? "info" : selectedTab;
-    const [screenToolbar, setScreenToolbar] = useState<HTMLDivElement | null>(null);
     const [fps, setFps] = useState(0);
     const [now, setNow] = useState(() => Date.now());
 
@@ -127,17 +126,16 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                         onClick={() => setSelectedTab("settings")}>Настройка</button>}
                 </div>
 
-                <div className="device-modal-screen-actions" ref={setScreenToolbar} />
                 </div>
 
                 {error && <div className="device-modal-error" role="alert">{error}</div>}
 
                 {tab === "screen" && form.mode === "edit-device" && <div role="tabpanel" id="device-screen-panel" aria-labelledby="device-screen-tab">
-                    <DeviceScreen key={form.device.id} deviceId={form.device.id} deviceName={getDeviceTitle(form.device)} classroomName={props.classroomName} toolbarTarget={screenToolbar} onFps={setFps} />
+                    <DeviceScreen key={form.device.id} deviceId={form.device.id} deviceName={getDeviceTitle(form.device)} classroomName={props.classroomName} onFps={setFps} />
                 </div>}
 
                 {tab === "control" && form.mode === "edit-device" && <div role="tabpanel" id="device-control-panel" aria-labelledby="device-control-tab">
-                    <DeviceScreen key={form.device.id} deviceId={form.device.id} deviceName={getDeviceTitle(form.device)} classroomName={props.classroomName} control toolbarTarget={screenToolbar} onFps={setFps} />
+                    <DeviceScreen key={form.device.id} deviceId={form.device.id} deviceName={getDeviceTitle(form.device)} classroomName={props.classroomName} control onFps={setFps} />
                 </div>}
 
                 {tab === "actions" && form.mode === "edit-device" && <div role="tabpanel" id="device-actions-panel" aria-labelledby="device-actions-tab">

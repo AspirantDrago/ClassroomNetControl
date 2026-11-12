@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { ScreenIcon } from "./ScreenIcon";
 import { extractErrorDetail, refreshVeyonScreen, getVeyonFrame, getVeyonSnapshot, getCurrentPrincipal, type VeyonShortcut } from "../../api";
 import "./Veyon.css";
 import { ScreenQualitySettings } from "./ScreenQualitySettings";
@@ -9,7 +9,7 @@ import { useScreenRecording } from "./useScreenRecording";
 import { downloadMedia, mediaFilename, recordingClock, RECORDING_MAX_SECONDS, RECORDING_QUALITIES } from "./recording";
 import { RemoteControlImage } from "./RemoteControlImage";
 
-export function DeviceScreen({ deviceId, deviceName, classroomName, standalone = false, control = false, toolbarTarget, onFps }: { deviceId: number; deviceName?: string; classroomName?: string; standalone?: boolean; control?: boolean; toolbarTarget?: HTMLElement | null; onFps?: (fps: number) => void }) {
+export function DeviceScreen({ deviceId, deviceName, classroomName, standalone = false, control = false, onFps }: { deviceId: number; deviceName?: string; classroomName?: string; standalone?: boolean; control?: boolean; onFps?: (fps: number) => void }) {
     const [source, setSource] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [popup, setPopup] = useState<Window | null>(null);
@@ -159,15 +159,15 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
     }
 
     const recordingControls = !control && (recording.options ? <div className="device-recording-controls">
-        <span className={`recording-timer${recording.paused ? " recording-paused" : ""}`} role="timer" aria-label="Длительность записи">
-            {recording.paused ? "Пауза" : "●"} {recordingClock(recording.seconds)} / {recordingClock(RECORDING_MAX_SECONDS)}
-        </span>
-        <button type="button" className="secondary-button" disabled={recording.busy} onClick={() => recording.finish(true)}>Отмена</button>
-        <button type="button" className="secondary-button" disabled={recording.busy} onClick={recording.pause}>{recording.paused ? "Продолжить" : "Пауза"}</button>
-        <button type="button" className="success-button" disabled={recording.busy} onClick={() => recording.finish()}>{recording.busy ? "Сохранение…" : "Завершить"}</button>
-    </div> : <button type="button" className="danger-button" disabled={recording.busy || !!popup || !source}
-        onClick={() => setRecordingSettings(true)}>Запись</button>);
+        <button type="button" className="secondary-button" aria-label="Отмена" title="Отменить запись" disabled={recording.busy} onClick={() => recording.finish(true)}><ScreenIcon name="cancel"/></button>
+        <button type="button" className="secondary-button" aria-label={recording.paused ? "Продолжить" : "Пауза"} title={recording.paused ? "Продолжить запись" : "Приостановить запись"} disabled={recording.busy} onClick={recording.pause}><ScreenIcon name={recording.paused ? "play" : "pause"}/></button>
+        <button type="button" className="success-button" aria-label={recording.busy ? "Сохранение…" : "Завершить"} title="Завершить и сохранить запись" disabled={recording.busy} onClick={() => recording.finish()}><ScreenIcon name="stop"/></button>
+    </div> : <button type="button" className="danger-button" aria-label="Запись" title="Запись" disabled={recording.busy || !!popup || !source}
+        onClick={() => setRecordingSettings(true)}><ScreenIcon name="record"/></button>);
     const screen = <div className="device-screen">
+        {recording.options && <div className={`recording-timer${recording.paused ? " recording-paused" : ""}`} role="timer" aria-label="Длительность записи">
+            {recording.paused ? "Пауза" : "●"} {recordingClock(recording.seconds)} / {recordingClock(RECORDING_MAX_SECONDS)}
+        </div>}
         {recording.error && <div className="device-modal-error" role="alert">{recording.error}</div>}
         {recording.message && <p role="status">{recording.message}</p>}
         {error && <div className="device-modal-error" role="alert">{error}</div>}
@@ -175,8 +175,8 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
         {source && (control ? <RemoteControlImage deviceId={deviceId} source={source} imageRef={imageRef} commandRef={commandRef} /> : <img ref={imageRef} src={source} alt="Экран устройства" />)}
         {error && source && <p className="muted">Показан последний полученный кадр.</p>}
     </div>;
-    const snapshotButton = !control && <button type="button" className="success-button" disabled={savingSnapshot}
-        onClick={() => void saveSnapshot()}>{savingSnapshot ? "Сохранение…" : "Снимок"}</button>;
+    const snapshotButton = !control && <button type="button" className="success-button" aria-label={savingSnapshot ? "Сохранение…" : "Снимок"} title="Снимок" disabled={savingSnapshot}
+        onClick={() => void saveSnapshot()}><ScreenIcon name="snapshot"/></button>;
     const refreshButton = <button type="button" className="secondary-button screen-quality-button"
         aria-label="Обновить экран" title="Обновить экран" disabled={refreshing}
         onMouseDown={event => event.preventDefault()} onClick={() => void forceRefresh()}>
@@ -191,36 +191,38 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
             <circle cx="11" cy="12" r="3" />
         </svg>
     </button>;
-    const toolbar = popup ? <div className="device-screen-toolbar">
+    const toolbar = popup ? <div className="device-screen-toolbar" role="group" aria-label="Действия экрана">
         {snapshotButton}
             {recordingControls}
-        <button type="button" className="secondary-button" onClick={() => popup.focus()}>Показать окно</button>
-        <button type="button" className="secondary-button" onClick={() => { popup.close(); setPopup(null); }}>Вернуть в окно устройства</button>
+        <button type="button" className="secondary-button" aria-label="Показать окно" title="Показать окно" onClick={() => popup.focus()}><ScreenIcon name="window"/></button>
+        <button type="button" className="secondary-button" aria-label="Вернуть в окно устройства" title="Вернуть в окно устройства" onClick={() => { popup.close(); setPopup(null); }}><ScreenIcon name="back"/></button>
         {refreshButton}
         {qualityButton}
     </div> : (
-        <div className="device-screen-toolbar">
+        <div className="device-screen-toolbar" role="group" aria-label="Действия экрана">
             {snapshotButton}
             {recordingControls}
-            {control && <button type="button" className="secondary-button" disabled={!source || shortcutBusy}
+            {control && <button type="button" className="secondary-button" aria-label="Esc" title="Отправить Esc" disabled={!source || shortcutBusy}
                 onMouseDown={event => event.preventDefault()} onClick={() => void sendShortcut("escape")}>Esc</button>}
-            {control && canSendAdminShortcut && <button type="button" className="danger-button" disabled={!source || shortcutBusy}
-                onMouseDown={event => event.preventDefault()} onClick={() => void sendShortcut("ctrl-alt-delete")}>Ctrl+Alt+Del</button>}
-            <button type="button" className="secondary-button" disabled={!source} onClick={() => void toggleFullscreen()}>На весь экран</button>
-            {!standalone && <button type="button" className="secondary-button" disabled={recording.busy || !!recording.options} onClick={openWindow}>В отдельном окне</button>}
+            {control && canSendAdminShortcut && <button type="button" className="danger-button" aria-label="Ctrl+Alt+Del" title="Отправить Ctrl+Alt+Del" disabled={!source || shortcutBusy}
+                onMouseDown={event => event.preventDefault()} onClick={() => void sendShortcut("ctrl-alt-delete")}><ScreenIcon name="keyboard"/></button>}
+            <button type="button" className="secondary-button" aria-label="На весь экран" title="На весь экран" disabled={!source} onClick={() => void toggleFullscreen()}><ScreenIcon name="fullscreen"/></button>
+            {!standalone && <button type="button" className="secondary-button" aria-label="В отдельном окне" title="В отдельном окне" disabled={recording.busy || !!recording.options} onClick={openWindow}><ScreenIcon name="window"/></button>}
             {refreshButton}
         {qualityButton}
         </div>
     );
     return <>
         {standalone && <h3>{classroomName || "Аудитория"}: {deviceName || `PC-${deviceId}`} <span className="device-fps">({fps} FPS)</span></h3>}
-        {toolbarTarget ? createPortal(toolbar, toolbarTarget) : toolbar}
         {qualitySettings && <ScreenQualitySettings value={screenQuality}
             onSave={quality => { saveScreenQuality(quality); setScreenQuality(quality); setQualitySettings(false); }}
             onClose={() => setQualitySettings(false)} />}
         {recordingSettings && <RecordingSettings busy={recording.busy}
             onStart={options => { void recording.start(options).then(() => setRecordingSettings(false)); }}
             onClose={() => setRecordingSettings(false)} />}
-        {popup ? <p role="status">{control ? "Управление открыто в отдельном окне." : "Экран открыт в отдельном окне."}</p> : screen}
+        <div className="device-screen-layout">
+            {popup ? <p role="status">{control ? "Управление открыто в отдельном окне." : "Экран открыт в отдельном окне."}</p> : screen}
+            {toolbar}
+        </div>
     </>;
 }

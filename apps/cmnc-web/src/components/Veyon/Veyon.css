@@ -29,7 +29,11 @@
 }
 
 .device-screen { min-width: 0; }
-.device-screen-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; justify-content: flex-end; }
+.device-screen-layout { display: grid; grid-template-columns: minmax(0, 1fr) 40px; gap: 12px; align-items: start; }
+.device-screen-toolbar { display: flex; flex-direction: column; gap: 8px; width: 40px; position: sticky; top: 0; max-height: calc(90dvh - 150px); overflow-y: auto; scrollbar-width: none; }
+.device-screen-toolbar button { display: inline-flex; align-items: center; justify-content: center; width: 40px; min-width: 40px; height: 40px; min-height: 40px; flex-shrink: 0; padding: 0; font-size: 12px; }
+.device-screen-toolbar button svg { flex-shrink: 0; }
+.device-screen-toolbar::-webkit-scrollbar { display: none; }
 .veyon-screen-window { margin: 0; padding: 12px; background: #0f172a; color: #e5e7eb; }
 .veyon-screen-window .device-screen img { max-height: calc(100dvh - 100px); }
 @media (max-width: 640px) {
@@ -57,27 +61,17 @@
 
 .device-modal-navigation { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
 .device-modal-navigation .device-modal-tabs { margin-bottom: 0; }
-.device-modal-screen-actions { margin-left: auto; min-width: 0; }
-.device-modal-screen-actions:empty { display: none; }
-.device-modal-screen-actions .device-screen-toolbar { margin: 0; flex-direction: row; }
-@media (max-width: 640px) {
-    .device-modal-screen-actions { width: 100%; }
-}
 
 
-.device-recording-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.recording-timer { font-variant-numeric: tabular-nums; color: #fca5a5; white-space: nowrap; }
+.device-recording-controls { display: flex; flex-direction: column; gap: 8px; }
+.recording-timer { margin-bottom: 10px; font-variant-numeric: tabular-nums; color: #fca5a5; white-space: nowrap; }
 .recording-timer.recording-paused { color: #fcd34d; }
 .recording-settings-backdrop { z-index: 1100; }
 .recording-settings { width: min(460px, 100%); max-height: calc(100dvh - 48px); overflow-y: auto; }
 .recording-settings label { display: grid; gap: 6px; margin: 12px 0; }
 .recording-settings select { width: 100%; padding: 10px; background: #0f172a; color: #e5e7eb; border: 1px solid #475569; border-radius: 8px; font: inherit; }
 .recording-settings-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
-@media (max-width: 640px) {
-    .device-recording-controls { width: 100%; }
-    .recording-timer { width: 100%; }
-    .device-recording-controls button { flex: 1; }
-}
+
 
 .device-fps { color: #35373b; }
 
