@@ -778,12 +778,16 @@ async def update_me(
 @app.get("/api/classrooms")
 async def get_classrooms(
     request: Request,
+    include_inactive: bool = False,
     authorization: str | None = Header(default=None),
 ) -> Any:
     principal = await get_current_principal(request, authorization)
 
+    if include_inactive and principal.role not in {"admin", "superadmin"}:
+        raise HTTPException(403, "Настройка доступна только администраторам")
+
     try:
-        classrooms = await classroom_client.get_json("/internal/classrooms")
+        classrooms = await classroom_client.get_json("/internal/classrooms?include_inactive=true" if include_inactive else "/internal/classrooms")
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"Classroom service unavailable: {exc}") from exc
 

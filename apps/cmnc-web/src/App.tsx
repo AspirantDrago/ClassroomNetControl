@@ -1,3 +1,5 @@
+import { SettingsPage } from "./pages/SettingsPage/SettingsPage";
+import { useDisplaySettings } from "./config/displaySettings";
 import { useNotify, bulkNotification } from "./components/Notifications/notificationContext";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
@@ -74,11 +76,14 @@ import {
     ClassroomStatisticsButton
 } from "./components/ClassroomStatisticsModal/ClassroomStatisticsModal.tsx";
 
-type AppPage = "dashboard" | "account" | "access" | "maintenance" | "routers";
+type AppPage = "dashboard" | "account" | "access" | "maintenance" | "routers" | "settings";
 
 export function App() {
     const notify = useNotify();
     const [principal, setPrincipal] = useState<CurrentPrincipal | null>(null);
+    const [displaySettings, setDisplaySettings] = useDisplaySettings(principal);
+    const userCanOpenSettings = principal?.role === "admin" || principal?.role === "superadmin";
+    const showInactiveClassrooms = userCanOpenSettings && displaySettings.showInactiveClassrooms;
     const [authChecked, setAuthChecked] = useState(false);
     const [authBusy, setAuthBusy] = useState(false);
     const [authError, setAuthError] = useState<string | null>(null);
@@ -187,14 +192,14 @@ export function App() {
             setError(null);
 
             try {
-                const data = await getClassrooms();
+                const data = await getClassrooms(showInactiveClassrooms);
 
                 if (cancelled) {
                     return;
                 }
 
                 setClassrooms(data);
-                setSelectedClassroomId(data[0]?.id ?? null);
+                setSelectedClassroomId(previous => data.some(classroom => classroom.id === previous && classroom.is_active) ? previous : data.find(classroom => classroom.is_active)?.id ?? null);
             } catch (err) {
                 if (!cancelled) {
                     setError(extractErrorDetail(err));
@@ -211,7 +216,7 @@ export function App() {
         return () => {
             cancelled = true;
         };
-    }, [principal]);
+    }, [principal, showInactiveClassrooms]);
 
     useEffect(() => {
         if (principal === null || !canManageClassrooms(principal)) {
@@ -328,10 +333,10 @@ export function App() {
     }
 
     async function reloadClassrooms(preferredClassroomId?: number | null) {
-        const data = await getClassrooms();
+        const data = await getClassrooms(showInactiveClassrooms);
         setClassrooms(data);
 
-        if (data.length === 0) {
+        if (!data.some(classroom => classroom.is_active)) {
             setSelectedClassroomId(null);
             setDashboard(null);
             return;
@@ -340,7 +345,7 @@ export function App() {
         if (
             preferredClassroomId !== undefined &&
             preferredClassroomId !== null &&
-            data.some((classroom) => classroom.id === preferredClassroomId)
+            data.some((classroom) => classroom.id === preferredClassroomId && classroom.is_active)
         ) {
             setSelectedClassroomId(preferredClassroomId);
             return;
@@ -348,12 +353,12 @@ export function App() {
 
         if (
             selectedClassroomId !== null &&
-            data.some((classroom) => classroom.id === selectedClassroomId)
+            data.some((classroom) => classroom.id === selectedClassroomId && classroom.is_active)
         ) {
             return;
         }
 
-        setSelectedClassroomId(data[0].id);
+        setSelectedClassroomId(previous => data.some(classroom => classroom.id === previous && classroom.is_active) ? previous : data.find(classroom => classroom.is_active)?.id ?? null);
     }
 
     async function handleLogin(username: string, password: string) {
@@ -417,6 +422,7 @@ export function App() {
             vlanId: "",
             displayOrder: "",
             isService: false,
+            isActive: true,
         });
     }
 
@@ -437,6 +443,7 @@ export function App() {
             vlanId: classroom.vlan_id?.toString() ?? "",
             displayOrder: classroom.display_order.toString(),
             isService: classroom.is_service,
+            isActive: classroom.is_active,
         });
     }
 
@@ -494,7 +501,7 @@ export function App() {
                 subnet_cidr: subnetCidr,
                 vlan_id: vlanId,
                 display_order: displayOrder,
-                is_active: true,
+                is_active: classroomForm.isActive,
                 is_service: classroomForm.isService,
             });
 
@@ -889,6 +896,7 @@ export function App() {
     const hasWakeTargets = dashboard?.devices.some((device) => device.is_pinned && !device.wol_protected) ?? false;
 
     useEffect(() => {
+        if (currentPage === "settings" && !userCanOpenSettings) setCurrentPage("dashboard");
         if (currentPage === "access" && !userCanOpenAccessAdmin) {
             setCurrentPage("dashboard");
         }
@@ -900,7 +908,7 @@ export function App() {
         if (currentPage === "routers" && !userCanOpenRouters) {
             setCurrentPage("dashboard");
         }
-    }, [currentPage, userCanOpenAccessAdmin, userCanOpenMaintenance, userCanOpenRouters]);
+    }, [currentPage, userCanOpenSettings, userCanOpenAccessAdmin, userCanOpenMaintenance, userCanOpenRouters]);
 
     if (!authChecked) {
         return (
@@ -924,6 +932,8 @@ export function App() {
                 onCreateClassroom={openCreateClassroomForm}
                 canCreateClassroom={userCanManageClassrooms}
                 canOpenAccessAdmin={userCanOpenAccessAdmin}
+                canOpenSettings={userCanOpenSettings}
+                onOpenSettings={() => setCurrentPage("settings")}
                 canOpenMaintenance={userCanOpenMaintenance}
                 canOpenRouters={userCanOpenRouters}
                 onOpenDashboard={() => setCurrentPage("dashboard")}
@@ -938,8 +948,10 @@ export function App() {
             <main className="content">
                 {currentPage === "account" ? (
                     <AccountPage principal={principal} onPrincipalChanged={setPrincipal} />
+                ) : currentPage === "settings" && userCanOpenSettings ? (
+                    <SettingsPage settings={displaySettings} onChange={setDisplaySettings} />
                 ) : currentPage === "access" && userCanOpenAccessAdmin ? (
-                    <AdminAccessPage principal={principal} classrooms={classrooms} />
+                    <AdminAccessPage principal={principal} classrooms={classrooms.filter(classroom => classroom.is_active)} displaySettings={displaySettings} />
                 ) : currentPage === "maintenance" && userCanOpenMaintenance ? (
                     <MaintenancePage />
                 ) : currentPage === "routers" && userCanOpenRouters ? (
@@ -949,7 +961,7 @@ export function App() {
                         <ClassroomTabs
                             classrooms={classrooms}
                             selectedClassroomId={selectedClassroomId}
-                            onSelect={(id) => { setWakeMessage(null); setSelectedClassroomId(id); }}
+                            onSelect={(id) => { const classroom = classrooms.find(item => item.id === id); if (classroom && !classroom.is_active) {openEditClassroomForm(classroom); return;} setWakeMessage(null); setSelectedClassroomId(id); }}
                         />
 
                         {error && <pre className="error-box">{error}</pre>}

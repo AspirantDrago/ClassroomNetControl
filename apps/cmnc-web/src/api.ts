@@ -288,8 +288,8 @@ export function updateCurrentAccount(
     });
 }
 
-export function getClassrooms(): Promise<Classroom[]> {
-    return request<Classroom[]>("/api/classrooms");
+export function getClassrooms(includeInactive = false): Promise<Classroom[]> {
+    return request<Classroom[]>(`/api/classrooms${includeInactive ? "?include_inactive=true" : ""}`);
 }
 
 export function getClassroomDashboard(classroomId: number | null): Promise<ClassroomDashboard> {

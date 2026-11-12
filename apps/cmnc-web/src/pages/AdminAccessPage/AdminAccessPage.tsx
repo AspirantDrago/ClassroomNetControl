@@ -1,3 +1,4 @@
+import type { DisplaySettings } from "../../config/displaySettings";
 import {type FormEvent, useEffect, useMemo, useState} from "react";
 import {
     type AdminRole,
@@ -28,6 +29,7 @@ import "./AdminAccessPage.css";
 
 type AdminAccessPageProps = {
     principal: CurrentPrincipal;
+    displaySettings: DisplaySettings;
     classrooms: Classroom[];
 };
 
@@ -376,7 +378,7 @@ export function AdminAccessPage(props: AdminAccessPageProps) {
                         />
                     )}
 
-                    <UsersTable users={users} onEdit={openEditUserForm}/>
+                    <UsersTable users={users.filter(user => user.is_active || ((principal.role === "admin" || principal.role === "superadmin") && props.displaySettings.showInactiveUsers))} onEdit={openEditUserForm}/>
                 </div>
             )}
 
@@ -405,7 +407,7 @@ export function AdminAccessPage(props: AdminAccessPageProps) {
                     )}
 
                     <WorkstationsTable
-                        workstations={workstations}
+                        workstations={workstations.filter(workstation => workstation.is_active || ((principal.role === "admin" || principal.role === "superadmin") && props.displaySettings.showInactiveWorkstations))}
                         onEdit={openEditWorkstationForm}
                     />
                 </div>

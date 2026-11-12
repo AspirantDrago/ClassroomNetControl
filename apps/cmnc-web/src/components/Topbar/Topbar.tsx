@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { BuildInfo } from "../../api";
 import "./Topbar.css";
 
-type AppPage = "dashboard" | "account" | "access" | "maintenance" | "routers";
+type AppPage = "dashboard" | "account" | "access" | "maintenance" | "routers" | "settings";
 
 type TopbarProps = {
     currentPage: AppPage;
@@ -13,6 +13,8 @@ type TopbarProps = {
     canCreateClassroom: boolean;
     canOpenAccessAdmin: boolean;
     canOpenMaintenance: boolean;
+    canOpenSettings: boolean;
+    onOpenSettings: () => void;
     canOpenRouters: boolean;
     onOpenDashboard: () => void;
     onOpenAccount: () => void;
@@ -165,6 +167,10 @@ export function Topbar(props: TopbarProps) {
                                 Обслуживание
                             </button>
                         )}
+
+                        {props.canOpenSettings && <button type="button"
+                            className={`topbar-menu-item${currentPage === "settings" ? " topbar-menu-item--active" : ""}`}
+                            onClick={() => runMenuAction(props.onOpenSettings)}>Настройки</button>}
 
                         <div className="topbar-dropdown__separator" />
 

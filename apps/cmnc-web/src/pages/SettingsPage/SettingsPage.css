@@ -1,0 +1,7 @@
+.settings-card { max-width: 800px; border: 1px solid #334155; border-radius: 16px; padding: 8px 20px; background: #111827; }
+.settings-option { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px 0; cursor: pointer; }
+.settings-option input { appearance: none; flex: 0 0 48px; width: 48px; height: 28px; margin: 0; border-radius: 20px; background: #4b5563; position: relative; cursor: pointer; transition: background .2s; }
+.settings-option input::after { content: ""; position: absolute; top: 4px; left: 4px; width: 20px; height: 20px; border-radius: 50%; background: white; transition: transform .2s; }
+.settings-option input:checked { background: #2563eb; }
+.settings-option input:checked::after { transform: translateX(20px); }
+.settings-option input:focus-visible { outline: 2px solid #93c5fd; outline-offset: 3px; }

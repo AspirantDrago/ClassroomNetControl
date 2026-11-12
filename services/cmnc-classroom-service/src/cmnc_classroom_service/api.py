@@ -54,12 +54,12 @@ async def health() -> HealthResponse:
 @router.get("/internal/classrooms", response_model=list[ClassroomRead])
 async def get_classrooms(
     session: AsyncSession = Depends(get_session),
+    include_inactive: bool = False,
 ) -> list[ClassroomRead]:
-    result = await session.execute(
-        select(Classroom)
-        .where(Classroom.is_active.is_(True))
-        .order_by(Classroom.display_order, Classroom.id)
-    )
+    query = select(Classroom).order_by(Classroom.display_order, Classroom.id)
+    if not include_inactive:
+        query = query.where(Classroom.is_active.is_(True))
+    result = await session.execute(query)
     classrooms = list(result.scalars().all())
     return [ClassroomRead.model_validate(classroom) for classroom in classrooms]
 

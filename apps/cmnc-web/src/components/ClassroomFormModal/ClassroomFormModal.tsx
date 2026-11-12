@@ -14,6 +14,7 @@ export type ClassroomFormState =
           vlanId: string;
           displayOrder: string;
           isService: boolean;
+          isActive: boolean;
       }
     | {
           mode: "edit";
@@ -24,6 +25,7 @@ export type ClassroomFormState =
           vlanId: string;
           displayOrder: string;
           isService: boolean;
+          isActive: boolean;
       };
 
 type ClassroomFormModalProps = {
@@ -179,6 +181,10 @@ export function ClassroomFormModal(props: ClassroomFormModalProps) {
                         </label>
                     </div>
 
+                    {form.mode === "edit" && <label className="classroom-service-checkbox">
+                        <input type="checkbox" checked={form.isActive} onChange={event => onChange({...form, isActive: event.target.checked})}/>
+                        <span>Аудитория активна</span>
+                    </label>}
                     <label className="classroom-service-checkbox">
                         <input
                             type="checkbox"
@@ -194,7 +200,7 @@ export function ClassroomFormModal(props: ClassroomFormModalProps) {
                     </label>
 
                     <div className="modal-actions classroom-modal-actions">
-                        {form.mode === "edit" && onDeactivate && (
+                        {form.mode === "edit" && form.classroom.is_active && onDeactivate && (
                             <button
                                 type="button"
                                 className="danger-button"
@@ -224,9 +230,9 @@ export function ClassroomFormModal(props: ClassroomFormModalProps) {
                     </div>
                 </form>
 
-                {form.mode === "edit" && <VeyonKeyPanel key={form.classroom.id} scope="classroom" scopeId={form.classroom.id} />}
+                {form.mode === "edit" && form.classroom.is_active && <VeyonKeyPanel key={form.classroom.id} scope="classroom" scopeId={form.classroom.id} />}
                 {form.mode === "create" && <p className="muted">Ключ Veyon можно указать после создания аудитории.</p>}
-                {form.mode === "edit" && onCamerasChanged && (
+                {form.mode === "edit" && form.classroom.is_active && onCamerasChanged && (
                     <ClassroomCamerasAdminPanel
                         classroomId={form.classroom.id}
                         onChanged={onCamerasChanged}
