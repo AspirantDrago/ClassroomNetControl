@@ -2,6 +2,11 @@ FROM node:26-alpine3.24 AS build
 
 WORKDIR /app
 
+COPY apps/cmnc-web/package*.json ./
+# Keep dependency installation independent of UI build arguments.
+# Audit is a separate maintenance task, not part of an image build.
+RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --no-fund --fetch-retries=1 --fetch-timeout=30000
+
 ARG VITE_NOTIFICATION_DURATION_MS=5000
 ARG VITE_NOTIFICATION_ANIMATION_DURATION_MS=300
 ARG VITE_API_BASE_URL=/api
@@ -13,9 +18,6 @@ ARG VITE_ADMIN_PRESENCE_REFRESH_INTERVAL_MS=30000
 ARG VITE_MAINTENANCE_REFRESH_INTERVAL_MS=5000
 ARG VITE_ROUTERS_REFRESH_INTERVAL_MS=5000
 ARG VITE_STATISTICS_REFRESH_INTERVAL_MS=30000
-
-COPY apps/cmnc-web/package*.json ./
-RUN npm ci
 
 COPY apps/cmnc-web ./
 ENV VITE_NOTIFICATION_DURATION_MS=${VITE_NOTIFICATION_DURATION_MS}
