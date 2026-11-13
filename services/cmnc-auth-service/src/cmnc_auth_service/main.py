@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from cmnc_auth_service.classroom_lifecycle import router as classroom_lifecycle_router, check_assignments
 from cmnc_auth_service.bootstrap import ensure_bootstrap_superadmin
 from cmnc_auth_service.db import async_session_maker, get_session
 from cmnc_auth_service.models import ClassroomAccess, Role, User, Workstation
@@ -74,6 +75,9 @@ app = FastAPI(
     title="cmnc-auth-service",
     lifespan=lifespan,
 )
+
+
+app.include_router(classroom_lifecycle_router)
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -673,6 +677,7 @@ async def replace_user_classroom_access(
     session: AsyncSession,
 ) -> None:
     unique_classroom_ids = sorted(set(classroom_ids))
+    await check_assignments(session, unique_classroom_ids)
 
     await session.execute(
         delete(ClassroomAccess).where(ClassroomAccess.user_id == user_id)
@@ -693,6 +698,7 @@ async def replace_workstation_classroom_access(
     session: AsyncSession,
 ) -> None:
     unique_classroom_ids = sorted(set(classroom_ids))
+    await check_assignments(session, unique_classroom_ids)
 
     await session.execute(
         delete(ClassroomAccess).where(ClassroomAccess.workstation_id == workstation_id)

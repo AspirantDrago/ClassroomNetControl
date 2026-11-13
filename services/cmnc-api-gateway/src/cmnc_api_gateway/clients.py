@@ -42,6 +42,12 @@ class ServiceClient:
             response.raise_for_status()
             return response.json()
 
+    async def delete_json(self, path: str) -> dict | list:
+        async with self.connection(10.0) as client:
+            response = await client.delete(f"{self._base_url}{path}")
+            response.raise_for_status()
+            return response.json()
+
     async def get_bytes(self, path: str) -> tuple[bytes, str | None, str | None]:
         async with self.connection(120.0) as client:
             response = await client.get(f"{self._base_url}{path}", timeout=120.0)

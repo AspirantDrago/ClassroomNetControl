@@ -1,11 +1,13 @@
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cmnc_contracts.events import WanPolicyChangedEvent
 from cmnc_contracts.routing_keys import CLASSROOM_DEVICE_WAN_POLICY_CHANGED
 
+from cmnc_classroom_service.classroom_deletion import verify_deletion_token
 from cmnc_classroom_service.device_state_timing import get_device_state_times
 from cmnc_classroom_service.db import get_session
 from cmnc_classroom_service.messaging import RabbitMqClient
@@ -692,6 +694,33 @@ async def update_classroom(
     await session.refresh(classroom)
 
     return ClassroomRead.model_validate(classroom)
+
+
+class ClassroomDeletionRequest(BaseModel):
+    token: str
+
+
+@router.delete("/internal/classrooms/{classroom_id}")
+async def delete_classroom(
+    classroom_id: int,
+    payload: ClassroomDeletionRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(select(Classroom).where(Classroom.id == classroom_id).with_for_update())
+    classroom = result.scalar_one_or_none()
+    if classroom is None:
+        raise HTTPException(404, "Аудитория не найдена")
+    if classroom.is_active:
+        raise HTTPException(409, "Сначала деактивируйте аудиторию")
+    for model, label in ((Device, "устройства"), (ClassroomCamera, "камеры")):
+        if (await session.execute(select(model.id).where(model.classroom_id == classroom_id).limit(1))).first():
+            raise HTTPException(409, f"Нельзя удалить аудиторию: с ней связаны {label}. Сначала удалите или перенесите их.")
+    # Check after obtaining the row lock, so a delayed old attempt cannot
+    # outlive a newer reservation or successful activation.
+    await verify_deletion_token(classroom_id, payload.token)
+    await session.execute(delete(Classroom).where(Classroom.id == classroom_id))
+    await commit_or_409(session, detail="Удаление нарушает целостность связанных данных")
+    return {"deleted": True}
 
 
 @router.post(

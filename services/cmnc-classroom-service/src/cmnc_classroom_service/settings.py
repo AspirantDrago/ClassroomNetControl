@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8002
 
+    auth_service_url: str = "http://cmnc-auth-service:8001"
     database_url: str = (
         "postgresql+asyncpg://cmnc:cmnc_password@localhost:5432/cmnc"
     )

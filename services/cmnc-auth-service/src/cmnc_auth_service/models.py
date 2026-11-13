@@ -117,6 +117,13 @@ class Workstation(Base):
     role: Mapped[Role] = relationship()
 
 
+class ClassroomDeletionGuard(Base):
+    """Durable reservation/tombstone for cross-service classroom deletion."""
+    __tablename__ = "classroom_deletion_guards"
+    classroom_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    token: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
 class ClassroomAccess(Base):
     __tablename__ = "classroom_access"
 

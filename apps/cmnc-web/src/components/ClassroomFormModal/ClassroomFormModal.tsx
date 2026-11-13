@@ -14,7 +14,6 @@ export type ClassroomFormState =
           vlanId: string;
           displayOrder: string;
           isService: boolean;
-          isActive: boolean;
       }
     | {
           mode: "edit";
@@ -25,7 +24,6 @@ export type ClassroomFormState =
           vlanId: string;
           displayOrder: string;
           isService: boolean;
-          isActive: boolean;
       };
 
 type ClassroomFormModalProps = {
@@ -36,6 +34,9 @@ type ClassroomFormModalProps = {
     onClose: () => void;
     onSubmit: (event: FormEvent<HTMLFormElement>) => void;
     onDeactivate?: () => void;
+    onActivate?: () => void;
+    onDelete?: () => void;
+    error?: string | null;
     onCamerasChanged?: () => void | Promise<void>;
 };
 
@@ -48,6 +49,9 @@ export function ClassroomFormModal(props: ClassroomFormModalProps) {
         onClose,
         onSubmit,
         onDeactivate,
+        onActivate,
+        onDelete,
+        error,
         onCamerasChanged,
     } = props;
 
@@ -85,6 +89,7 @@ export function ClassroomFormModal(props: ClassroomFormModalProps) {
                     </button>
                 </div>
 
+                {error && <div className="error-box" role="alert">{error}</div>}
                 <form className="classroom-form-section" onSubmit={onSubmit}>
                     <div className="classroom-form-grid">
                         <label>
@@ -181,10 +186,6 @@ export function ClassroomFormModal(props: ClassroomFormModalProps) {
                         </label>
                     </div>
 
-                    {form.mode === "edit" && <label className="classroom-service-checkbox">
-                        <input type="checkbox" checked={form.isActive} onChange={event => onChange({...form, isActive: event.target.checked})}/>
-                        <span>Аудитория активна</span>
-                    </label>}
                     <label className="classroom-service-checkbox">
                         <input
                             type="checkbox"
@@ -209,6 +210,17 @@ export function ClassroomFormModal(props: ClassroomFormModalProps) {
                             >
                                 Деактивировать
                             </button>
+                        )}
+
+                        {form.mode === "edit" && !form.classroom.is_active && (
+                            <>
+                                <button type="button" className="success-button" disabled={busy} onClick={onActivate}>
+                                    Активировать
+                                </button>
+                                <button type="button" className="danger-button" disabled={busy} onClick={onDelete}>
+                                    Удалить полностью
+                                </button>
+                            </>
                         )}
 
                         <button

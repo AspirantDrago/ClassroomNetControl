@@ -29,7 +29,7 @@ export function ClassroomTabs(props: ClassroomTabsProps) {
                         className={className}
                         onClick={() => onSelect(classroom.id)}
                     >
-                        {classroom.name}{!classroom.is_active && " (деактивирована)"}
+                        {classroom.is_active ? classroom.name : <s title="Аудитория деактивирована">{classroom.name}</s>}
                     </button>
                 );
             })}

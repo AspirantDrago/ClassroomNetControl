@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import httpx
+from pydantic import BaseModel
 import uvicorn
 from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
@@ -2023,17 +2024,44 @@ async def admin_update_classroom(
     require_permission(principal, PERMISSION_CLASSROOMS_MANAGE)
 
     try:
-        return await classroom_client.patch_json(
-            f"/internal/classrooms/{classroom_id}",
+        client = auth_client if payload.get("is_active") is True else classroom_client
+        path = f"/internal/admin/classrooms/{classroom_id}/activate" if payload.get("is_active") is True else f"/internal/classrooms/{classroom_id}"
+        return await client.patch_json(
+            path,
             json=payload,
         )
     except httpx.HTTPStatusError as exc:
         raise HTTPException(
             status_code=exc.response.status_code,
-            detail=exc.response.text,
+            detail=exc.response.json().get("detail", "Ошибка изменения аудитории"),
         ) from exc
 
 
+
+
+class ClassroomDeleteConfirmation(BaseModel):
+    confirmed: Literal[True]
+
+
+@app.delete("/api/admin/classrooms/{classroom_id}")
+async def admin_delete_classroom(
+    classroom_id: int,
+    payload: ClassroomDeleteConfirmation,
+    request: Request,
+    authorization: str | None = Header(default=None),
+):
+    principal = await get_current_principal(request, authorization)
+    require_permission(principal, PERMISSION_CLASSROOMS_MANAGE)
+    try:
+        return await auth_client.delete_json(f"/internal/admin/classrooms/{classroom_id}")
+    except httpx.HTTPStatusError as exc:
+        try:
+            detail = exc.response.json().get("detail", "Не удалось удалить аудиторию")
+        except (ValueError, AttributeError):
+            detail = "Не удалось удалить аудиторию"
+        raise HTTPException(exc.response.status_code, detail) from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(503, "Не удалось подтвердить удаление. Повторите запрос.") from exc
 
 
 @app.get("/api/admin/classrooms/{classroom_id}/cameras")

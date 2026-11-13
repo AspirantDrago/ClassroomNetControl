@@ -465,6 +465,10 @@ export type ClassroomUpdateRequest = {
     is_service?: boolean;
 };
 
+export function deleteClassroom(classroomId: number): Promise<{deleted: boolean}> {
+    return request(`/api/admin/classrooms/${classroomId}`, {method: "DELETE", body: JSON.stringify({confirmed: true})});
+}
+
 export function createClassroom(
     payload: ClassroomCreateRequest,
 ): Promise<Classroom> {

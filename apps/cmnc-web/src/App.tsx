@@ -29,6 +29,7 @@ import {
     getAdminRouters,
     getClassroomDashboard,
     getClassrooms,
+    deleteClassroom,
     getBuildInfo,
     getCurrentPrincipal,
     login,
@@ -422,7 +423,6 @@ export function App() {
             vlanId: "",
             displayOrder: "",
             isService: false,
-            isActive: true,
         });
     }
 
@@ -443,7 +443,6 @@ export function App() {
             vlanId: classroom.vlan_id?.toString() ?? "",
             displayOrder: classroom.display_order.toString(),
             isService: classroom.is_service,
-            isActive: classroom.is_active,
         });
     }
 
@@ -501,13 +500,59 @@ export function App() {
                 subnet_cidr: subnetCidr,
                 vlan_id: vlanId,
                 display_order: displayOrder,
-                is_active: classroomForm.isActive,
                 is_service: classroomForm.isService,
             });
 
             setClassroomForm(null);
             await reloadClassrooms(updated.id);
             await reload();
+        } catch (err) {
+            setError(extractErrorDetail(err));
+        } finally {
+            setBusyClassroomForm(false);
+        }
+    }
+
+    async function handleActivateClassroom() {
+        if (
+            classroomForm?.mode !== "edit" ||
+            !canManageClassrooms(principal) ||
+            classroomForm.classroom.is_active ||
+            busyClassroomForm
+        ) return;
+
+        setError(null);
+        setBusyClassroomForm(true);
+        try {
+            const updated = await updateClassroom(classroomForm.classroom.id, {is_active: true});
+            setClassroomForm(null);
+            await reloadClassrooms(updated.id);
+        } catch (err) {
+            setError(extractErrorDetail(err));
+        } finally {
+            setBusyClassroomForm(false);
+        }
+    }
+
+    async function handleDeleteClassroom() {
+        if (
+            classroomForm?.mode !== "edit" ||
+            !canManageClassrooms(principal) ||
+            classroomForm.classroom.is_active ||
+            busyClassroomForm
+        ) return;
+
+        const confirmed = window.confirm(
+            `Удалить аудиторию «${classroomForm.classroom.name}» полностью? Это действие необратимо. Удаление возможно только при отсутствии связанных данных.`,
+        );
+        if (!confirmed) return;
+
+        setError(null);
+        setBusyClassroomForm(true);
+        try {
+            await deleteClassroom(classroomForm.classroom.id);
+            setClassroomForm(null);
+            await reloadClassrooms(null);
         } catch (err) {
             setError(extractErrorDetail(err));
         } finally {
@@ -1147,6 +1192,9 @@ export function App() {
                     onClose={closeClassroomForm}
                     onSubmit={handleClassroomFormSubmit}
                     onDeactivate={classroomForm.mode === "edit" ? handleDeactivateClassroom : undefined}
+                    onActivate={handleActivateClassroom}
+                    onDelete={handleDeleteClassroom}
+                    error={error}
                     onCamerasChanged={reload}
                 />
             )}

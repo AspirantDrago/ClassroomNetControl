@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     port: int = 8001
     reload: bool = False
 
+    classroom_service_url: str = "http://cmnc-classroom-service:8002"
     database_url: str
 
     jwt_secret: str
