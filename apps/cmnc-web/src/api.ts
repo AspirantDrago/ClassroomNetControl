@@ -611,6 +611,11 @@ export function getAdminRoles(): Promise<AdminRole[]> {
     return request<AdminRole[]>("/api/admin/roles");
 }
 
+export type ClassroomDirectoryEntry = Pick<Classroom, "id" | "name" | "is_active">;
+export function getAdminClassroomDirectory(): Promise<ClassroomDirectoryEntry[]> {
+    return request("/api/admin/classrooms/directory");
+}
+
 export function getAdminUsers(): Promise<AdminUser[]> {
     return request<AdminUser[]>("/api/admin/users");
 }

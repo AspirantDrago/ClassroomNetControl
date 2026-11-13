@@ -1,10 +1,12 @@
 import type { DisplaySettings } from "../../config/displaySettings";
-import {type FormEvent, useEffect, useMemo, useState} from "react";
+import {Fragment, type FormEvent, useEffect, useMemo, useState} from "react";
 import {
     type AdminRole,
     type AdminUser,
     type AdminWorkstation,
     type Classroom,
+    type ClassroomDirectoryEntry,
+    getAdminClassroomDirectory,
     type CurrentPrincipal,
     createAdminUser,
     createAdminWorkstation,
@@ -69,6 +71,8 @@ export function AdminAccessPage(props: AdminAccessPageProps) {
     const initialTab: PageTab = userManagementAllowed ? "users" : "workstations";
 
     const [activeTab, setActiveTab] = useState<PageTab>(initialTab);
+    const [classroomDirectory, setClassroomDirectory] = useState<ClassroomDirectoryEntry[]>([]);
+    const classroomById = useMemo(() => new Map(classroomDirectory.map(room => [room.id, room])), [classroomDirectory]);
     const [roles, setRoles] = useState<AdminRole[]>([]);
     const [users, setUsers] = useState<AdminUser[]>([]);
     const [workstations, setWorkstations] = useState<AdminWorkstation[]>([]);
@@ -110,14 +114,16 @@ export function AdminAccessPage(props: AdminAccessPageProps) {
         setError(null);
 
         try {
-            const [loadedRoles, loadedUsers, loadedWorkstations] = await Promise.all([
+            const [loadedRoles, loadedUsers, loadedWorkstations, loadedDirectory] = await Promise.all([
                 getAdminRoles(),
                 userManagementAllowed ? getAdminUsers() : Promise.resolve([]),
                 workstationManagementAllowed
                     ? getAdminWorkstations()
                     : Promise.resolve([]),
+                getAdminClassroomDirectory(),
             ]);
 
+            setClassroomDirectory(loadedDirectory);
             setRoles(loadedRoles);
             setUsers(loadedUsers);
             setWorkstations(loadedWorkstations);
@@ -378,7 +384,7 @@ export function AdminAccessPage(props: AdminAccessPageProps) {
                         />
                     )}
 
-                    <UsersTable users={users.filter(user => user.is_active || ((principal.role === "admin" || principal.role === "superadmin") && props.displaySettings.showInactiveUsers))} onEdit={openEditUserForm}/>
+                    <UsersTable users={users.filter(user => user.is_active || ((principal.role === "admin" || principal.role === "superadmin") && props.displaySettings.showInactiveUsers))} classrooms={classroomById} onEdit={openEditUserForm}/>
                 </div>
             )}
 
@@ -408,6 +414,7 @@ export function AdminAccessPage(props: AdminAccessPageProps) {
 
                     <WorkstationsTable
                         workstations={workstations.filter(workstation => workstation.is_active || ((principal.role === "admin" || principal.role === "superadmin") && props.displaySettings.showInactiveWorkstations))}
+                        classrooms={classroomById}
                         onEdit={openEditWorkstationForm}
                     />
                 </div>
@@ -662,11 +669,12 @@ function ClassroomChecklist(props: ClassroomChecklistProps) {
 
 type UsersTableProps = {
     users: AdminUser[];
+    classrooms: Map<number, ClassroomDirectoryEntry>;
     onEdit: (user: AdminUser) => void;
 };
 
 function UsersTable(props: UsersTableProps) {
-    const {users, onEdit} = props;
+    const {users, classrooms, onEdit} = props;
 
     if (users.length === 0) {
         return <div className="muted">Пользователи не найдены.</div>;
@@ -697,7 +705,7 @@ function UsersTable(props: UsersTableProps) {
                         <td>{user.username}</td>
                         <td>{user.display_name}</td>
                         <td>{formatRole(user.role)}</td>
-                        <td>{formatUserClassroomIds(user)}</td>
+                        <td>{user.role === ROLE_TEACHER ? <ClassroomNames ids={user.classroom_ids} classrooms={classrooms}/> : "-"}</td>
                         <td>{formatDate(user.last_login_at)}</td>
                         <td>
                             <button
@@ -717,11 +725,12 @@ function UsersTable(props: UsersTableProps) {
 
 type WorkstationsTableProps = {
     workstations: AdminWorkstation[];
+    classrooms: Map<number, ClassroomDirectoryEntry>;
     onEdit: (workstation: AdminWorkstation) => void;
 };
 
 function WorkstationsTable(props: WorkstationsTableProps) {
-    const {workstations, onEdit} = props;
+    const {workstations, classrooms, onEdit} = props;
 
     if (workstations.length === 0) {
         return <div className="muted">Рабочие станции не найдены.</div>;
@@ -750,7 +759,7 @@ function WorkstationsTable(props: WorkstationsTableProps) {
                     >
                         <td>{workstation.name}</td>
                         <td>{workstation.ip_address}</td>
-                        <td>{formatClassroomIds(workstation.classroom_ids)}</td>
+                        <td><ClassroomNames ids={workstation.classroom_ids} classrooms={classrooms}/></td>
                         <td>{formatDate(workstation.last_seen_at)}</td>
                         <td>
                             <button
@@ -779,16 +788,17 @@ function getPresenceRowClass(
     return online === true ? "user-item__online" : undefined;
 }
 
-function formatUserClassroomIds(user: AdminUser): string {
-    if (user.role !== ROLE_TEACHER) {
-        return "-";
-    }
-
-    return formatClassroomIds(user.classroom_ids);
-}
-
-function formatClassroomIds(classroomIds: number[]): string {
-    return classroomIds.length === 0 ? "-" : classroomIds.join(", ");
+function ClassroomNames({ids, classrooms}: {ids: number[]; classrooms: Map<number, ClassroomDirectoryEntry>}) {
+    if (!ids.length) return <>-</>;
+    return <>{ids.map((id, index) => {
+        const room = classrooms.get(id);
+        return <Fragment key={id}>
+            {index > 0 && ", "}
+            {room?.is_active === false
+                ? <s title="Аудитория деактивирована">{room.name}</s>
+                : room?.name ?? "Недоступная аудитория"}
+        </Fragment>;
+    })}</>;
 }
 
 function formatDate(value: string | null): string {

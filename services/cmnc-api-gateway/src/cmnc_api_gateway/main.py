@@ -775,6 +775,23 @@ async def update_me(
     return PrincipalResponse.model_validate(data)
 
 
+@app.get("/api/admin/classrooms/directory")
+async def admin_classroom_directory(request: Request, authorization: str | None = Header(default=None)):
+    principal = await get_current_principal(request, authorization)
+    require_any_permission(principal, {PERMISSION_USERS_MANAGE_ADMIN, PERMISSION_USERS_MANAGE_LOWER,
+                                       PERMISSION_WORKSTATIONS_MANAGE})
+    try:
+        classrooms = await classroom_client.get_json("/internal/classrooms?include_inactive=true")
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, "Сервис аудиторий недоступен") from exc
+    if not isinstance(classrooms, list):
+        raise HTTPException(502, "Некорректные данные аудиторий")
+    return [{"id": room["id"], "name": room["name"], "is_active": room.get("is_active", True)}
+            for room in classrooms if isinstance(room, dict)
+            and (room.get("is_service") is not True or can_access_service_classrooms(principal))
+            and (can_access_all_classrooms(principal) or room["id"] in principal.classroom_ids)]
+
+
 @app.get("/api/classrooms")
 async def get_classrooms(
     request: Request,
