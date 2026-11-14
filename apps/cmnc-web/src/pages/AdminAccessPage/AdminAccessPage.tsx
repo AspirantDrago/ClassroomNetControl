@@ -376,7 +376,7 @@ export function AdminAccessPage(props: AdminAccessPageProps) {
                         <UserForm
                             form={userForm}
                             roles={manageableUserRoles}
-                            classrooms={classrooms}
+                            classrooms={getChecklistClassrooms(classrooms, classroomDirectory, userForm.user?.classroom_ids ?? [])}
                             busy={busy}
                             onChange={setUserForm}
                             onCancel={() => setUserForm(null)}
@@ -404,7 +404,7 @@ export function AdminAccessPage(props: AdminAccessPageProps) {
                     {workstationForm && (
                         <WorkstationForm
                             form={workstationForm}
-                            classrooms={classrooms}
+                            classrooms={getChecklistClassrooms(classrooms, classroomDirectory, workstationForm.workstation?.classroom_ids ?? [])}
                             busy={busy}
                             onChange={setWorkstationForm}
                             onCancel={() => setWorkstationForm(null)}
@@ -426,7 +426,7 @@ export function AdminAccessPage(props: AdminAccessPageProps) {
 type UserFormProps = {
     form: UserFormState;
     roles: string[];
-    classrooms: Classroom[];
+    classrooms: ClassroomDirectoryEntry[];
     busy: boolean;
     onChange: (form: UserFormState) => void;
     onCancel: () => void;
@@ -539,7 +539,7 @@ function UserForm(props: UserFormProps) {
 
 type WorkstationFormProps = {
     form: WorkstationFormState;
-    classrooms: Classroom[];
+    classrooms: ClassroomDirectoryEntry[];
     busy: boolean;
     onChange: (form: WorkstationFormState) => void;
     onCancel: () => void;
@@ -611,8 +611,26 @@ function WorkstationForm(props: WorkstationFormProps) {
     );
 }
 
+function getChecklistClassrooms(
+    visible: Classroom[],
+    directory: ClassroomDirectoryEntry[],
+    assignedIds: number[],
+): ClassroomDirectoryEntry[] {
+    const rooms = new Map<number, ClassroomDirectoryEntry>(
+        visible.filter(room => !room.is_service).map(room => [room.id, room]),
+    );
+    const assigned = new Set(assignedIds);
+    for (const room of directory) {
+        if (!room.is_active && assigned.has(room.id)) rooms.set(room.id, room);
+    }
+    // Use original assignments, so an unchecked inactive room stays visible
+    // until saving or cancelling, and can be checked again in the same form.
+    return [...rooms.values()];
+}
+
+
 type ClassroomChecklistProps = {
-    classrooms: Classroom[];
+    classrooms: ClassroomDirectoryEntry[];
     selectedIds: number[];
     onChange: (classroomIds: number[]) => void;
 };
@@ -641,12 +659,9 @@ function ClassroomChecklist(props: ClassroomChecklistProps) {
                 <div className="muted">Нет доступных аудиторий.</div>
             ) : (
                 <div className="classroom-checklist-grid">
-                    {classrooms
-                        .filter((classroom) => !classroom.is_service)
-                        .map((classroom) => (
+                    {classrooms.map((classroom) => (
                             <label
                                 key={classroom.id}
-                                className={classroom.is_service ? "classroom-checklist-service" : undefined}
                             >
                                 <input
                                     type="checkbox"
@@ -655,8 +670,8 @@ function ClassroomChecklist(props: ClassroomChecklistProps) {
                                         toggle(classroom.id, event.target.checked)
                                     }
                                 />
-                                <span>
-                                    {classroom.name}
+                                <span title={classroom.is_active ? undefined : "Аудитория деактивирована"}>
+                                    {classroom.is_active ? classroom.name : <s>{classroom.name}</s>}
                                 </span>
                             </label>
                             )
