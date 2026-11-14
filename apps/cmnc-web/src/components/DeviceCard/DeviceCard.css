@@ -145,6 +145,7 @@
 }
 
 .device-thumbnail-user {
+    text-align: center;
     color: #d1d5db;
     font-size: 13px;
     line-height: 18px;
