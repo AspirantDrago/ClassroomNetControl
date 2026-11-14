@@ -150,10 +150,18 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                     <ReadonlyField label="Hostname из MikroTik" value={getHostname(form)} />
                     <ReadonlyField label="Lease" value={getLeaseText(form)} />
                     <ReadonlyField label="Название в аудитории" value={form.mode === "edit-device" ? form.device.inventory_name || "-" : "-"} />
-                    {form.mode === "edit-device" && form.device.wan_protected && (
-                        <ReadonlyField label="Защищено от отключения WAN" value="Да" />
-                    )}
+                    <ReadonlyField label="Текущий пользователь" value={
+                        form.mode === "edit-device" && form.device.online && form.device.current_user_known
+                            ? form.device.current_user || "—" : ""
+                    } />
                 </div>
+                {form.mode === "edit-device" && (form.device.wan_protected || form.device.veyon_bulk_protected || form.device.wol_protected) && (
+                    <div className="readonly-grid device-protections-grid">
+                        {form.device.wan_protected && <ReadonlyField label="Защищено от отключения WAN" value="Да" />}
+                        {form.device.veyon_bulk_protected && <ReadonlyField label="Защищено от массового управления через Veyon" value="Да" />}
+                        {form.device.wol_protected && <ReadonlyField label="Защита от пробуждения WoL" value="Да" />}
+                    </div>
+                )}
                 {form.mode === "edit-device" && <div className="device-state-grid">
                     {!form.device.wan_protected && <>
                         <ReadonlyField

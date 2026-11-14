@@ -889,6 +889,8 @@ async def get_classroom_dashboard(
         observed_device = observed_by_mac.get(device["mac_address"].upper())
         online = bool(observed_device and observed_device["active"])
         timing = state_times.get(str(device["id"]), {})
+        user = layout.get("device_users", {}).get(str(device["id"]), {})
+        user_known = online and user.get("current_user_known") is True
         wan_state = "protected" if device["wan_protected"] else (
             "allowed" if device["wan_allowed"] else "blocked"
         )
@@ -899,6 +901,8 @@ async def get_classroom_dashboard(
                 active_ip=observed_device["active_ip"] if observed_device else None,
                 observed_hostname=observed_device["hostname"] if observed_device else None,
                 online=online,
+                current_user_known=user_known,
+                current_user=user.get("current_user") if user_known else None,
                 online_state_since=(
                     timing.get("online_state_since") if timing.get("online") == online else None
                 ),

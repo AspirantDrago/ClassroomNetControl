@@ -174,6 +174,25 @@ class Device(Base):
     classroom: Mapped[Classroom] = relationship(back_populates="devices")
 
 
+class DeviceUserState(Base):
+    __tablename__ = "device_user_state"
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), primary_key=True)
+    known: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    username: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DeviceUserInterval(Base):
+    __tablename__ = "device_user_intervals"
+    __table_args__ = (Index("ix_device_user_intervals_device_start", "device_id", "start_at"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
+    start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    end_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    username: Mapped[str | None] = mapped_column(String(256), nullable=True)
+
+
 class DeviceStatisticsState(Base):
     __tablename__ = "device_statistics_state"
 

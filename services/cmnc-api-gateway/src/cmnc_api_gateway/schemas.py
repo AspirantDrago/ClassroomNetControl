@@ -32,6 +32,8 @@ class DashboardDevice(BaseModel):
     last_seen_at: datetime | None = None
     wan_state_since: datetime | None = None
     online_state_since: datetime | None = None
+    current_user_known: bool = False
+    current_user: str | None = None
 
 
 class DynamicDevice(BaseModel):

@@ -51,6 +51,7 @@ type StatisticsSegment = {
     start_at: string;
     end_at: string;
     state: string;
+    username?: string | null;
 };
 
 
@@ -60,6 +61,7 @@ type DeviceStatisticsItem = {
     ip_address: string | null;
     availability: StatisticsSegment[];
     wan: StatisticsSegment[];
+    users?: StatisticsSegment[];
 };
 
 
@@ -242,7 +244,7 @@ function ClassroomStatisticsModal(props: ClassroomStatisticsModalProps) {
                     <div>
                         <h3>Статистика — {classroomName}</h3>
                         <div className="muted">
-                            Доступность устройств и состояние WAN за {selectedRange.description}
+                            Доступность устройств, состояние WAN и пользователи за {selectedRange.description}
                         </div>
                     </div>
 
@@ -352,6 +354,7 @@ function mergeStatisticsGraphs(
                 ...device,
                 availability: nextDevice?.availability ?? [],
                 wan: nextDevice?.wan ?? [],
+                users: nextDevice?.users ?? [],
             };
         }),
     };
@@ -365,6 +368,9 @@ function StatisticsLegend() {
             <LegendItem className="statistics-legend-wan-blocked" label="WAN отключён" />
             <LegendItem className="statistics-legend-wan-allowed" label="WAN разрешён" />
             <LegendItem className="statistics-legend-wan-protected" label="WAN защищён администратором" />
+            <LegendItem className="statistics-legend-user-absent" label="Нет пользователя" />
+            <LegendItem className="statistics-legend-user-present" label="Пользователь авторизован" />
+            <LegendItem className="statistics-legend-user-unknown" label="Пропуск в истории пользователей — нет данных" />
         </div>
     );
 }
@@ -407,6 +413,8 @@ function StatisticsDeviceRow(props: {
                     startAt={startAt}
                     endAt={endAt}
                 />
+                <StatisticsLane className="statistics-user-lane" segments={device.users ?? []}
+                    startAt={startAt} endAt={endAt} />
             </div>
         </div>
     );
@@ -466,12 +474,15 @@ function getSegmentPosition(
 
 
 function formatSegmentTitle(segment: StatisticsSegment): string {
-    return `${formatState(segment.state)}: ${formatDateTime(segment.start_at)} — ${formatDateTime(segment.end_at)}`;
+    const user = segment.state === "user_present" && segment.username ? ` (${segment.username})` : "";
+    return `${formatState(segment.state)}${user}: ${formatDateTime(segment.start_at)} — ${formatDateTime(segment.end_at)}`;
 }
 
 
 function formatState(state: string): string {
     const labels: Record<string, string> = {
+        user_absent: "Нет пользователя",
+        user_present: "Пользователь авторизован",
         online: "В сети",
         offline: "Не в сети",
         allowed: "WAN разрешён",

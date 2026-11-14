@@ -199,3 +199,11 @@
 }
 
 .device-wake-message { margin-bottom: 12px; }
+
+#device-info-panel > .readonly-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+#device-info-panel .readonly-field strong { min-height: 1.2em; }
+@media (max-width: 640px) {
+    #device-info-panel > .readonly-grid { grid-template-columns: 1fr; }
+}

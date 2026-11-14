@@ -6,7 +6,7 @@ from ipaddress import ip_address
 from typing import Callable, Iterable
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +16,7 @@ from cmnc_classroom_service.models import (
     Device,
     DeviceStatisticsEvent,
     DeviceStatisticsState,
+    DeviceUserInterval,
 )
 
 
@@ -38,12 +39,17 @@ class StatisticsSegment(BaseModel):
     state: str
 
 
+class UserStatisticsSegment(StatisticsSegment):
+    username: str | None = None
+
+
 class DeviceStatisticsItem(BaseModel):
     device_id: int
     name: str
     ip_address: str | None
     availability: list[StatisticsSegment]
     wan: list[StatisticsSegment]
+    users: list[UserStatisticsSegment] = Field(default_factory=list)
 
 
 class ClassroomStatisticsResponse(BaseModel):
@@ -180,6 +186,17 @@ async def get_classroom_statistics(
     for event in range_result.scalars().all():
         events_by_device[event.device_id].append(event)
 
+    user_intervals = (await session.execute(select(DeviceUserInterval)
+        .where(DeviceUserInterval.device_id.in_(device_ids), DeviceUserInterval.end_at > start_at,
+            DeviceUserInterval.start_at < end_at)
+        .order_by(DeviceUserInterval.device_id, DeviceUserInterval.start_at, DeviceUserInterval.id))).scalars().all()
+    users_by_device: dict[int, list[UserStatisticsSegment]] = defaultdict(list)
+    for interval in user_intervals:
+        users_by_device[interval.device_id].append(UserStatisticsSegment(
+            start_at=max(start_at, ensure_aware_utc(interval.start_at)),
+            end_at=min(end_at, ensure_aware_utc(interval.end_at)),
+            state="user_present" if interval.username else "user_absent", username=interval.username))
+
     items: list[DeviceStatisticsItem] = []
 
     for device in devices:
@@ -208,6 +225,7 @@ async def get_classroom_statistics(
                 ip_address=device.static_ip,
                 availability=availability,
                 wan=wan,
+                users=users_by_device.get(device.id, []),
             )
         )
 

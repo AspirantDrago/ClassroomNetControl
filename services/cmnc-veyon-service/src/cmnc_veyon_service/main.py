@@ -18,6 +18,7 @@ from cmnc_contracts.veyon_actions import DeviceAction, FEATURE_IDS
 from cmnc_veyon_service.command_jobs import CommandJobs, StartCommandJob, CommandResult
 from cmnc_veyon_service.key_store import KeyStore
 from cmnc_veyon_service.control import RemoteControl, InputEvent
+from cmnc_veyon_service.user_monitor import UserMonitor
 
 
 class HealthCheckAccessFilter(logging.Filter):
@@ -224,6 +225,37 @@ class VeyonBridge:
             session.last_used = time.monotonic()
             return {"accepted": True, "device_id": target.device_id}
 
+    async def read_user(self, target: Target):
+        identity, name, pem = self.identity(target)
+        lock = self.locks.setdefault(identity, asyncio.Lock())
+        async with self.capacity, lock:
+            existing = identity in self.sessions
+            try:
+                session = await self.connection(identity, name, pem, target)
+                if not existing:
+                    # User metadata is populated asynchronously after authentication.
+                    await asyncio.sleep(1)
+                response = await self.checked("GET", "/api/v1/user", headers={"Connection-Uid": session.uid}, timeout=5)
+                data = response.json()
+                if not isinstance(data, dict) or not isinstance(data.get("login"), str):
+                    raise HTTPException(502, "Veyon вернул некорректные сведения о пользователе")
+                username = data["login"].strip()
+                if not username:
+                    # An authenticated connection may still be initializing or
+                    # reconnecting. Empty metadata then means unknown, not logout.
+                    session_response = await self.checked("GET", "/api/v1/session",
+                        headers={"Connection-Uid": session.uid}, timeout=5)
+                    metadata = session_response.json()
+                    session_id = metadata.get("sessionId") if isinstance(metadata, dict) else None
+                    if type(session_id) is not int or session_id < 0:
+                        raise HTTPException(503, "Veyon ещё не подготовил сведения о пользователе")
+                return {"username": username[:256] or None}
+            except ValueError as exc:
+                raise HTTPException(502, "Veyon вернул некорректные сведения о пользователе") from exc
+            finally:
+                if not existing:
+                    await self.close(identity)
+
     async def log_missing_frame(self, target: Target, session: Connection):
         now = time.monotonic()
         if session.last_frame_warning and now - session.last_frame_warning < 60:
@@ -280,12 +312,16 @@ async def lifespan(application):
         application.state.bridge = bridge
         application.state.command_jobs = CommandJobs(Path(os.environ.get("CMNC_VEYON_DATA_DIR", "/data")), bridge, Target,
             int(os.environ.get("CMNC_VEYON_COMMAND_RESULT_TIMEOUT_SECONDS", "60")), ACTION_CONCURRENCY)
+        user_monitor = asyncio.create_task(UserMonitor(bridge, Target, client).run())
         cleaner = asyncio.create_task(bridge.cleanup())
         application.state.control = RemoteControl(bridge)
         control_cleaner = asyncio.create_task(application.state.control.cleanup())
         try:
             yield
         finally:
+            user_monitor.cancel()
+            with suppress(asyncio.CancelledError):
+                await user_monitor
             await application.state.command_jobs.close()
             control_cleaner.cancel()
             with suppress(asyncio.CancelledError):

@@ -87,10 +87,16 @@ class DeviceStateTiming(BaseModel):
     wan_state_since: datetime | None = None
 
 
+class DeviceUserRead(BaseModel):
+    current_user_known: bool = False
+    current_user: str | None = None
+
+
 class ClassroomLayoutResponse(BaseModel):
     classroom: ClassroomRead
     devices: list[DeviceRead]
     device_state_times: dict[int, DeviceStateTiming] = Field(default_factory=dict)
+    device_users: dict[int, DeviceUserRead] = Field(default_factory=dict)
     cameras: list[ClassroomCameraRead]
 
 

@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from cmnc_contracts.routing_keys import POLICY_SYNC_COMPLETED, POLICY_SYNC_FAILED
 
+from cmnc_classroom_service.user_history import router as user_history_router
 from cmnc_classroom_service.api import router
 from cmnc_classroom_service.db import async_session_maker
 from cmnc_classroom_service.messaging import RabbitMqClient
@@ -69,6 +70,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(router)
+app.include_router(user_history_router)
 
 
 async def seed_demo_data() -> None:

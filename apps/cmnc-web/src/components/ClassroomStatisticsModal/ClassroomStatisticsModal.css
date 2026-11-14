@@ -278,3 +278,7 @@
         margin-right: auto;
     }
 }
+
+.statistics-legend-user-absent, .statistics-segment-user_absent { background: #9ca3af; }
+.statistics-legend-user-present, .statistics-segment-user_present { background: #d8c3a5; }
+.statistics-legend-user-unknown { background: transparent; border-style: dashed !important; }

@@ -35,6 +35,8 @@ export type DashboardDevice = {
     last_seen_at: string | null;
     wan_state_since?: string | null;
     online_state_since?: string | null;
+    current_user_known?: boolean;
+    current_user?: string | null;
 };
 
 export type DynamicDevice = {
