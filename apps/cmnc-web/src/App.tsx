@@ -59,6 +59,7 @@ import { AccountPage } from "./pages/AccountPage/AccountPage";
 import { MaintenancePage } from "./pages/MaintenancePage/MaintenancePage";
 import { RoutersAdminPage } from "./pages/RoutersAdminPage/RoutersAdminPage";
 import {
+    isWorkstation,
     canControlWanForClassroom,
     canManageClassrooms,
     canManageWorkstations,
@@ -83,7 +84,8 @@ export function App() {
     const notify = useNotify();
     const [principal, setPrincipal] = useState<CurrentPrincipal | null>(null);
     const [displaySettings, setDisplaySettings] = useDisplaySettings(principal);
-    const userCanOpenSettings = principal?.role === "admin" || principal?.role === "superadmin";
+    const workstationPrincipal = isWorkstation(principal);
+    const userCanOpenSettings = !workstationPrincipal && (principal?.role === "admin" || principal?.role === "superadmin");
     const showInactiveClassrooms = userCanOpenSettings && displaySettings.showInactiveClassrooms;
     const [authChecked, setAuthChecked] = useState(false);
     const [authBusy, setAuthBusy] = useState(false);
@@ -380,6 +382,7 @@ export function App() {
     }
 
     function handleLogout() {
+        if (workstationPrincipal) return;
         clearAccessToken();
         setPrincipal(null);
         setClassrooms([]);
@@ -941,6 +944,7 @@ export function App() {
     const hasWakeTargets = dashboard?.devices.some((device) => device.is_pinned && !device.wol_protected) ?? false;
 
     useEffect(() => {
+        if (workstationPrincipal && currentPage !== "dashboard") setCurrentPage("dashboard");
         if (currentPage === "settings" && !userCanOpenSettings) setCurrentPage("dashboard");
         if (currentPage === "access" && !userCanOpenAccessAdmin) {
             setCurrentPage("dashboard");
@@ -953,7 +957,7 @@ export function App() {
         if (currentPage === "routers" && !userCanOpenRouters) {
             setCurrentPage("dashboard");
         }
-    }, [currentPage, userCanOpenSettings, userCanOpenAccessAdmin, userCanOpenMaintenance, userCanOpenRouters]);
+    }, [workstationPrincipal, currentPage, userCanOpenSettings, userCanOpenAccessAdmin, userCanOpenMaintenance, userCanOpenRouters]);
 
     if (!authChecked) {
         return (
@@ -970,6 +974,7 @@ export function App() {
     return (
         <div className="page">
             <Topbar
+                showMenu={!workstationPrincipal}
                 currentPage={currentPage}
                 buildInfo={buildInfo}
                 onReload={reload}
@@ -982,7 +987,7 @@ export function App() {
                 canOpenMaintenance={userCanOpenMaintenance}
                 canOpenRouters={userCanOpenRouters}
                 onOpenDashboard={() => setCurrentPage("dashboard")}
-                onOpenAccount={() => setCurrentPage("account")}
+                onOpenAccount={() => { if (!workstationPrincipal) setCurrentPage("account"); }}
                 onOpenAccessAdmin={() => setCurrentPage("access")}
                 onOpenMaintenance={() => setCurrentPage("maintenance")}
                 onOpenRouters={() => setCurrentPage("routers")}
@@ -991,7 +996,7 @@ export function App() {
             />
 
             <main className="content">
-                {currentPage === "account" ? (
+                {currentPage === "account" && !workstationPrincipal ? (
                     <AccountPage principal={principal} onPrincipalChanged={setPrincipal} />
                 ) : currentPage === "settings" && userCanOpenSettings ? (
                     <SettingsPage settings={displaySettings} onChange={setDisplaySettings} />

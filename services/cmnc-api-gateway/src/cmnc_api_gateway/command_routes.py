@@ -13,7 +13,7 @@ class OutputCommand(BaseModel):
 
 async def administrator(request, authorization):
     principal = await gateway.get_current_principal(request, authorization)
-    if principal.role not in {"admin", "superadmin"}:
+    if not gateway.is_administrator(principal):
         raise HTTPException(403, "Команды с выводом доступны только администраторам")
     return principal
 

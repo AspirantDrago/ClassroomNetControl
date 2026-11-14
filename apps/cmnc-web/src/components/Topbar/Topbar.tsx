@@ -5,6 +5,7 @@ import "./Topbar.css";
 type AppPage = "dashboard" | "account" | "access" | "maintenance" | "routers" | "settings";
 
 type TopbarProps = {
+    showMenu: boolean;
     currentPage: AppPage;
     buildInfo: BuildInfo | null;
     onReload: () => void;
@@ -27,6 +28,7 @@ type TopbarProps = {
 
 export function Topbar(props: TopbarProps) {
     const {
+        showMenu,
         currentPage,
         buildInfo,
         onReload,
@@ -49,7 +51,7 @@ export function Topbar(props: TopbarProps) {
     const menuRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
-        if (!menuOpen) {
+        if (!showMenu || !menuOpen) {
             return;
         }
 
@@ -72,7 +74,7 @@ export function Topbar(props: TopbarProps) {
             document.removeEventListener("pointerdown", handlePointerDown);
             document.removeEventListener("keydown", handleKeyDown);
         };
-    }, [menuOpen]);
+    }, [menuOpen, showMenu]);
 
     function runMenuAction(action: () => void) {
         setMenuOpen(false);
@@ -97,7 +99,7 @@ export function Topbar(props: TopbarProps) {
                 </div>
             </div>
 
-            <div className="topbar-menu" ref={menuRef}>
+            {showMenu && <div className="topbar-menu" ref={menuRef}>
                 <button
                     className="topbar-burger"
                     type="button"
@@ -220,7 +222,7 @@ export function Topbar(props: TopbarProps) {
                         </button>
                     </div>
                 )}
-            </div>
+            </div>}
         </header>
     );
 }

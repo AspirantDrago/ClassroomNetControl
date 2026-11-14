@@ -1,3 +1,4 @@
+from typing import Literal
 from datetime import datetime
 from ipaddress import IPv4Address, IPv6Address
 
@@ -99,7 +100,7 @@ class WorkstationResponse(BaseModel):
 class WorkstationCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     ip_address: IPv4Address | IPv6Address
-    role: str = Field(default="workstation", min_length=1, max_length=32)
+    role: Literal["workstation"] = "workstation"
     is_active: bool = True
     classroom_ids: list[int] = Field(default_factory=list)
 
@@ -107,5 +108,5 @@ class WorkstationCreateRequest(BaseModel):
 class WorkstationUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     ip_address: IPv4Address | IPv6Address | None = None
-    role: str | None = Field(default=None, min_length=1, max_length=32)
+    role: Literal["workstation"] | None = None
     is_active: bool | None = None

@@ -38,10 +38,15 @@ export type AppRole =
     | typeof ROLE_ADMIN
     | typeof ROLE_SUPERADMIN;
 
+export function isWorkstation(principal: CurrentPrincipal | null): boolean {
+    return principal?.principal_type === "workstation" || principal?.role === ROLE_WORKSTATION;
+}
+
 export function hasPermission(
     principal: CurrentPrincipal | null,
     permission: AppPermission,
 ): boolean {
+    if (isWorkstation(principal) && permission !== PERMISSION_CLASSROOMS_READ_ASSIGNED && permission !== PERMISSION_WAN_CONTROL_ASSIGNED) return false;
     return principal?.permissions.includes(permission) ?? false;
 }
 
@@ -64,11 +69,11 @@ export function canManageWorkstations(principal: CurrentPrincipal | null): boole
 }
 
 export function canViewDynamicDevices(principal: CurrentPrincipal | null): boolean {
-    return principal?.role === ROLE_SUPERADMIN || principal?.role === ROLE_ADMIN;
+    return !isWorkstation(principal) && (principal?.role === ROLE_SUPERADMIN || principal?.role === ROLE_ADMIN);
 }
 
 export function canOpenMaintenance(principal: CurrentPrincipal | null): boolean {
-    return principal?.role === ROLE_SUPERADMIN || principal?.role === ROLE_ADMIN;
+    return !isWorkstation(principal) && (principal?.role === ROLE_SUPERADMIN || principal?.role === ROLE_ADMIN);
 }
 
 export function canControlWanForClassroom(

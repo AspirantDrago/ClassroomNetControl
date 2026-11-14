@@ -35,6 +35,7 @@ from cmnc_contracts.permissions import (
     ROLE_WORKSTATION,
     PERMISSION_CLASSROOMS_MANAGE,
     PERMISSION_CLASSROOMS_READ_ALL,
+    PERMISSION_CLASSROOMS_READ_ASSIGNED,
     PERMISSION_DEVICES_MANAGE,
     PERMISSION_USERS_MANAGE_ADMIN,
     PERMISSION_USERS_MANAGE_LOWER,
@@ -150,7 +151,19 @@ async def get_current_principal(
     return response.principal
 
 
+def is_workstation_principal(principal: PrincipalResponse) -> bool:
+    return principal.principal_type == "workstation" or principal.role == ROLE_WORKSTATION
+
+
+def is_administrator(principal: PrincipalResponse) -> bool:
+    return principal.principal_type == "user" and not is_workstation_principal(principal) and principal.role in {ROLE_SUPERADMIN, ROLE_ADMIN}
+
+
 def has_permission(principal: PrincipalResponse, permission: str) -> bool:
+    if is_workstation_principal(principal) and permission not in {
+        PERMISSION_CLASSROOMS_READ_ASSIGNED, PERMISSION_WAN_CONTROL_ASSIGNED,
+    }:
+        return False
     return permission in principal.permissions
 
 
@@ -209,7 +222,7 @@ def require_workstation_management(principal: PrincipalResponse) -> None:
 
 
 def require_maintenance_access(principal: PrincipalResponse) -> None:
-    if principal.role in {ROLE_SUPERADMIN, ROLE_ADMIN}:
+    if is_administrator(principal):
         return
 
     raise HTTPException(status_code=403, detail="Permission denied")
@@ -230,11 +243,11 @@ def can_access_all_classrooms(principal: PrincipalResponse) -> bool:
 
 
 def can_access_service_classrooms(principal: PrincipalResponse) -> bool:
-    return principal.role in {ROLE_SUPERADMIN, ROLE_ADMIN}
+    return is_administrator(principal)
 
 
 def can_view_dynamic_devices(principal: PrincipalResponse) -> bool:
-    return principal.role in {ROLE_SUPERADMIN, ROLE_ADMIN}
+    return is_administrator(principal)
 
 
 def can_read_classroom_rtsp(principal: PrincipalResponse) -> bool:
@@ -731,7 +744,7 @@ async def update_me(
 ) -> PrincipalResponse:
     principal = await get_current_principal(request, authorization)
 
-    if principal.principal_type != "user":
+    if principal.principal_type != "user" or is_workstation_principal(principal):
         raise HTTPException(
             status_code=403,
             detail="Only user accounts can be updated",
@@ -801,7 +814,7 @@ async def get_classrooms(
 ) -> Any:
     principal = await get_current_principal(request, authorization)
 
-    if include_inactive and principal.role not in {"admin", "superadmin"}:
+    if include_inactive and not is_administrator(principal):
         raise HTTPException(403, "Настройка доступна только администраторам")
 
     try:
@@ -2508,6 +2521,7 @@ async def admin_update_user(
     authorization: str | None = Header(default=None),
 ) -> Any:
     principal = await get_current_principal(request, authorization)
+    require_any_permission(principal, {PERMISSION_USERS_MANAGE_ADMIN, PERMISSION_USERS_MANAGE_LOWER})
 
     try:
         current_user = await auth_client.get_json(f"/internal/admin/users/{user_id}")
@@ -2559,6 +2573,7 @@ async def admin_update_user_classrooms(
     authorization: str | None = Header(default=None),
 ) -> Any:
     principal = await get_current_principal(request, authorization)
+    require_any_permission(principal, {PERMISSION_USERS_MANAGE_ADMIN, PERMISSION_USERS_MANAGE_LOWER})
 
     try:
         current_user = await auth_client.get_json(f"/internal/admin/users/{user_id}")

@@ -214,7 +214,7 @@ def register_veyon_routes(app):
     async def device_action(device_id: int, payload: DeviceAction, request: Request,
                             authorization: str | None = Header(default=None)):
         principal = await gateway.get_current_principal(request, authorization)
-        if payload.action in ADMIN_ACTIONS and principal.role not in {"admin", "superadmin"}:
+        if payload.action in ADMIN_ACTIONS and not gateway.is_administrator(principal):
             raise HTTPException(403, "Действие доступно только администраторам")
         target = await authorized_target(device_id, request, authorization, principal)
         return (await service_call("POST", "/internal/device/action", {**target, **payload.wire()})).json()
@@ -250,7 +250,7 @@ def register_veyon_routes(app):
     async def device_shortcut(device_id: int, shortcut: Literal["escape", "ctrl-alt-delete"], payload: ControlInput,
                               request: Request, authorization: str | None = Header(default=None)):
         principal = await gateway.get_current_principal(request, authorization)
-        if shortcut == "ctrl-alt-delete" and principal.role not in {"admin", "superadmin"}:
+        if shortcut == "ctrl-alt-delete" and not gateway.is_administrator(principal):
             raise HTTPException(403, "Комбинация доступна только администраторам")
         target = await authorized_target(device_id, request, authorization, principal)
         keys = [0xff1b] if shortcut == "escape" else [0xffe3, 0xffe9, 0xffff]
@@ -278,7 +278,7 @@ def register_veyon_routes(app):
     async def classroom_action(classroom_id: int, payload: ClassroomDeviceAction, request: Request,
                                authorization: str | None = Header(default=None)):
         principal = await gateway.get_current_principal(request, authorization)
-        if payload.action in ADMIN_ACTIONS and principal.role not in {"admin", "superadmin"}:
+        if payload.action in ADMIN_ACTIONS and not gateway.is_administrator(principal):
             raise HTTPException(403, "Действие доступно только администраторам")
         layout = await authorized_layout(classroom_id, request, authorization, principal)
         return await dispatch_classroom_action(layout, payload.action, payload)
@@ -289,7 +289,7 @@ def register_veyon_routes(app):
                               payload: Confirmation, request: Request,
                               authorization: str | None = Header(default=None)):
         principal = await gateway.get_current_principal(request, authorization)
-        if action == "install-updates-and-power-down-all" and principal.role not in {"admin", "superadmin"}:
+        if action == "install-updates-and-power-down-all" and not gateway.is_administrator(principal):
             raise HTTPException(403, "Установка обновлений с выключением доступна только администраторам")
         layout = await authorized_layout(classroom_id, request, authorization, principal)
         operation = action.removesuffix("-all")

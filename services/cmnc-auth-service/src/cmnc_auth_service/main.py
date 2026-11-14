@@ -38,7 +38,7 @@ from cmnc_auth_service.security import (
     hash_password,
     verify_password,
 )
-from cmnc_contracts.permissions import get_permissions_for_role
+from cmnc_contracts.permissions import ROLE_WORKSTATION, get_permissions_for_role
 
 
 PRESENCE_TOUCH_INTERVAL = timedelta(seconds=30)
@@ -515,10 +515,10 @@ async def resolve_workstation_by_ip(
     return PrincipalResponse(
         principal_type="workstation",
         id=workstation.id,
-        role=workstation.role.name,
+        role=ROLE_WORKSTATION,
         display_name=workstation.name,
         classroom_ids=classroom_ids,
-        permissions=get_permissions_for_role(workstation.role.name),
+        permissions=get_permissions_for_role(ROLE_WORKSTATION),
     )
 
 
