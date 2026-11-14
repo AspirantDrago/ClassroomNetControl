@@ -5,6 +5,7 @@ import {
     getAccessToken,
 } from "../../api";
 import { REFRESH_INTERVALS } from "../../config/refreshIntervals";
+import { formatUsername } from "../../utils/usernames";
 import "./ClassroomStatisticsModal.css";
 
 
@@ -268,11 +269,19 @@ function ClassroomStatisticsModal(props: ClassroomStatisticsModalProps) {
                         </label>
 
                         <button
-                            className="secondary-button"
+                            type="button"
+                            className="secondary-button statistics-refresh-button"
+                            aria-label="Обновить"
+                            title="Обновить"
+                            aria-busy={refreshing}
                             disabled={loading || refreshing}
                             onClick={() => void loadStatistics("interactive")}
                         >
-                            {refreshing ? "Обновление..." : "Обновить"}
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <path d="M20 7v5h-5M4 17v-5h5" />
+                                <path d="M6 7a7 7 0 0 1 12-2l2 2M4 17l2 2a7 7 0 0 0 12-2" />
+                            </svg>
                         </button>
                         <button
                             className="statistics-close-button"
@@ -401,6 +410,8 @@ function StatisticsDeviceRow(props: {
             </div>
 
             <div className="statistics-lanes">
+                <StatisticsLane className="statistics-user-lane" segments={device.users ?? []}
+                    startAt={startAt} endAt={endAt} />
                 <StatisticsLane
                     className="statistics-availability-lane"
                     segments={device.availability.filter((segment) => segment.state === "online")}
@@ -413,8 +424,6 @@ function StatisticsDeviceRow(props: {
                     startAt={startAt}
                     endAt={endAt}
                 />
-                <StatisticsLane className="statistics-user-lane" segments={device.users ?? []}
-                    startAt={startAt} endAt={endAt} />
             </div>
         </div>
     );
@@ -474,7 +483,7 @@ function getSegmentPosition(
 
 
 function formatSegmentTitle(segment: StatisticsSegment): string {
-    const user = segment.state === "user_present" && segment.username ? ` (${segment.username})` : "";
+    const user = segment.state === "user_present" && segment.username ? ` (${formatUsername(segment.username)})` : "";
     return `${formatState(segment.state)}${user}: ${formatDateTime(segment.start_at)} — ${formatDateTime(segment.end_at)}`;
 }
 

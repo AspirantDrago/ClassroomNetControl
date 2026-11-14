@@ -2,6 +2,7 @@ import { useRef } from "react";
 import { DeviceThumbnail } from "./DeviceThumbnail";
 import type { DashboardDevice } from "../../api";
 import { getDeviceTitle } from "../../utils/devices";
+import { formatUsername } from "../../utils/usernames";
 import "./DeviceCard.css";
 
 type DeviceCardProps = {
@@ -26,6 +27,7 @@ export function DeviceCard(props: DeviceCardProps) {
     } = props;
     const cardRef = useRef<HTMLDivElement>(null);
     const busy = busyDeviceId === device.id;
+    const username = device.online && device.current_user_known ? formatUsername(device.current_user) : "";
 
     return (
         <div ref={cardRef} className={`device-card ${device.online ? "device-online" : "device-offline"}`}
@@ -37,7 +39,7 @@ export function DeviceCard(props: DeviceCardProps) {
                 onClick={(event) => { event.stopPropagation(); onEdit(device); }} />
             <div className="device-card-content">
                 {showThumbnails && device.online && device.static_ip && <DeviceThumbnail
-                    key={`${device.id}:${device.static_ip}`} deviceId={device.id} title={getDeviceTitle(device)} cardRef={cardRef} />}
+                    key={`${device.id}:${device.static_ip}`} deviceId={device.id} title={getDeviceTitle(device)} username={username} cardRef={cardRef} />}
                 <div className="device-description">
                     <div className="device-card-header">
                         <div className="device-title">{getDeviceTitle(device)}</div>
@@ -46,6 +48,7 @@ export function DeviceCard(props: DeviceCardProps) {
                         <div className="device-subtitle">{device.mac_address}</div>
                         <div className="device-subtitle">{device.static_ip ?? "-"}</div>
                         <div className="device-subtitle">{device.observed_hostname ?? device.hostname ?? "-"}</div>
+                        <div className="device-subtitle device-current-user" title={username || undefined}>{username || "—"}</div>
                     </div>
                 </div>
             </div>

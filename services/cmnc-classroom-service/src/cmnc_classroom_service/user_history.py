@@ -52,14 +52,19 @@ async def record_user(session: AsyncSession, observation: UserObservation, valid
     previous = (await session.execute(select(DeviceUserInterval).where(DeviceUserInterval.device_id == device.id)
         .order_by(DeviceUserInterval.start_at.desc(), DeviceUserInterval.id.desc()).limit(1))).scalar_one_or_none()
     continuous = state is not None and state.known and state.valid_until is not None and utc(state.valid_until) >= at
+    transition_at = at
+    if continuous and known and state.username and username and state.username != username:
+        # Sampling cannot reveal the exact switch time. Use the last successful
+        # observation of the old account as requested, without bridging outages.
+        transition_at = utc(state.observed_at)
     if previous is not None and (not known or not continuous or previous.username != username):
-        previous.end_at = min(utc(previous.end_at), at)
+        previous.end_at = min(utc(previous.end_at), transition_at)
     expires = at + timedelta(seconds=valid_seconds) if known else None
     if known:
         if continuous and previous is not None and previous.username == username:
             previous.end_at = expires
         else:
-            session.add(DeviceUserInterval(device_id=device.id, start_at=at, end_at=expires, username=username))
+            session.add(DeviceUserInterval(device_id=device.id, start_at=transition_at, end_at=expires, username=username))
     if state is None:
         state = DeviceUserState(device_id=device.id)
         session.add(state)

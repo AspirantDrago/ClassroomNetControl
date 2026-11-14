@@ -131,10 +131,27 @@
     min-width: 0;
 }
 
-.device-thumbnail {
-    display: block;
+.device-thumbnail-preview {
     grid-area: 1 / 1;
     align-self: start;
+    min-width: 0;
+}
+
+.device-thumbnail-user, .device-current-user {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.device-thumbnail-user {
+    color: #d1d5db;
+    font-size: 13px;
+    line-height: 18px;
+}
+
+.device-thumbnail {
+    display: block;
     width: calc(100% + 10px);
     max-width: none;
     height: auto;
@@ -144,12 +161,12 @@
     margin-top: 5px;
 }
 
-.device-thumbnail ~ .device-description {
+.device-thumbnail-preview ~ .device-description {
     visibility: hidden;
 }
 
 @media (hover: hover) {
-    .device-card:hover .device-thumbnail {
+    .device-card:hover .device-thumbnail-preview {
         visibility: hidden;
     }
 
@@ -158,7 +175,7 @@
     }
 }
 
-.device-card:focus-within .device-thumbnail {
+.device-card:focus-within .device-thumbnail-preview {
     visibility: hidden;
 }
 

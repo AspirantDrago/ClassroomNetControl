@@ -2,8 +2,8 @@ import { useEffect, useState, type RefObject } from "react";
 import { REFRESH_INTERVALS } from "../../config/refreshIntervals";
 import { requestThumbnail } from "./thumbnailQueue";
 
-export function DeviceThumbnail({deviceId, title, cardRef}: {
-    deviceId: number; title: string; cardRef: RefObject<HTMLDivElement | null>;
+export function DeviceThumbnail({deviceId, title, username, cardRef}: {
+    deviceId: number; title: string; username?: string; cardRef: RefObject<HTMLDivElement | null>;
 }) {
     const [source, setSource] = useState<string | null>(null);
     useEffect(() => {
@@ -56,5 +56,10 @@ export function DeviceThumbnail({deviceId, title, cardRef}: {
             clearFrame();
         };
     }, [deviceId, cardRef]);
-    return source ? <img className="device-thumbnail" src={source} alt={`Экран устройства ${title}`} draggable={false} onError={() => setSource(null)} /> : null;
+    return source ? (
+        <div className="device-thumbnail-preview">
+            {username && <div className="device-thumbnail-user" title={username}>{username}</div>}
+            <img className="device-thumbnail" src={source} alt={`Экран устройства ${title}`} draggable={false} onError={() => setSource(null)} />
+        </div>
+    ) : null;
 }

@@ -45,7 +45,7 @@ def test_user_history_tracks_changes_logout_unknown_gaps_and_monotonicity():
                 await session.commit()
                 intervals = (await session.execute(select(DeviceUserInterval).order_by(DeviceUserInterval.id))).scalars().all()
                 assert [(i.username, round((history.utc(i.start_at)-base).total_seconds()),round((history.utc(i.end_at)-base).total_seconds())) for i in intervals] == [
-                    ("ivanov_an",0,60),("petrov",60,90),(None,90,100),("ivanov_an",200,290)]
+                    ("ivanov_an",0,30),("petrov",30,90),(None,90,100),("ivanov_an",200,290)]
                 result = await statistics.get_classroom_statistics(1,40,session)
                 assert [i.state for i in result.devices[0].users] == ["user_present","user_present","user_absent","user_present"]
                 assert result.devices[0].users[0].username == "ivanov_an"
@@ -169,4 +169,30 @@ def test_background_monitor_persists_history_through_internal_http_api(monkeypat
         finally:
             app.dependency_overrides.pop(get_session,None)
             await engine.dispose()
+    asyncio.run(run())
+
+
+def test_fast_account_switch_uses_last_old_observation_and_preserves_full_logins():
+    async def run():
+        engine = await setup_database()
+        try:
+            async with AsyncSession(engine, expire_on_commit=False) as session:
+                await seed(session)
+                base = datetime.now(timezone.utc) - timedelta(minutes=5)
+                for offset, username in [(0,"ITTOP\\ivanov_an"),(30,"ITTOP\\ivanov_an"),(60,"OTHER\\petrov")]:
+                    await history.record_user(session, observation(base+timedelta(seconds=offset),True,username),90)
+                    await session.flush()
+                intervals=(await session.execute(select(DeviceUserInterval).order_by(DeviceUserInterval.id))).scalars().all()
+                assert len(intervals)==2
+                assert history.utc(intervals[0].end_at)==base+timedelta(seconds=30)
+                assert history.utc(intervals[1].start_at)==history.utc(intervals[0].end_at)
+                assert [i.username for i in intervals]==["ITTOP\\ivanov_an","OTHER\\petrov"]
+                assert (await session.get(DeviceUserState,1)).username=="OTHER\\petrov"
+                # Expired observations must not shift the new account backwards
+                # across a period when no user information was available.
+                await history.record_user(session,observation(base+timedelta(seconds=200),True,"ITTOP\\sidorov"),90)
+                await session.flush()
+                latest=(await session.execute(select(DeviceUserInterval).order_by(DeviceUserInterval.id.desc()).limit(1))).scalar_one()
+                assert history.utc(latest.start_at)==base+timedelta(seconds=200)
+        finally: await engine.dispose()
     asyncio.run(run())

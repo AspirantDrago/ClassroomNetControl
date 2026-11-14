@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { formatStateDuration, formatStateTime } from "../../utils/deviceTiming";
 import type { DashboardDevice, DynamicDevice } from "../../api";
 import { getDeviceTitle } from "../../utils/devices";
+import { formatUsername } from "../../utils/usernames";
 import { DeviceActions } from "../Veyon/DeviceActions";
 import { DeviceScreen } from "../Veyon/DeviceScreen";
 import "./DeviceFormModal.css";
@@ -152,7 +153,7 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                     <ReadonlyField label="Название в аудитории" value={form.mode === "edit-device" ? form.device.inventory_name || "-" : "-"} />
                     <ReadonlyField label="Текущий пользователь" value={
                         form.mode === "edit-device" && form.device.online && form.device.current_user_known
-                            ? form.device.current_user || "—" : ""
+                            ? formatUsername(form.device.current_user) || "—" : ""
                     } />
                 </div>
                 {form.mode === "edit-device" && (form.device.wan_protected || form.device.veyon_bulk_protected || form.device.wol_protected) && (
