@@ -12,6 +12,8 @@ type ClassroomTabsProps = {
 export function ClassroomTabs(props: ClassroomTabsProps) {
     const { classrooms, selectedClassroomId, onSelect } = props;
 
+    if (classrooms.length <= 1) return null;
+
     return (
         <section className="classroom-tabs">
             {classrooms.map((classroom) => {
