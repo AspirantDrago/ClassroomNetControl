@@ -1159,6 +1159,7 @@ export function App() {
 
             {deviceForm && (deviceForm.mode === "edit-device" || userCanManageWorkstations) && (
                 <DeviceFormModal
+                    canAdministerVeyon={userCanOpenSettings}
                     veyonConfigured={veyonConfigured}
                     principalRole={principal.role}
                     classroomName={classrooms.find((classroom) => classroom.id === (deviceForm.mode === "edit-device" ? deviceForm.device.classroom_id : selectedClassroomId))?.name}

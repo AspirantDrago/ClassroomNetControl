@@ -1,20 +1,18 @@
 import { CommandOutputDialog } from "./CommandOutputDialog";
-import { useEffect, useState } from "react";
-import { extractErrorDetail, getCurrentPrincipal, runVeyonAction, type DashboardDevice, type VeyonDeviceAction } from "../../api";
+import { useState } from "react";
+import { extractErrorDetail, runVeyonAction, type DashboardDevice, type VeyonDeviceAction } from "../../api";
 import { ActionDialog, actionTitles as titles, type ActionPayload as Payload } from "./ActionDialog";
 
-export function DeviceActions({device, veyonConfigured, canControlWan, wanBusy, wakeBusy, powerBusy, onToggleWan, onWake, onPower}: {
-    device: DashboardDevice; veyonConfigured: boolean; canControlWan: boolean; wanBusy: boolean; wakeBusy: boolean; powerBusy: boolean;
+export function DeviceActions({admin, device, veyonConfigured, canControlWan, wanBusy, wakeBusy, powerBusy, onToggleWan, onWake, onPower}: {
+    admin: boolean; device: DashboardDevice; veyonConfigured: boolean; canControlWan: boolean; wanBusy: boolean; wakeBusy: boolean; powerBusy: boolean;
     onToggleWan: (device: DashboardDevice) => void; onWake: (device: DashboardDevice) => void;
     onPower: (device: DashboardDevice, action: "power-down" | "reboot") => void;
 }) {
     const [outputDialog, setOutputDialog] = useState(false);
-    const [admin, setAdmin] = useState(false);
     const [dialog, setDialog] = useState<VeyonDeviceAction | null>(null);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [message, setMessage] = useState<string | null>(null);
-    useEffect(() => {let stopped = false; void getCurrentPrincipal().then(user => {if (!stopped) setAdmin(user.role === "admin" || user.role === "superadmin");}).catch(() => {}); return () => {stopped = true;};}, []);
     async function send(payload: Payload) {
         setBusy(true); setError(null); setMessage(null);
         try { await runVeyonAction(device.id, payload); setDialog(null); setMessage(`«${titles[payload.action]}»: команда отправлена.`); }

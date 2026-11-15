@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useFullFrameRefresh } from "./useFullFrameRefresh";
+import { isWorkstation } from "../../auth/permissions";
 import { ScreenIcon } from "./ScreenIcon";
 import { extractErrorDetail, getVeyonFrame, getVeyonSnapshot, getCurrentPrincipal, type VeyonShortcut } from "../../api";
 import "./Veyon.css";
@@ -10,7 +11,7 @@ import { useScreenRecording } from "./useScreenRecording";
 import { downloadMedia, mediaFilename, recordingClock, RECORDING_MAX_SECONDS, RECORDING_QUALITIES } from "./recording";
 import { RemoteControlImage } from "./RemoteControlImage";
 
-export function DeviceScreen({ deviceId, deviceName, classroomName, standalone = false, control = false, onFps }: { deviceId: number; deviceName?: string; classroomName?: string; standalone?: boolean; control?: boolean; onFps?: (fps: number) => void }) {
+export function DeviceScreen({ deviceId, deviceName, classroomName, standalone = false, control = false, canAdminister, onFps }: { deviceId: number; deviceName?: string; classroomName?: string; standalone?: boolean; control?: boolean; canAdminister?: boolean; onFps?: (fps: number) => void }) {
     const [source, setSource] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [popup, setPopup] = useState<Window | null>(null);
@@ -23,16 +24,17 @@ export function DeviceScreen({ deviceId, deviceName, classroomName, standalone =
     }, []);
     const [fps, setFps] = useState(0);
     const commandRef = useRef<((shortcut: VeyonShortcut) => Promise<void>) | null>(null);
-    const [canSendAdminShortcut, setCanSendAdminShortcut] = useState(false);
+    const [standaloneAdmin, setStandaloneAdmin] = useState(false);
+    const canSendAdminShortcut = canAdminister ?? standaloneAdmin;
     const [shortcutBusy, setShortcutBusy] = useState(false);
     useEffect(() => {
-        if (!control) return;
+        if (!control || canAdminister !== undefined) return;
         let disposed = false;
         void getCurrentPrincipal().then(principal => {
-            if (!disposed) setCanSendAdminShortcut(principal.role === "admin" || principal.role === "superadmin");
+            if (!disposed) setStandaloneAdmin(!isWorkstation(principal) && (principal.role === "admin" || principal.role === "superadmin"));
         }).catch(() => {});
         return () => { disposed = true; };
-    }, [control]);
+    }, [control, canAdminister]);
     async function sendShortcut(shortcut: VeyonShortcut) {
         if (!commandRef.current || shortcutBusy) return;
         setShortcutBusy(true);

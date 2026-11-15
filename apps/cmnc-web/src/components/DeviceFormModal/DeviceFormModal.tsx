@@ -32,6 +32,7 @@ export type DeviceFormState =
 type DeviceFormModalProps = {
     classroomName?: string;
     veyonConfigured: boolean;
+    canAdministerVeyon: boolean;
     principalRole?: string;
     form: DeviceFormState;
     busy: boolean;
@@ -132,16 +133,16 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                 {error && <div className="device-modal-error" role="alert">{error}</div>}
 
                 {tab === "screen" && form.mode === "edit-device" && <div role="tabpanel" id="device-screen-panel" aria-labelledby="device-screen-tab">
-                    <DeviceScreen key={form.device.id} deviceId={form.device.id} deviceName={getDeviceTitle(form.device)} classroomName={props.classroomName} onFps={setFps} />
+                    <DeviceScreen key={form.device.id} deviceId={form.device.id} deviceName={getDeviceTitle(form.device)} classroomName={props.classroomName} canAdminister={props.canAdministerVeyon} onFps={setFps} />
                 </div>}
 
                 {tab === "control" && form.mode === "edit-device" && <div role="tabpanel" id="device-control-panel" aria-labelledby="device-control-tab">
-                    <DeviceScreen key={form.device.id} deviceId={form.device.id} deviceName={getDeviceTitle(form.device)} classroomName={props.classroomName} control onFps={setFps} />
+                    <DeviceScreen key={form.device.id} deviceId={form.device.id} deviceName={getDeviceTitle(form.device)} classroomName={props.classroomName} canAdminister={props.canAdministerVeyon} control onFps={setFps} />
                 </div>}
 
                 {tab === "actions" && form.mode === "edit-device" && <div role="tabpanel" id="device-actions-panel" aria-labelledby="device-actions-tab">
                     {wakeMessage && <p role="status">{wakeMessage}</p>}
-                    <DeviceActions veyonConfigured={props.veyonConfigured} device={form.device} canControlWan={canControlWan} wanBusy={wanBusy} wakeBusy={wakeBusy} powerBusy={powerBusy}
+                    <DeviceActions admin={props.canAdministerVeyon} veyonConfigured={props.veyonConfigured} device={form.device} canControlWan={canControlWan} wanBusy={wanBusy} wakeBusy={wakeBusy} powerBusy={powerBusy}
                         onToggleWan={onToggleWan} onWake={onWake} onPower={onPower}/>
                 </div>}
                 {tab === "info" && <div role="tabpanel" id="device-info-panel" aria-labelledby="device-info-tab">
