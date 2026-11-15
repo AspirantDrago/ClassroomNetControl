@@ -1,3 +1,5 @@
+from starlette.background import BackgroundTask
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 
 import logging
@@ -2231,6 +2233,15 @@ async def admin_create_device(
         ) from exc
 
 
+async def refresh_veyon_user_schedule():
+    try:
+        async with httpx.AsyncClient(timeout=5, trust_env=False) as client:
+            response = await client.post(settings.veyon_service_url.rstrip("/") + "/internal/users/refresh-targets")
+            response.raise_for_status()
+    except httpx.HTTPError:
+        logging.getLogger(__name__).warning("Veyon schedule notification failed; periodic refresh will retry")
+
+
 @app.patch("/api/admin/devices/{device_id}")
 async def admin_update_device(
     device_id: int,
@@ -2248,10 +2259,13 @@ async def admin_update_device(
     }
 
     try:
-        return await classroom_client.patch_json(
+        result = await classroom_client.patch_json(
             f"/internal/devices/{device_id}",
             json=allowed_payload,
         )
+        if "is_non_pc" in allowed_payload:
+            return JSONResponse(result, background=BackgroundTask(refresh_veyon_user_schedule))
+        return result
     except httpx.HTTPStatusError as exc:
         raise HTTPException(
             status_code=exc.response.status_code,

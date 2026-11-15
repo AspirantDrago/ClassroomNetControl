@@ -37,6 +37,7 @@ class UserMonitor:
         self.concurrency = concurrency
         self.capacity = asyncio.Semaphore(concurrency)
         self.targets: dict[int, ScheduledTarget] = {}
+        self.observation_tasks: dict[int, asyncio.Task] = {}
         self.running_ids: set[int] = set()
         self.changed = asyncio.Condition()
         self.targets_refreshed_at = float("-inf")
@@ -98,6 +99,8 @@ class UserMonitor:
             for device_id in list(self.targets):
                 if device_id not in incoming:
                     del self.targets[device_id]
+                    if task := self.observation_tasks.get(device_id):
+                        task.cancel()
             for device_id, row in incoming.items():
                 entry = self.targets.get(device_id)
                 if entry is None:
@@ -105,6 +108,8 @@ class UserMonitor:
                 elif entry.row != row:
                     entry.row = row
                     entry.revision += 1
+                    if task := self.observation_tasks.get(device_id):
+                        task.cancel()
                     entry.due, entry.failures, entry.known = now, 0, False
             self.targets_refreshed_at = now
             self.changed.notify_all()
@@ -150,15 +155,22 @@ class UserMonitor:
             started = time.monotonic()
             succeeded = False
             try:
-                observation = await self.observe(row)
+                task = asyncio.create_task(self.observe(row))
+                self.observation_tasks[row["device_id"]] = task
+                observation = await task
                 # Removed/moved/offline targets cannot publish a late result.
                 if self.targets.get(row["device_id"]) is entry and entry.revision == revision:
                     await self.publish([observation])
                     succeeded = observation["known"]
+            except asyncio.CancelledError:
+                # Target removal cancels only its observation, not the worker.
+                if asyncio.current_task().cancelling():
+                    raise
             except (httpx.HTTPError, HTTPException, ValueError, KeyError, TypeError):
                 logger.warning("Veyon user observation failed device_id=%s", row["device_id"])
             finally:
                 async with self.changed:
+                    self.observation_tasks.pop(row["device_id"], None)
                     entry.busy = False
                     self.running_ids.discard(row["device_id"])
                     if entry.revision == revision:

@@ -175,3 +175,54 @@ def test_changed_target_discards_inflight_result_and_readded_id_does_not_overlap
             for t in tasks:t.cancel()
             await asyncio.gather(*tasks,return_exceptions=True)
     asyncio.run(run())
+
+
+def test_non_pc_removal_cancels_observation_releases_slot_and_readd_starts_immediately():
+    async def run():
+        rows=[{**target(),"online":True}]
+        started=asyncio.Event();released=asyncio.Event();saved=asyncio.Event()
+        calls=0
+        async def observe(row):
+            nonlocal calls
+            calls+=1
+            if calls==1:
+                started.set()
+                try:await asyncio.Event().wait()
+                finally:released.set()
+            return {**row,"known":True,"username":"user"}
+        async def publish(rows):saved.set()
+        async with httpx.AsyncClient(transport=httpx.MockTransport(lambda r:httpx.Response(200,json=rows))) as client:
+            monitor=UserMonitor(None,main.Target,client)
+            monitor.observe=observe;monitor.publish=publish
+            await monitor.refresh_targets()
+            task=asyncio.create_task(monitor.worker())
+            try:
+                await asyncio.wait_for(started.wait(),1)
+                rows=[]
+                await monitor.refresh_targets()
+                await asyncio.wait_for(released.wait(),1)
+                for _ in range(100):
+                    if not monitor.running_ids:break
+                    await asyncio.sleep(.001)
+                assert not monitor.targets and not monitor.running_ids and not monitor.observation_tasks
+                assert not task.done()
+                rows=[{**target(),"online":True}]
+                await monitor.refresh_targets()
+                await asyncio.wait_for(saved.wait(),1)
+                assert calls==2
+            finally:
+                task.cancel();await asyncio.gather(task,return_exceptions=True)
+    asyncio.run(run())
+
+
+def test_proxy_restart_invalidates_cached_uid():
+    async def run():
+        bridge=main.VeyonBridge(SimpleNamespace(resolve=lambda *args:("name","pem")),None)
+        t=main.Target(**target());identity=bridge.identity(t)[0]
+        bridge.sessions[identity]=SimpleNamespace(uid="old")
+        bridge.connection=AsyncMock(return_value=bridge.sessions[identity])
+        bridge.checked=AsyncMock(side_effect=main.VeyonError(502,"Invalid connection",2))
+        bridge.close=AsyncMock(side_effect=lambda i:bridge.sessions.pop(i,None))
+        with pytest.raises(main.VeyonError):await bridge.read_user(t)
+        assert identity not in bridge.sessions
+    asyncio.run(run())

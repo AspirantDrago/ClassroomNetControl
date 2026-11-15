@@ -106,7 +106,6 @@ async def record_device_statistics_state(
         session.add(
             DeviceStatisticsEvent(
                 device_id=device.id,
-                is_non_pc=device.is_non_pc,
                 occurred_at=normalized_occurred_at,
                 online=next_online,
                 wan_state=wan_state,

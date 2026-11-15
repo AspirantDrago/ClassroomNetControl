@@ -250,6 +250,11 @@ class VeyonBridge:
                     if type(session_id) is not int or session_id < 0:
                         raise HTTPException(503, "Veyon ещё не подготовил сведения о пользователе")
                 return {"username": username[:256] or None}
+            except VeyonError as exc:
+                if exc.error_code in (2, 8):
+                    # Proxy restart invalidates cached connection UIDs.
+                    await self.close(identity)
+                raise
             except ValueError as exc:
                 raise HTTPException(502, "Veyon вернул некорректные сведения о пользователе") from exc
             finally:
@@ -370,6 +375,12 @@ async def delete_key(scope: Literal["router", "classroom"], scope_id: int):
     if monitor := getattr(app.state, "user_monitor", None):
         await monitor.invalidate_keys(scope, scope_id)
     return {"configured": False, "key_name": "CMNC"}
+
+
+@app.post("/internal/users/refresh-targets")
+async def refresh_user_targets():
+    await app.state.user_monitor.refresh_targets()
+    return {"ok": True, "targets": len(app.state.user_monitor.targets)}
 
 
 @app.post("/internal/device/frame")

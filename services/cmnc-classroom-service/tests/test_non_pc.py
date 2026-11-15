@@ -55,3 +55,23 @@ def test_non_pc_migration_defaults_existing_devices_to_false():
                 migration.downgrade()
             assert c.execute(text("SELECT count(*) FROM devices")).scalar()==2
     finally:engine.dispose()
+
+
+def test_dhcp_statistics_event_accepts_devices_with_non_pc_flag():
+    from datetime import datetime,timezone
+    from cmnc_classroom_service.device_statistics import record_device_statistics_state
+    from cmnc_classroom_service.models import DeviceStatisticsEvent
+    from sqlalchemy import select
+    async def run():
+        engine=create_async_engine("sqlite+aiosqlite:///:memory:")
+        try:
+            async with engine.begin() as c:await c.run_sync(Base.metadata.create_all)
+            async with AsyncSession(engine,expire_on_commit=False) as s:
+                s.add(Classroom(id=1,name="Room",subnet_cidr="192.168.1.0/24"));await s.flush()
+                d=Device(classroom_id=1,inventory_name="PC",mac_address="00:11:22:33:44:55")
+                s.add(d);await s.flush()
+                assert await record_device_statistics_state(s,d,occurred_at=datetime.now(timezone.utc),online=True)
+                await s.commit()
+                assert (await s.execute(select(DeviceStatisticsEvent))).scalar_one().online
+        finally:await engine.dispose()
+    asyncio.run(run())
