@@ -153,3 +153,8 @@
     font-weight: 600;
     background: #0f172a;
 }
+
+.account-editor-row > td {
+    height: calc(100dvh - 40px);
+    vertical-align: top;
+}

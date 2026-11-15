@@ -1090,3 +1090,7 @@ export function startOutputCommand(scope: "devices" | "classrooms", id: number, 
 export function getOutputCommand(jobId: string, signal?: AbortSignal): Promise<CommandOutputJob> {
     return request(`/api/veyon/command-jobs/${encodeURIComponent(jobId)}`, {signal});
 }
+
+export function deleteAdminAccount(kind: "users" | "workstations", id: number): Promise<{deleted: boolean}> {
+    return request(`/api/admin/${kind}/${id}`, {method: "DELETE", body: JSON.stringify({confirmed: true})});
+}

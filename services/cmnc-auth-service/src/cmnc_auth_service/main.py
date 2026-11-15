@@ -2,8 +2,9 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from ipaddress import IPv4Address, IPv6Address
-from typing import Iterable
+from typing import Iterable, Literal
 
+from pydantic import BaseModel
 from fastapi import Depends, FastAPI, HTTPException, status
 from jwt import InvalidTokenError
 from sqlalchemy import delete, select
@@ -78,6 +79,33 @@ app = FastAPI(
 
 
 app.include_router(classroom_lifecycle_router)
+
+
+class AccountDeletionActor(BaseModel):
+    role: Literal["admin", "superadmin"]
+
+
+@app.post("/internal/admin/{kind}/{account_id}/delete")
+async def delete_inactive_account(kind: Literal["users", "workstations"], account_id: int,
+    payload: AccountDeletionActor, session: AsyncSession = Depends(get_session)):
+    model = User if kind == "users" else Workstation
+    query = select(model).where(model.id == account_id).with_for_update(of=model)
+    if kind == "users":
+        query = query.options(selectinload(User.role))
+    account = (await session.execute(query)).scalar_one_or_none()
+    if account is None:
+        raise HTTPException(404, "Учётная запись не найдена")
+    if kind == "users" and account.role.name in {"admin", "superadmin"} and payload.role != "superadmin":
+        raise HTTPException(403, "Управление администраторами доступно только суперадминистратору")
+    if account.is_active:
+        raise HTTPException(409, "Сначала деактивируйте учётную запись")
+    try:
+        await session.execute(delete(model).where(model.id == account_id))
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(409, "Удаление нарушает целостность связанных данных") from exc
+    return {"deleted": True}
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -275,7 +303,12 @@ async def update_user(
     payload: UserUpdateRequest,
     session: AsyncSession = Depends(get_session),
 ) -> UserResponse:
+    await session.execute(select(User.id).where(User.id == user_id).with_for_update())
     user = await load_user_or_404(user_id, session)
+    if payload.actor_role and payload.actor_role != "superadmin" and (
+        user.role.name in {"admin", "superadmin"} or payload.role in {"admin", "superadmin"}
+    ):
+        raise HTTPException(403, "Управление администраторами доступно только суперадминистратору")
 
     if payload.username is not None:
         user.username = payload.username

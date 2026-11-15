@@ -190,6 +190,8 @@ def require_user_role_management(
         )
 
     if role in {ROLE_SUPERADMIN, ROLE_ADMIN}:
+        if principal.principal_type != "user" or principal.role != ROLE_SUPERADMIN:
+            raise HTTPException(403, "Управление администраторами доступно только суперадминистратору")
         require_permission(principal, PERMISSION_USERS_MANAGE_ADMIN)
         return
 
@@ -2423,6 +2425,26 @@ async def admin_pin_observed_device(
         ) from exc
 
 
+class AccountDeletionConfirmation(BaseModel):
+    confirmed: Literal[True]
+
+
+@app.delete("/api/admin/users/{account_id}")
+@app.delete("/api/admin/workstations/{account_id}")
+async def admin_delete_account(account_id: int, payload: AccountDeletionConfirmation,
+    request: Request, authorization: str | None = Header(default=None)):
+    principal = await get_current_principal(request, authorization)
+    if not is_administrator(principal):
+        raise HTTPException(403, "Удаление доступно только администраторам")
+    kind = "workstations" if "/workstations/" in request.url.path else "users"
+    try:
+        return await auth_client.post_json(f"/internal/admin/{kind}/{account_id}/delete", json={"role": principal.role})
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(exc.response.status_code, exc.response.json().get("detail", "Не удалось удалить учётную запись")) from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(503, "Сервис авторизации недоступен") from exc
+
+
 @app.get("/api/admin/roles")
 async def admin_list_roles(
     request: Request,
@@ -2551,7 +2573,7 @@ async def admin_update_user(
     try:
         return await auth_client.patch_json(
             f"/internal/admin/users/{user_id}",
-            json=payload,
+            json={**payload, "_actor_role": principal.role},
         )
     except httpx.HTTPStatusError as exc:
         raise HTTPException(

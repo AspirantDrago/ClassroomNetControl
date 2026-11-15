@@ -1,5 +1,5 @@
 import type { DisplaySettings } from "../../config/displaySettings";
-import {Fragment, type FormEvent, useEffect, useMemo, useState} from "react";
+import {Fragment, type ReactNode, type FormEvent, useEffect, useMemo, useState} from "react";
 import {
     type AdminRole,
     type AdminUser,
@@ -7,6 +7,7 @@ import {
     type Classroom,
     type ClassroomDirectoryEntry,
     getAdminClassroomDirectory,
+    deleteAdminAccount,
     type CurrentPrincipal,
     createAdminUser,
     createAdminWorkstation,
@@ -314,6 +315,48 @@ export function AdminAccessPage(props: AdminAccessPageProps) {
         }
     }
 
+    const canDelete = principal.principal_type !== "workstation" && ["admin", "superadmin"].includes(principal.role ?? "");
+    async function deleteAccount(kind: "users" | "workstations", id: number) {
+        if (busy || !window.confirm("Удалить учётную запись полностью вместе с назначениями аудиторий? Это действие необратимо.")) return;
+        setBusy(true); setError(null);
+        try {
+            await deleteAdminAccount(kind, id);
+            if (kind === "users") setUserForm(null); else setWorkstationForm(null);
+            await reload();
+        } catch (err) {setError(extractErrorDetail(err));}
+        finally {setBusy(false);}
+    }
+    const userEditor = (userForm && (
+                        <UserForm
+                            form={userForm}
+                            roles={manageableUserRoles}
+                            classrooms={getChecklistClassrooms(classrooms, classroomDirectory, userForm.user?.classroom_ids ?? [])}
+                            busy={busy}
+                            onChange={setUserForm}
+                            onCancel={() => setUserForm(null)}
+                            onSubmit={handleUserSubmit}
+                            error={error}
+                            onDelete={canDelete && userForm.user && !userForm.user.is_active && (principal.role === "superadmin" || !["admin", "superadmin"].includes(userForm.user.role)) ? () => void deleteAccount("users", userForm.user!.id) : undefined}
+                        />
+                    ));
+    const workstationEditor = (workstationForm && (
+                        <WorkstationForm
+                            form={workstationForm}
+                            classrooms={getChecklistClassrooms(classrooms, classroomDirectory, workstationForm.workstation?.classroom_ids ?? [])}
+                            busy={busy}
+                            onChange={setWorkstationForm}
+                            onCancel={() => setWorkstationForm(null)}
+                            onSubmit={handleWorkstationSubmit}
+                            error={error}
+                            onDelete={canDelete && workstationForm.workstation && !workstationForm.workstation.is_active ? () => void deleteAccount("workstations", workstationForm.workstation!.id) : undefined}
+                        />
+                    ));
+    useEffect(() => {
+        const kind = activeTab === "users" ? "users" : "workstations";
+        const id = kind === "users" ? userForm?.user?.id : workstationForm?.workstation?.id;
+        if (id !== undefined) document.querySelector(`[data-account-row="${kind}:${id}"]`)?.scrollIntoView({block: "start", behavior: "smooth"});
+    }, [activeTab, userForm?.user?.id, workstationForm?.workstation?.id]);
+
     return (
         <section className="admin-access-page">
             <div className="admin-access-header">
@@ -356,7 +399,7 @@ export function AdminAccessPage(props: AdminAccessPageProps) {
                 )}
             </div>
 
-            {error && <pre className="error-box">{error}</pre>}
+            {error && !userForm && !workstationForm && <pre className="error-box">{error}</pre>}
             {loading && <div className="loading">Загрузка...</div>}
 
             {activeTab === "users" && userManagementAllowed && (
@@ -372,19 +415,9 @@ export function AdminAccessPage(props: AdminAccessPageProps) {
                         </button>
                     </div>
 
-                    {userForm && (
-                        <UserForm
-                            form={userForm}
-                            roles={manageableUserRoles}
-                            classrooms={getChecklistClassrooms(classrooms, classroomDirectory, userForm.user?.classroom_ids ?? [])}
-                            busy={busy}
-                            onChange={setUserForm}
-                            onCancel={() => setUserForm(null)}
-                            onSubmit={handleUserSubmit}
-                        />
-                    )}
+                    {userForm?.mode === "create" && userEditor}
 
-                    <UsersTable users={users.filter(user => user.is_active || ((principal.role === "admin" || principal.role === "superadmin") && props.displaySettings.showInactiveUsers))} classrooms={classroomById} onEdit={openEditUserForm}/>
+                    <UsersTable users={users.filter(user => user.is_active || ((principal.role === "admin" || principal.role === "superadmin") && props.displaySettings.showInactiveUsers))} classrooms={classroomById} onEdit={openEditUserForm} editingId={userForm?.user?.id} editor={userEditor}/>
                 </div>
             )}
 
@@ -401,21 +434,13 @@ export function AdminAccessPage(props: AdminAccessPageProps) {
                         </button>
                     </div>
 
-                    {workstationForm && (
-                        <WorkstationForm
-                            form={workstationForm}
-                            classrooms={getChecklistClassrooms(classrooms, classroomDirectory, workstationForm.workstation?.classroom_ids ?? [])}
-                            busy={busy}
-                            onChange={setWorkstationForm}
-                            onCancel={() => setWorkstationForm(null)}
-                            onSubmit={handleWorkstationSubmit}
-                        />
-                    )}
+                    {workstationForm?.mode === "create" && workstationEditor}
 
                     <WorkstationsTable
                         workstations={workstations.filter(workstation => workstation.is_active || ((principal.role === "admin" || principal.role === "superadmin") && props.displaySettings.showInactiveWorkstations))}
                         classrooms={classroomById}
                         onEdit={openEditWorkstationForm}
+                        editingId={workstationForm?.workstation?.id} editor={workstationEditor}
                     />
                 </div>
             )}
@@ -431,6 +456,8 @@ type UserFormProps = {
     onChange: (form: UserFormState) => void;
     onCancel: () => void;
     onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+    onDelete?: () => void;
+    error?: string | null;
 };
 
 function UserForm(props: UserFormProps) {
@@ -438,6 +465,7 @@ function UserForm(props: UserFormProps) {
 
     return (
         <form className="admin-form" onSubmit={onSubmit}>
+            {props.error && <div className="error-box" role="alert">{props.error}</div>}
             <div className="admin-form-grid">
                 <label>
                     Username
@@ -521,6 +549,7 @@ function UserForm(props: UserFormProps) {
             )}
 
             <div className="admin-form-actions">
+                {props.onDelete && <button type="button" className="danger-button" disabled={busy} onClick={props.onDelete}>Удалить полностью</button>}
                 <button className="primary-button" disabled={busy} type="submit">
                     Сохранить
                 </button>
@@ -544,6 +573,8 @@ type WorkstationFormProps = {
     onChange: (form: WorkstationFormState) => void;
     onCancel: () => void;
     onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+    onDelete?: () => void;
+    error?: string | null;
 };
 
 function WorkstationForm(props: WorkstationFormProps) {
@@ -551,6 +582,7 @@ function WorkstationForm(props: WorkstationFormProps) {
 
     return (
         <form className="admin-form" onSubmit={onSubmit}>
+            {props.error && <div className="error-box" role="alert">{props.error}</div>}
             <div className="admin-form-grid">
                 <label>
                     Название
@@ -595,6 +627,7 @@ function WorkstationForm(props: WorkstationFormProps) {
             />
 
             <div className="admin-form-actions">
+                {props.onDelete && <button type="button" className="danger-button" disabled={busy} onClick={props.onDelete}>Удалить полностью</button>}
                 <button className="primary-button" disabled={busy} type="submit">
                     Сохранить
                 </button>
@@ -686,6 +719,8 @@ type UsersTableProps = {
     users: AdminUser[];
     classrooms: Map<number, ClassroomDirectoryEntry>;
     onEdit: (user: AdminUser) => void;
+    editingId?: number;
+    editor: ReactNode;
 };
 
 function UsersTable(props: UsersTableProps) {
@@ -710,8 +745,8 @@ function UsersTable(props: UsersTableProps) {
                 </thead>
                 <tbody>
                 {users.map((user) => (
-                    <tr
-                        key={user.id}
+                    <Fragment key={user.id}>
+                    <tr data-account-row={`users:${user.id}`}
                         className={getPresenceRowClass(
                             user.is_active,
                             (user as AdminUser & PresenceAware).online,
@@ -731,6 +766,8 @@ function UsersTable(props: UsersTableProps) {
                             </button>
                         </td>
                     </tr>
+                    {props.editingId === user.id && <tr className="account-editor-row"><td colSpan={6}>{props.editor}</td></tr>}
+                    </Fragment>
                 ))}
                 </tbody>
             </table>
@@ -742,6 +779,8 @@ type WorkstationsTableProps = {
     workstations: AdminWorkstation[];
     classrooms: Map<number, ClassroomDirectoryEntry>;
     onEdit: (workstation: AdminWorkstation) => void;
+    editingId?: number;
+    editor: ReactNode;
 };
 
 function WorkstationsTable(props: WorkstationsTableProps) {
@@ -765,8 +804,8 @@ function WorkstationsTable(props: WorkstationsTableProps) {
                 </thead>
                 <tbody>
                 {workstations.map((workstation) => (
-                    <tr
-                        key={workstation.id}
+                    <Fragment key={workstation.id}>
+                    <tr data-account-row={`workstations:${workstation.id}`}
                         className={getPresenceRowClass(
                             workstation.is_active,
                             (workstation as AdminWorkstation & PresenceAware).online,
@@ -785,6 +824,8 @@ function WorkstationsTable(props: WorkstationsTableProps) {
                             </button>
                         </td>
                     </tr>
+                    {props.editingId === workstation.id && <tr className="account-editor-row"><td colSpan={5}>{props.editor}</td></tr>}
+                    </Fragment>
                 ))}
                 </tbody>
             </table>

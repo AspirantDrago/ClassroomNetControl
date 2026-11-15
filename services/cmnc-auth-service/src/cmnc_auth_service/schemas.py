@@ -73,6 +73,7 @@ class UserCreateRequest(BaseModel):
 
 
 class UserUpdateRequest(BaseModel):
+    actor_role: Literal["admin", "superadmin"] | None = Field(default=None, alias="_actor_role")
     username: str | None = Field(default=None, min_length=1, max_length=64)
     password: str | None = Field(default=None, min_length=1, max_length=255)
     display_name: str | None = Field(default=None, min_length=1, max_length=255)
