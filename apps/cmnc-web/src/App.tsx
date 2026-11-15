@@ -1025,7 +1025,7 @@ export function App() {
                                     <div>
                                         <h2>{dashboard.classroom.name}</h2>
                                         <div className="muted">
-                                            subnet: {dashboard.classroom.subnet_cidr}, VLAN:{" "}
+                                            Подсеть: {dashboard.classroom.subnet_cidr}, VLAN:{" "}
                                             {dashboard.classroom.vlan_id ?? "-"}, MikroTik:{" "}
                                             {getRouterDisplayName(
                                                 dashboard.classroom.router_id,
