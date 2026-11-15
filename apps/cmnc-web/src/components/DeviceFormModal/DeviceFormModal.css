@@ -207,3 +207,9 @@
 @media (max-width: 640px) {
     #device-info-panel > .readonly-grid { grid-template-columns: 1fr; }
 }
+
+.non-pc-setting { color: #ef4444; }
+.non-pc-setting input { accent-color: #ef4444; }
+
+.non-pc-setting input[type="checkbox"] { border-color: #ef4444; }
+.non-pc-setting input[type="checkbox"]:checked { background-color: #ef4444; border-color: #ef4444; }

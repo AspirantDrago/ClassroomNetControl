@@ -17,6 +17,7 @@ export type DeviceFormState =
     wanProtected: boolean;
     veyonBulkProtected: boolean;
     wolProtected: boolean;
+    isNonPc: boolean;
 }
     | {
     mode: "edit-device";
@@ -27,6 +28,7 @@ export type DeviceFormState =
     wanProtected: boolean;
     veyonBulkProtected: boolean;
     wolProtected: boolean;
+    isNonPc: boolean;
 };
 
 type DeviceFormModalProps = {
@@ -60,7 +62,8 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
             ? (props.principalRole === "admin" || props.principalRole === "superadmin" ? "actions" : "screen")
             : (canManage ? "settings" : "info"),
     );
-    const tab = !canManage && selectedTab === "settings" ? "info" : selectedTab;
+    const noVeyon = form.mode === "edit-device" && form.device.is_non_pc;
+    const tab = noVeyon && (selectedTab === "screen" || selectedTab === "control") ? "info" : !canManage && selectedTab === "settings" ? "info" : selectedTab;
     const [fps, setFps] = useState(0);
     const [now, setNow] = useState(() => Date.now());
 
@@ -114,10 +117,10 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                     <button type="button" role="tab" id="device-info-tab"
                         aria-selected={tab === "info"} aria-controls="device-info-panel"
                         onClick={() => setSelectedTab("info")}>Инфо</button>
-                    {form.mode === "edit-device" && <button type="button" role="tab" id="device-screen-tab"
+                    {form.mode === "edit-device" && !noVeyon && <button type="button" role="tab" id="device-screen-tab"
                         aria-selected={tab === "screen"} aria-controls="device-screen-panel"
                         onClick={() => setSelectedTab("screen")}>Экран</button>}
-                    {form.mode === "edit-device" && <button type="button" role="tab" id="device-control-tab"
+                    {form.mode === "edit-device" && !noVeyon && <button type="button" role="tab" id="device-control-tab"
                         aria-selected={tab === "control"} aria-controls="device-control-panel"
                         onClick={() => setSelectedTab("control")}>Перехват экрана</button>}
                     {form.mode === "edit-device" && <button type="button" role="tab" id="device-actions-tab"
@@ -142,7 +145,7 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
 
                 {tab === "actions" && form.mode === "edit-device" && <div role="tabpanel" id="device-actions-panel" aria-labelledby="device-actions-tab">
                     {wakeMessage && <p role="status">{wakeMessage}</p>}
-                    <DeviceActions admin={props.canAdministerVeyon} veyonConfigured={props.veyonConfigured} device={form.device} canControlWan={canControlWan} wanBusy={wanBusy} wakeBusy={wakeBusy} powerBusy={powerBusy}
+                    <DeviceActions admin={props.canAdministerVeyon} veyonConfigured={props.veyonConfigured && !noVeyon} device={form.device} canControlWan={canControlWan} wanBusy={wanBusy} wakeBusy={wakeBusy} powerBusy={powerBusy}
                         onToggleWan={onToggleWan} onWake={onWake} onPower={onPower}/>
                 </div>}
                 {tab === "info" && <div role="tabpanel" id="device-info-panel" aria-labelledby="device-info-tab">
@@ -152,15 +155,15 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                     <ReadonlyField label="Hostname из MikroTik" value={getHostname(form)} />
                     <ReadonlyField label="Lease" value={getLeaseText(form)} />
                     <ReadonlyField label="Название в аудитории" value={form.mode === "edit-device" ? form.device.inventory_name || "-" : "-"} />
-                    <ReadonlyField label="Текущий пользователь" value={
+                    {!noVeyon && <ReadonlyField label="Текущий пользователь" value={
                         form.mode === "edit-device" && form.device.online && form.device.current_user_known
                             ? formatUsername(form.device.current_user) || "—" : ""
-                    } />
+                    } />}
                 </div>
-                {form.mode === "edit-device" && (form.device.wan_protected || form.device.veyon_bulk_protected || form.device.wol_protected) && (
+                {form.mode === "edit-device" && (form.device.wan_protected || (!noVeyon && form.device.veyon_bulk_protected) || form.device.wol_protected) && (
                     <div className="readonly-grid device-protections-grid">
                         {form.device.wan_protected && <ReadonlyField label="Защищено от отключения WAN" value="Да" />}
-                        {form.device.veyon_bulk_protected && <ReadonlyField label="Защищено от массового управления через Veyon" value="Да" />}
+                        {!noVeyon && form.device.veyon_bulk_protected && <ReadonlyField label="Защищено от массового управления через Veyon" value="Да" />}
                         {form.device.wol_protected && <ReadonlyField label="Защита от пробуждения WoL" value="Да" />}
                     </div>
                 )}
@@ -190,16 +193,16 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                 </div>}
                 {wakeMessage && <div className="device-wake-message muted" role="status">{wakeMessage}</div>}
                 {form.mode === "edit-device" && <div className="modal-actions device-power-actions">
-                    {props.veyonConfigured && <>
+                    {props.veyonConfigured && !noVeyon && <>
                     <button type="button" className="danger-button" disabled={powerBusy}
                         onClick={() => onPower(form.device, "power-down")}>Выключить</button>
                     <button type="button" className="secondary-button" disabled={powerBusy}
                         onClick={() => onPower(form.device, "reboot")}>Перезагрузить</button>
                     </>}
-                    <button type="button" className="success-button"
+                    {!(noVeyon && form.device.wol_protected) && <button type="button" className="success-button"
                         disabled={wakeBusy} onClick={() => onWake(form.device)}>
                         {wakeBusy ? "Отправка WoL..." : "Разбудить"}
-                    </button>
+                    </button>}
                     <button type="button"
                         className={form.device.wan_allowed ? "danger-button" : "primary-button"}
                         disabled={!canControlWan || wanBusy || (form.device.wan_protected && form.device.wan_allowed)}
@@ -272,11 +275,16 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
                     <span>Защитить от отключения WAN</span>
                 </label>
 
-                <label className="checkbox-field">
+                <label className="checkbox-field non-pc-setting">
+                    <input type="checkbox" checked={form.isNonPc}
+                        onChange={event => onChange({...form, isNonPc: event.target.checked, veyonBulkProtected: event.target.checked || form.veyonBulkProtected})} />
+                    <span>Не ПК (нет Veyon)</span>
+                </label>
+                {!form.isNonPc && <label className="checkbox-field">
                     <input type="checkbox" checked={form.veyonBulkProtected}
                         onChange={(event) => onChange({ ...form, veyonBulkProtected: event.target.checked })} />
                     <span>Защита от массового управления через Veyon</span>
-                </label>
+                </label>}
                 <label className="checkbox-field">
                     <input type="checkbox" checked={form.wolProtected}
                         onChange={(event) => onChange({ ...form, wolProtected: event.target.checked })} />

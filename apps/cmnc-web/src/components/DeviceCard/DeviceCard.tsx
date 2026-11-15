@@ -27,10 +27,10 @@ export function DeviceCard(props: DeviceCardProps) {
     } = props;
     const cardRef = useRef<HTMLDivElement>(null);
     const busy = busyDeviceId === device.id;
-    const username = device.online && device.current_user_known ? formatUsername(device.current_user) : "";
+    const username = !device.is_non_pc && device.online && device.current_user_known ? formatUsername(device.current_user) : "";
 
     return (
-        <div ref={cardRef} className={`device-card ${device.online ? "device-online" : "device-offline"}`}
+        <div ref={cardRef} className={`device-card ${device.online ? "device-online" : "device-offline"} ${device.is_non_pc ? "device-non-pc" : ""}`}
             onClick={(event) => {
                 if (!(event.target as HTMLElement).closest("button")) onEdit(device);
             }}>
@@ -38,7 +38,7 @@ export function DeviceCard(props: DeviceCardProps) {
                 aria-label={`Открыть устройство ${getDeviceTitle(device)}`}
                 onClick={(event) => { event.stopPropagation(); onEdit(device); }} />
             <div className="device-card-content">
-                {showThumbnails && device.online && device.static_ip && <DeviceThumbnail
+                {showThumbnails && !device.is_non_pc && device.online && device.static_ip && <DeviceThumbnail
                     key={`${device.id}:${device.static_ip}`} deviceId={device.id} title={getDeviceTitle(device)} username={username} cardRef={cardRef} />}
                 <div className="device-description">
                     <div className="device-card-header">
@@ -48,7 +48,7 @@ export function DeviceCard(props: DeviceCardProps) {
                         <div className="device-subtitle">{device.mac_address}</div>
                         <div className="device-subtitle">{device.static_ip ?? "-"}</div>
                         <div className="device-subtitle">{device.observed_hostname ?? device.hostname ?? "-"}</div>
-                        <div className="device-subtitle device-current-user" title={username || undefined}>{username || "—"}</div>
+                        {!device.is_non_pc && <div className="device-subtitle device-current-user" title={username || undefined}>{username || "—"}</div>}
                     </div>
                 </div>
             </div>

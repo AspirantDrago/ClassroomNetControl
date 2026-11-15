@@ -151,6 +151,7 @@ class Device(Base):
         Boolean, nullable=False, server_default=text("false"), default=False,
     )
 
+    is_non_pc: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
     wol_protected: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false"), default=False,
     )

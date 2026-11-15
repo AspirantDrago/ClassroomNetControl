@@ -58,6 +58,7 @@ type StatisticsSegment = {
 
 type DeviceStatisticsItem = {
     device_id: number;
+    is_non_pc?: boolean;
     name: string;
     ip_address: string | null;
     availability: StatisticsSegment[];
@@ -364,6 +365,7 @@ function mergeStatisticsGraphs(
                 availability: nextDevice?.availability ?? [],
                 wan: nextDevice?.wan ?? [],
                 users: nextDevice?.users ?? [],
+                is_non_pc: nextDevice?.is_non_pc ?? device.is_non_pc,
             };
         }),
     };
@@ -410,8 +412,8 @@ function StatisticsDeviceRow(props: {
             </div>
 
             <div className="statistics-lanes">
-                <StatisticsLane className="statistics-user-lane" segments={device.users ?? []}
-                    startAt={startAt} endAt={endAt} />
+                {!device.is_non_pc && <StatisticsLane className="statistics-user-lane" segments={device.users ?? []}
+                    startAt={startAt} endAt={endAt} />}
                 <StatisticsLane
                     className="statistics-availability-lane"
                     segments={device.availability.filter((segment) => segment.state === "online")}

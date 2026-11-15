@@ -30,7 +30,7 @@ export function DeviceActions({admin, device, veyonConfigured, canControlWan, wa
             <button type="button" className={device.wan_allowed ? "danger-button" : "success-button"} disabled={wanBusy || !canControlWan || (device.wan_protected && device.wan_allowed)} onClick={() => onToggleWan(device)}>{device.wan_allowed ? "Отключить Интернет" : "Включить Интернет"}</button>
         </div></section>
         <section><h4>Питание</h4><div className="device-action-buttons">
-            <button type="button" className="success-button" disabled={wakeBusy} onClick={() => onWake(device)}>Разбудить</button>
+            {!(device.is_non_pc && device.wol_protected) && <button type="button" className="success-button" disabled={wakeBusy} onClick={() => onWake(device)}>Разбудить</button>}
             {veyonConfigured && <>
             <button type="button" className="danger-button" disabled={powerBusy || busy} onClick={() => onPower(device, "power-down")}>Выключить</button>
             <button type="button" className="secondary-button" disabled={powerBusy || busy} onClick={() => onPower(device, "reboot")}>Перезагрузить</button>

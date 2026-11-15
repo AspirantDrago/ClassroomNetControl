@@ -41,7 +41,7 @@ async def record_user(session: AsyncSession, observation: UserObservation, valid
     if row is None:
         return
     device, classroom = row
-    if not device.is_pinned or not classroom.is_active or device.classroom_id != observation.classroom_id or classroom.router_id != observation.router_id or device.static_ip != observation.host:
+    if device.is_non_pc or not device.is_pinned or not classroom.is_active or device.classroom_id != observation.classroom_id or classroom.router_id != observation.router_id or device.static_ip != observation.host:
         return
     state = await session.get(DeviceUserState, device.id)
     if state is not None and at <= utc(state.observed_at):
@@ -71,10 +71,23 @@ async def record_user(session: AsyncSession, observation: UserObservation, valid
     state.known, state.username, state.observed_at, state.valid_until = known, username, at, expires
 
 
+async def stop_user_tracking(session: AsyncSession, device_id: int):
+    state = await session.get(DeviceUserState, device_id)
+    if state is None:
+        return
+    now = datetime.now(timezone.utc)
+    state.known, state.username, state.valid_until = False, None, None
+    state.observed_at = max(now, utc(state.observed_at))
+    previous = (await session.execute(select(DeviceUserInterval).where(DeviceUserInterval.device_id == device_id)
+        .order_by(DeviceUserInterval.start_at.desc(), DeviceUserInterval.id.desc()).limit(1))).scalar_one_or_none()
+    if previous is not None:
+        previous.end_at = max(utc(previous.start_at), min(utc(previous.end_at), now))
+
+
 async def current_users(session: AsyncSession, device_ids: list[int]) -> dict:
     if not device_ids:
         return {}
-    states = (await session.execute(select(DeviceUserState).where(DeviceUserState.device_id.in_(device_ids)))).scalars()
+    states = (await session.execute(select(DeviceUserState).join(Device, Device.id == DeviceUserState.device_id).where(DeviceUserState.device_id.in_(device_ids), Device.is_non_pc.is_(False)))).scalars()
     now = datetime.now(timezone.utc)
     return {state.device_id: {"current_user_known": bool(state.known and state.valid_until and utc(state.valid_until) > now),
         "current_user": state.username if state.known and state.valid_until and utc(state.valid_until) > now else None}
@@ -86,7 +99,7 @@ async def user_targets(session: AsyncSession = Depends(get_session)):
     rows = (await session.execute(select(Device, Classroom, DeviceStatisticsState)
         .join(Classroom, Device.classroom_id == Classroom.id)
         .outerjoin(DeviceStatisticsState, DeviceStatisticsState.device_id == Device.id)
-        .where(Device.is_pinned.is_(True), Classroom.is_active.is_(True))
+        .where(Device.is_pinned.is_(True), Device.is_non_pc.is_(False), Classroom.is_active.is_(True))
         .order_by(Device.id))).all()
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=90)
     return [{"device_id": device.id, "classroom_id": classroom.id, "router_id": classroom.router_id,

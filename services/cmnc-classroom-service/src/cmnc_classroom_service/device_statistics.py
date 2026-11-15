@@ -45,6 +45,7 @@ class UserStatisticsSegment(StatisticsSegment):
 
 class DeviceStatisticsItem(BaseModel):
     device_id: int
+    is_non_pc: bool = False
     name: str
     ip_address: str | None
     availability: list[StatisticsSegment]
@@ -105,6 +106,7 @@ async def record_device_statistics_state(
         session.add(
             DeviceStatisticsEvent(
                 device_id=device.id,
+                is_non_pc=device.is_non_pc,
                 occurred_at=normalized_occurred_at,
                 online=next_online,
                 wan_state=wan_state,
@@ -221,11 +223,12 @@ async def get_classroom_statistics(
         items.append(
             DeviceStatisticsItem(
                 device_id=device.id,
+                is_non_pc=device.is_non_pc,
                 name=device.inventory_name,
                 ip_address=device.static_ip,
                 availability=availability,
                 wan=wan,
-                users=users_by_device.get(device.id, []),
+                users=[] if device.is_non_pc else users_by_device.get(device.id, []),
             )
         )
 

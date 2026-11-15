@@ -62,7 +62,7 @@ def register_command_routes(app):
         principal = await administrator(request, authorization)
         layout = await authorized_layout(classroom_id, request, authorization, principal)
         devices = bulk_veyon_devices(layout)
-        return await start_job(layout, devices, principal, payload.command.get_secret_value(), len(layout["devices"]) - len(devices))
+        return await start_job(layout, devices, principal, payload.command.get_secret_value(), sum(not d.get("is_non_pc", False) for d in layout["devices"]) - len(devices))
 
     @app.get("/api/veyon/command-jobs/{job_id}")
     async def command_results(job_id: str, request: Request, authorization: str | None = Header(default=None)):

@@ -648,7 +648,7 @@ export function App() {
     async function handleClassroomPower(action: VeyonBulkPowerAction) {
         if (!dashboard || dashboard.classroom.id !== selectedClassroomId || busyPower) return;
         if (action === "install-updates-and-power-down" && principal?.role !== "admin" && principal?.role !== "superadmin") return;
-        const targets = dashboard.devices.filter((device) => device.is_pinned && !device.veyon_bulk_protected);
+        const targets = dashboard.devices.filter((device) => device.is_pinned && !device.is_non_pc && !device.veyon_bulk_protected);
         if (!targets.length) return;
         const labels = {
             "power-down": {question: "Выключить", result: "выключения"},
@@ -826,6 +826,7 @@ export function App() {
             wanProtected: false,
             veyonBulkProtected: false,
             wolProtected: false,
+            isNonPc: false,
         });
     }
 
@@ -842,6 +843,7 @@ export function App() {
             wanProtected: device.wan_protected,
             veyonBulkProtected: device.veyon_bulk_protected ?? false,
             wolProtected: device.wol_protected ?? false,
+            isNonPc: device.is_non_pc ?? false,
         });
     }
 
@@ -876,6 +878,7 @@ export function App() {
                     wan_protected: deviceForm.wanProtected,
                     veyon_bulk_protected: deviceForm.veyonBulkProtected,
                     wol_protected: deviceForm.wolProtected,
+                    is_non_pc: deviceForm.isNonPc,
                 });
             } else {
                 await updateDevice(deviceForm.device.id, {
@@ -885,6 +888,7 @@ export function App() {
                     wan_protected: deviceForm.wanProtected,
                     veyon_bulk_protected: deviceForm.veyonBulkProtected,
                     wol_protected: deviceForm.wolProtected,
+                    is_non_pc: deviceForm.isNonPc,
                 });
             }
 
@@ -940,7 +944,7 @@ export function App() {
     const userCanOpenRouters = userCanManageClassrooms;
     const userCanViewDynamicDevices = canViewDynamicDevices(principal);
     const userCanControlWan = canControlWanForClassroom(principal, selectedClassroomId);
-    const hasPowerDownTargets = veyonConfigured && (dashboard?.devices.some((device) => device.is_pinned && !device.veyon_bulk_protected) ?? false);
+    const hasPowerDownTargets = veyonConfigured && (dashboard?.devices.some((device) => device.is_pinned && !device.is_non_pc && !device.veyon_bulk_protected) ?? false);
     const hasWakeTargets = dashboard?.devices.some((device) => device.is_pinned && !device.wol_protected) ?? false;
 
     useEffect(() => {
@@ -1062,11 +1066,11 @@ export function App() {
                                     ))}
 
                                 <div className="classroom-device-actions">
-                                    {userCanControlWan && dashboard.devices.some((device) => !device.wan_allowed || !device.wan_protected) && (
+                                    {userCanControlWan && dashboard.devices.some((device) => !device.is_non_pc && (!device.wan_allowed || !device.wan_protected)) && (
                                         <section className="classroom-action-row" aria-label="Интернет">
                                             <span className="classroom-action-label">Интернет:</span>
                                             <div className="classroom-actions">
-                                    {userCanControlWan && dashboard.devices.some((device) => !device.wan_protected && device.wan_allowed) && (
+                                    {userCanControlWan && dashboard.devices.some((device) => !device.is_non_pc && !device.wan_protected && device.wan_allowed) && (
                                         <button
                                             className="danger-button"
                                             disabled={busyClassroomWanAction !== null || dashboard.classroom.id !== selectedClassroomId}
@@ -1075,7 +1079,7 @@ export function App() {
                                             {busyClassroomWanAction === "block" ? "Отключение..." : "Отключить всем Интернет"}
                                         </button>
                                     )}
-                                    {userCanControlWan && dashboard.devices.some((device) => !device.wan_allowed) && (
+                                    {userCanControlWan && dashboard.devices.some((device) => !device.is_non_pc && !device.wan_allowed) && (
                                         <button
                                             className="success-button"
                                             disabled={busyClassroomWanAction !== null || dashboard.classroom.id !== selectedClassroomId}
@@ -1088,8 +1092,8 @@ export function App() {
                                         </section>
                                     )}
                                     <ClassroomVeyonActions key={dashboard.classroom.id}
-                                        classroomId={dashboard.classroom.id} classroomName={dashboard.classroom.name} veyonConfigured={veyonConfigured}
-                                        targetCount={dashboard.devices.filter(device => device.is_pinned && !device.veyon_bulk_protected).length}
+                                        classroomId={dashboard.classroom.id} classroomName={dashboard.classroom.name} veyonConfigured={veyonConfigured && dashboard.devices.some(device => !device.is_non_pc)}
+                                        targetCount={dashboard.devices.filter(device => device.is_pinned && !device.is_non_pc && !device.veyon_bulk_protected).length}
                                         showPowerRow={hasPowerDownTargets || hasWakeTargets} role={principal.role}
                                         disabled={busyPower || dashboard.classroom.id !== selectedClassroomId} onBusyChange={setBusyPower}>
                                                 {hasPowerDownTargets && <button className="danger-button"

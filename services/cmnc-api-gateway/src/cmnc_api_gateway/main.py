@@ -1205,6 +1205,8 @@ async def wake_device(
     devices = [item for item in layout["devices"] if item.get("id") == device_id]
     if not devices:
         raise HTTPException(404, "Устройство не найдено в аудитории")
+    if devices[0].get("is_non_pc") and devices[0].get("wol_protected"):
+        raise HTTPException(409, "Пробуждение WoL запрещено для устройства")
     classroom = layout["classroom"]
     router = await get_router_connection_from_inventory(get_classroom_router_id(classroom))
     result = await send_wol_packets(router, get_router_rest_base_url(router), classroom["subnet_cidr"], devices)
@@ -2242,7 +2244,7 @@ async def admin_update_device(
     allowed_payload = {
         key: value
         for key, value in payload.items()
-        if key in {"inventory_name", "row_index", "column_index", "wan_protected", "veyon_bulk_protected", "wol_protected"}
+        if key in {"inventory_name", "row_index", "column_index", "wan_protected", "veyon_bulk_protected", "wol_protected", "is_non_pc"}
     }
 
     try:
@@ -2327,6 +2329,9 @@ async def admin_pin_observed_device(
     if not isinstance(wan_protected, bool):
         raise HTTPException(status_code=422, detail="wan_protected must be a boolean")
 
+    is_non_pc = payload.get("is_non_pc", False)
+    if not isinstance(is_non_pc, bool):
+        raise HTTPException(422, "is_non_pc must be a boolean")
     veyon_bulk_protected = payload.get("veyon_bulk_protected", False)
     if not isinstance(veyon_bulk_protected, bool):
         raise HTTPException(status_code=422, detail="veyon_bulk_protected must be a boolean")
@@ -2408,7 +2413,8 @@ async def admin_pin_observed_device(
         "column_index": column_index,
         "is_pinned": True,
         "wan_protected": wan_protected,
-        "veyon_bulk_protected": veyon_bulk_protected,
+        "is_non_pc": is_non_pc,
+        "veyon_bulk_protected": veyon_bulk_protected or is_non_pc,
         "wol_protected": wol_protected,
         "wan_allowed": True,
     }

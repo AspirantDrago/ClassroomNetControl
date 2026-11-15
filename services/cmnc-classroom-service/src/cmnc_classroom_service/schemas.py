@@ -75,6 +75,7 @@ class DeviceRead(BaseModel):
     wan_protected: bool
     veyon_bulk_protected: bool = False
     wol_protected: bool = False
+    is_non_pc: bool = False
     policy_generation: int
     sync_status: str
     sync_error: str | None
@@ -170,6 +171,7 @@ class DeviceCreate(BaseModel):
     wan_protected: bool = False
     veyon_bulk_protected: bool = False
     wol_protected: bool = False
+    is_non_pc: bool = False
 
 
 class DeviceUpdate(BaseModel):
@@ -184,6 +186,7 @@ class DeviceUpdate(BaseModel):
     wan_protected: bool | None = None
     veyon_bulk_protected: bool = False
     wol_protected: bool = False
+    is_non_pc: bool = False
 
 
 class DevicePinRequest(BaseModel):
@@ -196,3 +199,4 @@ class DevicePinRequest(BaseModel):
     wan_protected: bool = False
     veyon_bulk_protected: bool = False
     wol_protected: bool = False
+    is_non_pc: bool = False

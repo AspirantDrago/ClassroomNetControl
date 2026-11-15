@@ -28,6 +28,7 @@ export type DashboardDevice = {
     wan_protected: boolean;
     veyon_bulk_protected: boolean;
     wol_protected: boolean;
+    is_non_pc?: boolean;
     policy_generation: number;
     sync_status: string;
     sync_error: string | null;
@@ -370,6 +371,7 @@ export type PinObservedDeviceRequest = {
     wan_protected?: boolean;
     veyon_bulk_protected?: boolean;
     wol_protected?: boolean;
+    is_non_pc?: boolean;
 };
 
 export type DeleteObservedDevicesResponse = {
@@ -429,6 +431,7 @@ export type UpdateDeviceRequest = {
     wan_protected?: boolean;
     veyon_bulk_protected?: boolean;
     wol_protected?: boolean;
+    is_non_pc?: boolean;
 };
 
 export function updateDevice(

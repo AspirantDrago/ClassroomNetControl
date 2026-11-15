@@ -63,10 +63,12 @@ async def authorized_layout(classroom_id, request, authorization, principal=None
 def bulk_veyon_devices(layout):
     # Every classroom-wide Veyon action must use this server-owned selection.
     # Direct device actions deliberately do not apply this filter.
-    return [device for device in layout["devices"] if not device.get("veyon_bulk_protected", False)]
+    return [device for device in layout["devices"] if not device.get("is_non_pc", False) and not device.get("veyon_bulk_protected", False)]
 
 
 def device_target(layout, device):
+    if device.get("is_non_pc", False):
+        raise HTTPException(409, "Устройство помечено как «Не ПК (нет Veyon)»")
     classroom = layout["classroom"]
     host = device.get("static_ip")
     try:
@@ -129,7 +131,7 @@ async def dispatch_classroom_action(layout, operation: str, action_payload: Devi
     return {**({"timeout_count": timeout_count} if timeout_count else {}),
             "accepted_count": sum(item["accepted"] for item in results),
             "failed_count": sum(not item["accepted"] for item in results),
-            "skipped_count": len(layout["devices"]) - len(targets), "results": results}
+            "skipped_count": sum(not d.get("is_non_pc", False) for d in layout["devices"]) - len(targets), "results": results}
 
 
 # Only configuration metadata is cached, never user permissions or private keys.

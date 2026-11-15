@@ -9,7 +9,7 @@ from cmnc_contracts.routing_keys import CLASSROOM_DEVICE_WAN_POLICY_CHANGED
 
 from cmnc_classroom_service.classroom_deletion import verify_deletion_token
 from cmnc_classroom_service.device_state_timing import get_device_state_times
-from cmnc_classroom_service.user_history import current_users
+from cmnc_classroom_service.user_history import current_users, stop_user_tracking
 from cmnc_classroom_service.db import get_session
 from cmnc_classroom_service.messaging import RabbitMqClient
 from cmnc_classroom_service.models import Classroom, ClassroomCamera, Device
@@ -507,6 +507,7 @@ async def set_classroom_wan_state(
         .where(Device.classroom_id == classroom_id)
         .where(Device.is_pinned.is_(True))
         .where(Device.wan_protected.is_(False))
+        .where(Device.is_non_pc.is_(False))
         .order_by(Device.id)
         .with_for_update()
     )
@@ -765,7 +766,8 @@ async def create_device(
         existing_device.is_pinned = True
         existing_device.wan_allowed = True if payload.wan_protected else payload.wan_allowed
         existing_device.wan_protected = payload.wan_protected
-        existing_device.veyon_bulk_protected = payload.veyon_bulk_protected
+        existing_device.is_non_pc = payload.is_non_pc
+        existing_device.veyon_bulk_protected = payload.veyon_bulk_protected or payload.is_non_pc
         existing_device.wol_protected = payload.wol_protected
         existing_device.sync_status = "applied"
         existing_device.sync_error = None
@@ -789,7 +791,8 @@ async def create_device(
         is_pinned=payload.is_pinned,
         wan_allowed=True if payload.wan_protected else payload.wan_allowed,
         wan_protected=payload.wan_protected,
-        veyon_bulk_protected=payload.veyon_bulk_protected,
+        is_non_pc=payload.is_non_pc,
+        veyon_bulk_protected=payload.veyon_bulk_protected or payload.is_non_pc,
         wol_protected=payload.wol_protected,
         sync_status="applied",
         sync_error=None,
@@ -847,6 +850,10 @@ async def update_device(
     for field_name, value in update_data.items():
         setattr(device, field_name, value)
 
+    if device.is_non_pc:
+        device.veyon_bulk_protected = True
+        await stop_user_tracking(session, device.id)
+
     await commit_or_409(
         session,
         detail="Device update violates MAC or grid position constraints",
@@ -896,7 +903,8 @@ async def pin_device(
     device.column_index = payload.column_index
     device.policy_generation += 1
     device.is_pinned = True
-    device.veyon_bulk_protected = payload.veyon_bulk_protected
+    device.is_non_pc = payload.is_non_pc
+    device.veyon_bulk_protected = payload.veyon_bulk_protected or payload.is_non_pc
     device.wol_protected = payload.wol_protected
 
     await commit_or_409(

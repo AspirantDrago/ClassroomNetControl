@@ -178,3 +178,5 @@
 .device-card:focus-within .device-description {
     visibility: visible;
 }
+
+.device-card.device-non-pc { border-color: #3b82f6; }
