@@ -312,7 +312,8 @@ async def lifespan(application):
         application.state.bridge = bridge
         application.state.command_jobs = CommandJobs(Path(os.environ.get("CMNC_VEYON_DATA_DIR", "/data")), bridge, Target,
             int(os.environ.get("CMNC_VEYON_COMMAND_RESULT_TIMEOUT_SECONDS", "60")), ACTION_CONCURRENCY)
-        user_monitor = asyncio.create_task(UserMonitor(bridge, Target, client).run())
+        application.state.user_monitor = UserMonitor(bridge, Target, client)
+        user_monitor = asyncio.create_task(application.state.user_monitor.run())
         cleaner = asyncio.create_task(bridge.cleanup())
         application.state.control = RemoteControl(bridge)
         control_cleaner = asyncio.create_task(application.state.control.cleanup())
@@ -358,12 +359,16 @@ async def key_info(scope: Literal["router", "classroom"], scope_id: int):
 @app.put("/internal/keys/{scope}/{scope_id}")
 async def save_key(scope: Literal["router", "classroom"], scope_id: int, payload: KeyInput):
     app.state.store.save(scope, scope_id, payload.key_name, payload.private_key)
+    if monitor := getattr(app.state, "user_monitor", None):
+        await monitor.invalidate_keys(scope, scope_id)
     return app.state.store.metadata(scope, scope_id)
 
 
 @app.delete("/internal/keys/{scope}/{scope_id}")
 async def delete_key(scope: Literal["router", "classroom"], scope_id: int):
     app.state.store.delete(scope, scope_id)
+    if monitor := getattr(app.state, "user_monitor", None):
+        await monitor.invalidate_keys(scope, scope_id)
     return {"configured": False, "key_name": "CMNC"}
 
 

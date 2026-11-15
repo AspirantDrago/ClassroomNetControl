@@ -84,3 +84,94 @@ def test_initializing_session_is_not_reported_as_logged_out(session_id):
         bridge.checked=AsyncMock(side_effect=lambda method,path,**kwargs:httpx.Response(200,json={"sessionId":session_id} if path.endswith("/session") else {"login":""}))
         with pytest.raises(HTTPException): await bridge.read_user(t)
     asyncio.run(run())
+
+
+def test_independent_schedule_keeps_fast_target_running_while_slow_target_waits():
+    from cmnc_veyon_service.user_monitor import ScheduledTarget
+    import time
+    async def run():
+        monitor=UserMonitor(None,main.Target,None)
+        monitor.interval=.02
+        monitor.targets_refreshed_at=time.monotonic()
+        slow_started=asyncio.Event();release=asyncio.Event();fast_repeated=asyncio.Event()
+        fast_calls=0;active={};peak={};published=[]
+        async def observe(row):
+            nonlocal fast_calls
+            id=row["device_id"]
+            active[id]=active.get(id,0)+1;peak[id]=max(peak.get(id,0),active[id])
+            try:
+                if id==2:
+                    slow_started.set();await release.wait()
+                else:
+                    fast_calls+=1
+                    if fast_calls>=3:fast_repeated.set()
+                return {**row,"known":True,"username":"user"}
+            finally:active[id]-=1
+        monitor.observe=observe
+        monitor.publish=AsyncMock(side_effect=lambda rows:published.extend(rows))
+        for id in (1,2):
+            monitor.targets[id]=ScheduledTarget({**target(),"device_id":id,"online":True},time.monotonic())
+        tasks=[asyncio.create_task(monitor.worker()) for _ in range(2)]
+        try:
+            await asyncio.wait_for(slow_started.wait(),1)
+            await asyncio.wait_for(fast_repeated.wait(),1)
+            assert not release.is_set()
+            assert len([r for r in published if r["device_id"]==1])>=2
+            assert max(peak.values())==1
+        finally:
+            release.set()
+            for t in tasks:t.cancel()
+            await asyncio.gather(*tasks,return_exceptions=True)
+    asyncio.run(run())
+
+
+def test_failed_target_backs_off_and_key_change_resets_schedule():
+    from cmnc_veyon_service.user_monitor import ScheduledTarget
+    import time
+    async def run():
+        monitor=UserMonitor(None,main.Target,None)
+        monitor.targets_refreshed_at=time.monotonic()
+        entry=ScheduledTarget({**target(),"online":True},time.monotonic())
+        monitor.targets[1]=entry
+        monitor.observe=AsyncMock(return_value={**target(),"known":False,"username":None})
+        monitor.publish=AsyncMock()
+        task=asyncio.create_task(monitor.worker())
+        try:
+            for _ in range(100):
+                if entry.failures:break
+                await asyncio.sleep(.001)
+            assert entry.failures==1
+            assert entry.due-time.monotonic()>50
+            await monitor.invalidate_keys("classroom",1)
+            assert entry.failures==0 and entry.due<=time.monotonic()
+        finally:
+            task.cancel();await asyncio.gather(task,return_exceptions=True)
+    asyncio.run(run())
+
+
+def test_changed_target_discards_inflight_result_and_readded_id_does_not_overlap():
+    from cmnc_veyon_service.user_monitor import ScheduledTarget
+    import time
+    async def run():
+        monitor=UserMonitor(None,main.Target,None)
+        monitor.targets_refreshed_at=time.monotonic()
+        started=asyncio.Event();release=asyncio.Event()
+        async def observe(row):
+            started.set();await release.wait();return {**row,"known":True}
+        monitor.observe=observe;monitor.publish=AsyncMock()
+        monitor.targets[1]=ScheduledTarget(target(),time.monotonic())
+        tasks=[asyncio.create_task(monitor.worker()) for _ in range(2)]
+        try:
+            await asyncio.wait_for(started.wait(),1)
+            new=ScheduledTarget({**target(),"host":"192.168.1.20"},time.monotonic())
+            monitor.targets[1]=new
+            async with monitor.changed:monitor.changed.notify_all()
+            await asyncio.sleep(.02)
+            assert not new.busy
+            for t in tasks:t.cancel()
+            await asyncio.gather(*tasks,return_exceptions=True)
+            monitor.publish.assert_not_awaited()
+        finally:
+            for t in tasks:t.cancel()
+            await asyncio.gather(*tasks,return_exceptions=True)
+    asyncio.run(run())
