@@ -6,7 +6,6 @@ export function VeyonKeyPanel({ scope, scopeId }: { scope: "router" | "classroom
     const [name, setName] = useState("CMNC");
     const [pem, setPem] = useState("");
     const [configured, setConfigured] = useState(false);
-    const [override, setOverride] = useState(false);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [message, setMessage] = useState<string | null>(null);
@@ -17,7 +16,6 @@ export function VeyonKeyPanel({ scope, scopeId }: { scope: "router" | "classroom
             if (!cancelled) {
                 setConfigured(result.configured);
                 setName(result.key_name);
-                setOverride(result.router_override ?? false);
             }
         }).catch((err) => { if (!cancelled) setError(extractErrorDetail(err)); });
         return () => { cancelled = true; };
@@ -43,12 +41,10 @@ export function VeyonKeyPanel({ scope, scopeId }: { scope: "router" | "classroom
         finally { setBusy(false); }
     }
 
-    return <section className="veyon-key-panel">
-        <h4>Veyon — ключ аутентификации</h4>
+    const content = <>
         <p className="muted">{scope === "router"
-            ? "Ключ MikroTik применяется ко всем его аудиториям и имеет приоритет над их ключами."
-            : override ? "Для MikroTik уже задан ключ — он имеет приоритет над ключом аудитории."
-                : "Ключ аудитории используется, если для MikroTik ключ не задан."}</p>
+            ? "Ключ MikroTik используется для аудиторий, у которых не задан собственный ключ."
+            : "Ключ аудитории имеет приоритет над ключом MikroTik. Если собственный ключ не задан, используется ключ MikroTik."}</p>
         <p>{configured ? "Приватный ключ сохранён на сервере." : "Собственный ключ не задан."}</p>
         {error && <p className="device-modal-error" role="alert">{error}</p>}
         {message && <p role="status">{message}</p>}
@@ -76,5 +72,16 @@ export function VeyonKeyPanel({ scope, scopeId }: { scope: "router" | "classroom
                 </button>
             </div>
         </form>
-    </section>;
+    </>;
+    return scope === "classroom" ? (
+        <details className="veyon-key-panel">
+            <summary>Veyon — ключ аутентификации</summary>
+            {content}
+        </details>
+    ) : (
+        <section className="veyon-key-panel">
+            <h4>Veyon — ключ аутентификации</h4>
+            {content}
+        </section>
+    );
 }

@@ -29,13 +29,16 @@ def test_key_storage_priority_validation_and_no_plaintext(tmp_path, pem):
     store.save('classroom', 2, 'classroom', pem)
     assert store.resolve(1, 2)[0] == 'classroom'
     store.save('router', 1, 'router', pem)
-    assert store.resolve(1, 2)[0] == 'router'
+    assert store.resolve(1, 2)[0] == 'classroom'
     assert store.metadata('router', 1) == {'configured': True, 'key_name': 'router'}
     assert pem not in json.dumps(store.metadata('router', 1))
     assert pem.encode() not in store.database.read_bytes()
     assert b'BEGIN PRIVATE KEY' not in store.database.read_bytes()
     reopened = KeyStore(tmp_path)
+    assert reopened.resolve(1, 2) == ('classroom', pem)
+    reopened.delete('classroom', 2)
     assert reopened.resolve(1, 2) == ('router', pem)
+    reopened.save('classroom', 2, 'classroom', pem)
     reopened.delete('router', 1)
     assert reopened.resolve(1, 2)[0] == 'classroom'
     with pytest.raises(HTTPException):
@@ -76,7 +79,7 @@ def test_veyon_authentication_frame_reuse_and_power(tmp_path, pem):
     asyncio.run(run())
 
 
-def test_router_key_failure_does_not_fall_back_to_classroom_key(tmp_path, pem):
+def test_classroom_key_failure_does_not_fall_back_to_router_key(tmp_path, pem):
     async def run():
         store = KeyStore(tmp_path)
         store.save('classroom', 2, 'classroom', pem)
@@ -91,7 +94,7 @@ def test_router_key_failure_does_not_fall_back_to_classroom_key(tmp_path, pem):
                 await bridge.operate(Target(device_id=1, router_id=1, classroom_id=2, host='192.168.1.2'))
             assert exc.value.status_code == 502
             assert pem not in str(exc.value.detail)
-            assert names == ['router']
+            assert names == ['classroom']
     asyncio.run(run())
 
 

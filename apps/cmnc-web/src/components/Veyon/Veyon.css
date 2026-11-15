@@ -91,3 +91,5 @@
 .device-action-dialog input, .device-action-dialog textarea { width: 100%; min-width: 0; padding: 10px; border: 1px solid #475569; border-radius: 8px; background: #0f172a; color: #e5e7eb; font: inherit; }
 .device-action-dialog textarea { resize: vertical; }
 @media(max-width: 640px) { .device-action-buttons { flex-direction: column; } }
+
+.veyon-key-panel > summary { cursor: pointer; font-weight: 700; }

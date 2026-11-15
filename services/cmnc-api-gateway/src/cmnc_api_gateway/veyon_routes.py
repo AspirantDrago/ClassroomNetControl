@@ -186,13 +186,9 @@ def register_veyon_routes(app):
     @app.get("/api/admin/veyon/keys/{scope}/{scope_id}")
     async def key_info(scope: Literal["router", "classroom"], scope_id: int, request: Request,
                        authorization: str | None = Header(default=None)):
-        classroom = await check_key_admin(scope, scope_id, request, authorization)
+        await check_key_admin(scope, scope_id, request, authorization)
         response = await service_call("GET", f"/internal/keys/{scope}/{scope_id}")
-        metadata = response.json()
-        if classroom:
-            override = await service_call("GET", f"/internal/keys/router/{gateway.get_classroom_router_id(classroom)}")
-            metadata["router_override"] = override.json()["configured"]
-        return metadata
+        return response.json()
 
     @app.put("/api/admin/veyon/keys/{scope}/{scope_id}")
     async def save_key(scope: Literal["router", "classroom"], scope_id: int, payload: KeyInput,

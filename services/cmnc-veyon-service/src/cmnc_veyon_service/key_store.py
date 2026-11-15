@@ -49,8 +49,8 @@ class KeyStore:
             db.execute("DELETE FROM auth_keys WHERE scope=? AND scope_id=?", (scope, scope_id))
 
     def resolve(self, router_id: int, classroom_id: int):
-        # A configured router key is authoritative, even if authentication fails.
-        value = self.get("router", router_id) or self.get("classroom", classroom_id)
+        # A configured classroom key is authoritative, even if authentication fails.
+        value = self.get("classroom", classroom_id) or self.get("router", router_id)
         if value is None:
             raise HTTPException(409, "Ключ Veyon не настроен для MikroTik или аудитории")
         return value
