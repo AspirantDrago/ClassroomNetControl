@@ -1,3 +1,4 @@
+import { DemonstrationControls } from "./DemonstrationControls";
 import { CommandOutputDialog } from "./CommandOutputDialog";
 import { useState } from "react";
 import { extractErrorDetail, runVeyonAction, type DashboardDevice, type VeyonDeviceAction } from "../../api";
@@ -51,6 +52,7 @@ export function DeviceActions({admin, device, veyonConfigured, canControlWan, wa
             {admin && actionButton("command", "danger-button", true)}
             {admin && <button type="button" className="danger-button" onClick={() => setOutputDialog(true)}>Команда с выводом</button>}
         </div></section>
+        <section><h4>Демонстрация</h4><DemonstrationControls scope="devices" targetId={device.id} classroomId={device.classroom_id} disabled={busy || powerBusy}/></section>
         </>}
         {veyonConfigured && outputDialog && <CommandOutputDialog scope="devices" targetId={device.id} title={device.inventory_name || device.hostname || device.mac_address} onClose={() => setOutputDialog(false)}/>}
         {veyonConfigured && dialog && <ActionDialog key={dialog} action={dialog} busy={busy} error={error} onClose={() => setDialog(null)} onSubmit={payload => void send(payload)}/>}

@@ -39,3 +39,16 @@ node tests/recording-file-writer.browser.cjs
 предыдущую и удаляет новую при закрытии панели. Используются подставные API
 и виртуальные часы Playwright, установленные до запуска приложения. Порт
 Vite по умолчанию 5188, либо `CMNC_CAMERA_TEST_URL`. Реальных камер тест не касается.
+
+
+`node tests/demonstration.browser.cjs` проверяет четыре действия демонстрации
+на настольной и мобильной ширине: выбор ПК-источника, JPEG из реального
+canvas/MediaStream вместо настоящего экрана пользователя, остановку дорожек,
+индивидуального получателя и завершение при уходе с вкладки. Все API подставные.
+Нужен Vite на 5188 (или `CMNC_ACTIONS_TEST_URL`); Playwright/Chromium задаются
+через `CMNC_PLAYWRIGHT_MODULE` и `CMNC_TEST_CHROMIUM_PATH`.
+
+
+`node tests/router-demo-endpoint.browser.cjs` проверяет независимые адреса/порты
+ретранслятора в формах создания и редактирования MikroTik на настольной и мобильной
+ширине. Использует тот же Vite и переменные Playwright, все API подставные.

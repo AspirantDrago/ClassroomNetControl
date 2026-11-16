@@ -28,6 +28,8 @@ type RouterFormState = {
     name: string;
     apiHost: string;
     veyonCallbackUrl: string;
+    veyonDemoHost: string;
+    veyonDemoPort: string;
     apiPort: string;
     apiUseSsl: boolean;
     apiVerifyTls: boolean;
@@ -65,6 +67,8 @@ const EMPTY_FORM: RouterFormState = {
     name: "",
     apiHost: "",
     veyonCallbackUrl: "",
+    veyonDemoHost: "",
+    veyonDemoPort: "11400",
     apiPort: "80",
     apiUseSsl: false,
     apiVerifyTls: false,
@@ -175,6 +179,8 @@ export function RoutersAdminPage() {
             name: router.name,
             apiHost: router.api_host,
             veyonCallbackUrl: router.veyon_callback_url ?? "",
+            veyonDemoHost: router.veyon_demo_host ?? "",
+            veyonDemoPort: String(router.veyon_demo_port ?? 11400),
             apiPort: router.api_port.toString(),
             apiUseSsl: router.api_use_ssl,
             apiVerifyTls: router.api_verify_tls,
@@ -191,7 +197,7 @@ export function RoutersAdminPage() {
         setForm(null);
     }
 
-    function updateFormString(field: "veyonCallbackUrl" | "name" | "apiHost" | "apiPort" | "apiUsername" | "apiPassword" | "pollIntervalSeconds", value: string) {
+    function updateFormString(field: "veyonDemoHost" | "veyonDemoPort" | "veyonCallbackUrl" | "name" | "apiHost" | "apiPort" | "apiUsername" | "apiPassword" | "pollIntervalSeconds", value: string) {
         setForm((current) => (current === null ? current : { ...current, [field]: value }));
     }
 
@@ -213,6 +219,7 @@ export function RoutersAdminPage() {
             const name = parseRequiredText(form.name, "Название");
             const apiHost = parseRequiredText(form.apiHost, "Host");
             const apiPort = parseInteger(form.apiPort, "Порт", 1, 65535);
+            const demoPort = parseInteger(form.veyonDemoPort, "Порт демонстрации", 1, 65535);
             const apiUsername = parseRequiredText(form.apiUsername, "Логин");
             const pollIntervalSeconds = parseInteger(
                 form.pollIntervalSeconds,
@@ -226,7 +233,9 @@ export function RoutersAdminPage() {
                 const payload: AdminRouterCreateRequest = {
                     name,
                     api_host: apiHost,
-                veyon_callback_url: form.veyonCallbackUrl.trim() || null,
+                    veyon_callback_url: form.veyonCallbackUrl.trim() || null,
+                    veyon_demo_host: form.veyonDemoHost.trim() || null,
+                    veyon_demo_port: demoPort,
                     api_port: apiPort,
                     api_use_ssl: form.apiUseSsl,
                     api_verify_tls: form.apiVerifyTls,
@@ -252,6 +261,8 @@ export function RoutersAdminPage() {
                 name,
                 api_host: apiHost,
                 veyon_callback_url: form.veyonCallbackUrl.trim() || null,
+                veyon_demo_host: form.veyonDemoHost.trim() || null,
+                veyon_demo_port: demoPort,
                 api_port: apiPort,
                 api_use_ssl: form.apiUseSsl,
                 api_verify_tls: form.apiVerifyTls,
@@ -500,12 +511,24 @@ export function RoutersAdminPage() {
                                 </label>
                             </div>
 
+                            <div className="routers-form-grid">
+                                <label><span>Сервер демонстрации CMNC</span>
+                                    <input type="text" value={form.veyonDemoHost} maxLength={253} placeholder="192.168.10.11"
+                                        onChange={event => updateFormString("veyonDemoHost", event.target.value)}/>
+                                </label>
+                                <label><span>Порт демонстрации CMNC</span>
+                                    <input type="number" min={1} max={65535} required value={form.veyonDemoPort}
+                                        onChange={event => updateFormString("veyonDemoPort", event.target.value)}/>
+                                </label>
+                            </div>
+                            <small className="muted">Адрес и TCP-порт CMNC, доступные с ПК этого MikroTik. Адрес без протокола. Пустой адрес отключает демонстрации.</small>
+
                             <label className="router-callback-field">
                                 <span>Обратное подключение CMNC (Loopback)</span>
                                 <input type="url" value={form.veyonCallbackUrl} maxLength={2048}
                                     placeholder="https://cmnc.example.local"
                                     onChange={event => updateFormString("veyonCallbackUrl", event.target.value)}/>
-                                <small className="muted">Адрес сайта CMNC, доступный с ПК этого MikroTik. Нужен для команд с возвратом вывода.</small>
+                                <small className="muted">Адрес сайта CMNC, доступный с ПК этого MikroTik. Нужен для команд с возвратом вывода и проверки прямой демонстрации.</small>
                             </label>
 
                             <div className="routers-checkboxes">

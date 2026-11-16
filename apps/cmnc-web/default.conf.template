@@ -14,6 +14,7 @@ server {
     index index.html;
 
     location /api/ {
+        client_max_body_size 2m;
         proxy_pass http://127.0.0.1:${CMNC_API_GATEWAY_PORT}/api/;
         proxy_http_version 1.1;
         proxy_read_timeout 130s;

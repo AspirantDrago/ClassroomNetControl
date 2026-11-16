@@ -10,15 +10,19 @@ from pathlib import Path
 from typing import Literal
 
 import httpx
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Response, Request
 from pydantic import BaseModel, Field, field_validator
 
 from cmnc_contracts.veyon_actions import DeviceAction, FEATURE_IDS
+from cmnc_contracts.demo_endpoint import DemoEndpoint
 
 from cmnc_veyon_service.command_jobs import CommandJobs, StartCommandJob, CommandResult
 from cmnc_veyon_service.key_store import KeyStore
 from cmnc_veyon_service.control import RemoteControl, InputEvent
 from cmnc_veyon_service.user_monitor import UserMonitor
+from cmnc_veyon_service.demonstrations import Demonstrations, FEATURES as DEMO_FEATURES
+from cmnc_veyon_service.demo_probe import accept_probe
+from cmnc_veyon_service.command_jobs import callback_base
 
 
 class HealthCheckAccessFilter(logging.Filter):
@@ -44,6 +48,7 @@ logger = logging.getLogger("uvicorn.error.veyon")
 AUTH_KEYS = "0c69b301-81b4-42d6-8fae-128cdd113314"
 FEATURES = {"power-down": "6f5a27a0-0e2f-496e-afcc-7aae62eede10", "reboot": "4f7d98f0-395a-4fff-b968-e49b8d0f748c", "install-updates-and-power-down": "09bcb3a1-fc11-4d03-8cf1-efd26be8655b"}
 FEATURES.update(FEATURE_IDS)
+FEATURES.update(DEMO_FEATURES)
 WEBAPI = os.environ.get("CMNC_VEYON_WEBAPI_URL", "http://cmnc-veyon-proxy:11080").rstrip("/")
 ACTION_CONCURRENCY = int(os.environ.get("CMNC_VEYON_BULK_CONCURRENCY", "30"))
 if not 1 <= ACTION_CONCURRENCY <= 128:
@@ -109,6 +114,7 @@ class VeyonBridge:
         self.locks: dict[str, asyncio.Lock] = {}
         self.capacity = asyncio.Semaphore(8)
         self.action_capacity = asyncio.Semaphore(ACTION_CONCURRENCY)
+        self.demo_hosts: set[str] = set()
 
     def identity(self, target: Target):
         name, pem = self.store.resolve(target.router_id, target.classroom_id)
@@ -158,7 +164,7 @@ class VeyonBridge:
         logger.info("Veyon authenticated device_id=%s host=%s", target.device_id, target.host)
         return session
 
-    async def operate(self, target: Target, action: str | None = None, *, snapshot: bool = False, arguments: dict | None = None, active: bool = True):
+    async def operate(self, target: Target, action: str | None = None, *, snapshot: bool = False, arguments: dict | None = None, active: bool = True, native_size: bool = False):
         identity, name, pem = self.identity(target)
         lock = self.locks.setdefault(identity, asyncio.Lock())
         async with (self.action_capacity if action else self.capacity), lock:
@@ -170,13 +176,14 @@ class VeyonBridge:
                     return {"accepted": True, "device_id": target.device_id}
                 # A short shared cache coalesces concurrent viewers on this
                 # authenticated target without persisting screenshots to disk.
-                if (not snapshot and session.frame is not None and session.frame_width == target.width
+                if (not snapshot and session.frame is not None and session.frame_width == (0 if native_size else target.width)
                         and session.frame_quality == target.quality
                         and time.monotonic() - session.frame_at < FRAME_CACHE_SECONDS):
                     return session.frame
                 # PNG without width/height returns the native framebuffer without
                 # JPEG loss or resizing. Never reuse the monitoring JPEG cache.
-                params = {"format": "png", "compression": 5} if snapshot else {"format": "jpeg", "quality": target.quality, "width": target.width}
+                params = {"format": "png", "compression": 5} if snapshot else {
+                    "format": "jpeg", "quality": target.quality, **({} if native_size else {"width": target.width})}
                 # Authentication can finish before the first framebuffer arrives.
                 # Keep this connection alive while waiting; never reauthenticate
                 # just because the initial screen image is not ready yet.
@@ -199,7 +206,7 @@ class VeyonBridge:
                         raise HTTPException(502, "Veyon не вернул снимок в формате PNG")
                     return response.content, response.headers["content-type"]
                 session.frame = (response.content, response.headers["content-type"])
-                session.frame_width = target.width
+                session.frame_width = 0 if native_size else target.width
                 session.frame_quality = target.quality
                 session.frame_at = time.monotonic()
                 return session.frame
@@ -213,6 +220,11 @@ class VeyonBridge:
                 raise
             finally:
                 session.last_used = time.monotonic()
+
+    async def demo_frame(self, target: Target, quality: int = 100):
+        # One persistent source connection; encode once in WebAPI on the server,
+        # at native resolution, then share the exact JPEG bytes with all viewers.
+        return await self.operate(target.model_copy(update={"quality": quality}), native_size=True)
 
     async def refresh_framebuffer(self, target: Target):
         identity, name, pem = self.identity(target)
@@ -303,7 +315,7 @@ class VeyonBridge:
             await asyncio.sleep(10)
             for identity, session in list(self.sessions.items()):
                 lock = self.locks.get(identity)
-                if time.monotonic() - session.last_used > 40 and lock and not lock.locked():
+                if identity not in self.demo_hosts and time.monotonic() - session.last_used > 40 and lock and not lock.locked():
                     async with lock:
                         await self.close(identity)
 
@@ -322,9 +334,17 @@ async def lifespan(application):
         cleaner = asyncio.create_task(bridge.cleanup())
         application.state.control = RemoteControl(bridge)
         control_cleaner = asyncio.create_task(application.state.control.cleanup())
+        application.state.demo_stop_tasks = set()
+        application.state.demonstrations = Demonstrations(bridge, Target,
+            int(os.environ.get("CMNC_VEYON_DEMO_LISTEN_PORT", "11400")),
+            fps=int(os.environ.get("CMNC_VEYON_DEMO_FPS", "10")),
+            quality=int(os.environ.get("CMNC_VEYON_DEMO_QUALITY", "100")))
+        await application.state.demonstrations.start()
         try:
             yield
         finally:
+            await asyncio.gather(*application.state.demo_stop_tasks, return_exceptions=True)
+            await application.state.demonstrations.close()
             user_monitor.cancel()
             with suppress(asyncio.CancelledError):
                 await user_monitor
@@ -455,3 +475,73 @@ async def get_command_script(payload: CommandJobReference):
 async def save_command_result(payload: CommandJobCallback):
     result = CommandResult.model_validate(payload.model_dump())
     return app.state.command_jobs.result(payload.job_id, payload.device_id, payload.token, result)
+
+
+class DemoInput(DemoEndpoint):
+    direct_probe_callback_url: str | None = Field(default=None, max_length=2048)
+
+    @field_validator('direct_probe_callback_url')
+    @classmethod
+    def valid_probe_callback(cls, value):
+        return callback_base(value) if value else None
+
+    owner: str = Field(min_length=1, max_length=128)
+    classroom_id: int = Field(gt=0)
+    targets: list[Target] = Field(min_length=1, max_length=1024)
+    source: Target | None = None
+    mode: Literal["demo-fullscreen", "demo-window"]
+
+
+@app.post("/internal/demonstrations")
+async def start_demonstration(payload: DemoInput):
+    return await app.state.demonstrations.create(payload.owner, payload.classroom_id,
+        [t.model_dump() for t in payload.targets], payload.source.model_dump() if payload.source else None, payload.mode,
+        endpoint=DemoEndpoint(relay_host=payload.relay_host, relay_port=payload.relay_port),
+        direct_probe_callback_url=payload.direct_probe_callback_url)
+
+
+@app.get("/internal/demonstrations/{session_id}")
+async def get_demonstration(session_id: str):
+    return app.state.demonstrations.get(session_id).public()
+
+
+@app.post("/internal/demonstrations/{session_id}/heartbeat")
+async def touch_demonstration(session_id: str):
+    app.state.demonstrations.get(session_id).touched = time.monotonic()
+    return {"accepted": True}
+
+
+@app.delete("/internal/demonstrations/{session_id}")
+async def stop_demonstration(session_id: str):
+    session = app.state.demonstrations.get(session_id)
+    # Stop in background so the UI is never held open by an offline recipient.
+    task = asyncio.create_task(app.state.demonstrations.stop(session))
+    app.state.demo_stop_tasks.add(task)
+    task.add_done_callback(app.state.demo_stop_tasks.discard)
+    return {"accepted": True}
+
+
+@app.post("/internal/demonstrations/{session_id}/frame")
+async def demonstration_frame(session_id: str, request: Request):
+    data = bytearray()
+    async for chunk in request.stream():
+        data.extend(chunk)
+        if len(data) > 2 * 1024 * 1024:
+            raise HTTPException(413, "Кадр слишком большой")
+    await app.state.demonstrations.upload(app.state.demonstrations.get(session_id), bytes(data))
+    return {"accepted": True}
+
+
+class ProbeResult(BaseModel):
+    device_id: int = Field(gt=0)
+    token: str = Field(min_length=20, max_length=128, repr=False)
+    reachable: bool = Field(strict=True)
+
+
+@app.post('/internal/demonstrations/{session_id}/probe-result')
+async def native_probe_result(session_id: str, payload: ProbeResult):
+    session = app.state.demonstrations.get(session_id)
+    async with session.changed:
+        accept_probe(session, payload.device_id, payload.token, payload.reachable)
+        session.changed.notify_all()
+    return {'accepted': True}

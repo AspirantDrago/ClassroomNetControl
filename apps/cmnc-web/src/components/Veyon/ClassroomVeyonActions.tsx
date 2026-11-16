@@ -1,3 +1,4 @@
+import { DemonstrationControls } from "./DemonstrationControls";
 import { CommandOutputDialog } from "./CommandOutputDialog";
 import { useNotify, bulkNotification } from "../Notifications/notificationContext";
 import { useState, type ReactNode } from "react";
@@ -67,6 +68,10 @@ export function ClassroomVeyonActions({classroomId, classroomName, targetCount, 
             <section className="classroom-action-row" aria-label="Команды">
                 <span className="classroom-action-label">Команды:</span>
                 <div className="classroom-actions">{button("message", "success-button", true)}{button("website", "success-button", true)}{admin && button("command", "danger-button", true)}{admin && <button type="button" className="danger-button" disabled={busy || disabled} onClick={() => setOutputDialog(true)}>Команда с выводом всем</button>}</div>
+            </section>
+            <section className="classroom-action-row" aria-label="Демонстрация">
+                <span className="classroom-action-label">Демонстрация:</span>
+                <div className="classroom-actions"><DemonstrationControls scope="classrooms" targetId={classroomId} classroomId={classroomId} disabled={busy || disabled}/></div>
             </section>
         </>}
         {veyonConfigured && outputDialog && <CommandOutputDialog scope="classrooms" targetId={classroomId} title={classroomName} onClose={() => setOutputDialog(false)}/>}

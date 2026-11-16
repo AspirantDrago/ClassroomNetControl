@@ -3042,5 +3042,8 @@ from cmnc_api_gateway.veyon_routes import register_veyon_routes  # noqa: E402 - 
 
 from cmnc_api_gateway.command_routes import register_command_routes
 
+from cmnc_api_gateway.demo_routes import register_demo_routes
+
 register_command_routes(app)
+register_demo_routes(app)
 register_veyon_routes(app)

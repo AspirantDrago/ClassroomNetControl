@@ -698,6 +698,8 @@ export type AdminRouter = {
     id: number;
     name: string;
     veyon_callback_url?: string | null;
+    veyon_demo_host?: string | null;
+    veyon_demo_port?: number;
     api_host: string;
     api_port: number;
     api_use_ssl: boolean;
@@ -714,6 +716,8 @@ export type AdminRouter = {
 export type AdminRouterCreateRequest = {
     name: string;
     veyon_callback_url?: string | null;
+    veyon_demo_host?: string | null;
+    veyon_demo_port?: number;
     api_host: string;
     api_port: number;
     api_use_ssl: boolean;
@@ -1096,4 +1100,28 @@ export function getOutputCommand(jobId: string, signal?: AbortSignal): Promise<C
 
 export function deleteAdminAccount(kind: "users" | "workstations", id: number): Promise<{deleted: boolean}> {
     return request(`/api/admin/${kind}/${id}`, {method: "DELETE", body: JSON.stringify({confirmed: true})});
+}
+
+export type DemonstrationStatus = {
+    id: string; active: boolean; ready: boolean; skipped_count?: number; error?: string | null; direct_count?: number; relay_count?: number;
+    results: {device_id: number; accepted: boolean; timed_out?: boolean; error?: string}[];
+};
+export function getDemoSources(classroomId: number): Promise<{id: number; name: string}[]> {
+    return request(`/api/classrooms/${classroomId}/veyon/demo-sources`);
+}
+export function startDemonstration(scope: "devices" | "classrooms", id: number, fullscreen: boolean, sourceDeviceId?: number): Promise<DemonstrationStatus> {
+    return request(`/api/${scope}/${id}/veyon/demonstrations`, {method: "POST", body: JSON.stringify({
+        mode: fullscreen ? "demo-fullscreen" : "demo-window", source_device_id: sourceDeviceId ?? null, confirmed: true})});
+}
+export function getDemonstration(id: string): Promise<DemonstrationStatus> {
+    return request(`/api/veyon/demonstrations/${encodeURIComponent(id)}`);
+}
+export function touchDemonstration(id: string): Promise<unknown> {
+    return request(`/api/veyon/demonstrations/${encodeURIComponent(id)}/heartbeat`, {method: "POST"});
+}
+export function stopDemonstration(id: string): Promise<unknown> {
+    return request(`/api/veyon/demonstrations/${encodeURIComponent(id)}`, {method: "DELETE", keepalive: true});
+}
+export function sendDemonstrationFrame(id: string, frame: Blob): Promise<unknown> {
+    return request(`/api/veyon/demonstrations/${encodeURIComponent(id)}/frame`, {method: "POST", headers: {"Content-Type": "image/jpeg"}, body: frame});
 }

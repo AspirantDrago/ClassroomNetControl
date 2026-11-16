@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from cmnc_contracts.demo_endpoint import normalize_demo_host
 
 
 class HealthResponse(BaseModel):
@@ -35,6 +36,8 @@ class RouterRead(BaseModel):
     api_use_ssl: bool
     api_verify_tls: bool
     veyon_callback_url: str | None = None
+    veyon_demo_host: str | None = None
+    veyon_demo_port: int = 11400
     api_username: str
     is_enabled: bool
     poll_enabled: bool
@@ -57,6 +60,9 @@ class RouterCreate(BaseModel):
     api_username: str = Field(min_length=1, max_length=255)
     veyon_callback_url: str | None = Field(default=None, max_length=2048)
     _callback_url = field_validator("veyon_callback_url")(normalize_callback_url)
+    veyon_demo_host: str | None = Field(default=None, max_length=253)
+    _demo_host = field_validator("veyon_demo_host")(normalize_demo_host)
+    veyon_demo_port: int = Field(default=11400, ge=1, le=65535, strict=True)
     api_password: str = Field(min_length=1, max_length=4096)
     is_enabled: bool = True
     poll_enabled: bool = True
@@ -73,6 +79,10 @@ class RouterUpdate(BaseModel):
     api_username: str | None = Field(default=None, min_length=1, max_length=255)
     veyon_callback_url: str | None = Field(default=None, max_length=2048)
     _callback_url = field_validator("veyon_callback_url")(normalize_callback_url)
+    veyon_demo_host: str | None = Field(default=None, max_length=253)
+    _demo_host = field_validator("veyon_demo_host")(normalize_demo_host)
+    # Optional omission preserves the current port; explicit null is invalid.
+    veyon_demo_port: int = Field(default=11400, ge=1, le=65535, strict=True)
     api_password: str | None = Field(default=None, min_length=1, max_length=4096)
     is_enabled: bool | None = None
     poll_enabled: bool | None = None
