@@ -140,7 +140,10 @@ class Demonstrations:
             session.native_started = True
             async with asyncio.timeout(30):
                 await self.bridge.operate(session.source, 'demo-server', arguments={
-                    'demoAccessToken': session.source_token, 'demoServerPort': 11400})
+                    'demoAccessToken': session.source_token, 'demoServerPort': 11400,
+                    # The bridge connects to the default VNC service port. Do not
+                    # inherit the Linux proxy's session ID (-1) as a port offset.
+                    'vncServerPortOffset': 0})
             session.direct_targets = await probe_recipients(self.bridge, session, session.direct_probe_callback_url)
         except (HTTPException, TimeoutError, ValueError):
             session.direct_targets.clear()

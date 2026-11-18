@@ -4,8 +4,8 @@ import { useState } from "react";
 import { extractErrorDetail, runVeyonAction, type DashboardDevice, type VeyonDeviceAction } from "../../api";
 import { ActionDialog, actionTitles as titles, type ActionPayload as Payload } from "./ActionDialog";
 
-export function DeviceActions({admin, device, veyonConfigured, canControlWan, wanBusy, wakeBusy, powerBusy, onToggleWan, onWake, onPower}: {
-    admin: boolean; device: DashboardDevice; veyonConfigured: boolean; canControlWan: boolean; wanBusy: boolean; wakeBusy: boolean; powerBusy: boolean;
+export function DeviceActions({admin, canDemonstrate, device, veyonConfigured, canControlWan, wanBusy, wakeBusy, powerBusy, onToggleWan, onWake, onPower}: {
+    admin: boolean; canDemonstrate: boolean; device: DashboardDevice; veyonConfigured: boolean; canControlWan: boolean; wanBusy: boolean; wakeBusy: boolean; powerBusy: boolean;
     onToggleWan: (device: DashboardDevice) => void; onWake: (device: DashboardDevice) => void;
     onPower: (device: DashboardDevice, action: "power-down" | "reboot") => void;
 }) {
@@ -52,7 +52,7 @@ export function DeviceActions({admin, device, veyonConfigured, canControlWan, wa
             {admin && actionButton("command", "danger-button", true)}
             {admin && <button type="button" className="danger-button" onClick={() => setOutputDialog(true)}>Команда с выводом</button>}
         </div></section>
-        <section><h4>Демонстрация</h4><DemonstrationControls scope="devices" targetId={device.id} classroomId={device.classroom_id} disabled={busy || powerBusy}/></section>
+        {canDemonstrate && <section><h4>Демонстрация</h4><DemonstrationControls scope="devices" targetId={device.id} classroomId={device.classroom_id} disabled={busy || powerBusy}/></section>}
         </>}
         {veyonConfigured && outputDialog && <CommandOutputDialog scope="devices" targetId={device.id} title={device.inventory_name || device.hostname || device.mac_address} onClose={() => setOutputDialog(false)}/>}
         {veyonConfigured && dialog && <ActionDialog key={dialog} action={dialog} busy={busy} error={error} onClose={() => setDialog(null)} onSubmit={payload => void send(payload)}/>}

@@ -6,6 +6,7 @@ server-owned source IPv4 and reports a boolean using a per-recipient token.
 import asyncio
 import base64
 import ipaddress
+import logging
 import re
 import secrets
 from pathlib import Path
@@ -13,6 +14,8 @@ from pathlib import Path
 from fastapi import HTTPException
 from cmnc_contracts.veyon_actions import DeviceAction
 from cmnc_veyon_service.command_jobs import callback_base
+
+logger = logging.getLogger(__name__)
 
 
 def probe_script(source, source_token, callback, token):
@@ -51,6 +54,12 @@ async def probe_recipients(bridge, session, callback_url):
     except TimeoutError:
         pass
     ready = {device_id for device_id, ok in session.probe_results.items() if ok}
+    logger.info(
+        'Veyon demo probe session=%s source_device_id=%s reachable=%s unreachable=%s missing=%s',
+        session.id, session.source.device_id, sorted(ready),
+        sorted(device_id for device_id, ok in session.probe_results.items() if not ok),
+        sorted(t.device_id for t in session.targets if t.device_id not in session.probe_results),
+    )
     session.probe_tokens.clear()  # late callbacks cannot alter an established route
     return ready
 

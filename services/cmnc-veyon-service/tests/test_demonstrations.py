@@ -72,7 +72,8 @@ def test_source_is_not_a_recipient_and_needs_other_receivers():
 
 
 @pytest.mark.parametrize('source', [None, object()])
-def test_relay_veyon_token_handshake_and_tight_jpeg_frame(source):
+@pytest.mark.parametrize('advertised', [(7,), (16, 6, 0)])
+def test_relay_veyon_token_handshake_and_tight_jpeg_frame(source, advertised):
     async def run():
         # SOF contains the required dimensions; protocol round trip preserves bytes.
         jpeg = b'\xff\xd8\xff\xc0\x00\x08\x08' + struct.pack('!HH', 720, 1280) + b'\x03\xff\xd9'
@@ -97,7 +98,11 @@ def test_relay_veyon_token_handshake_and_tight_jpeg_frame(source):
         init = await reader.readexactly(24)
         assert struct.unpack('!HH', init[:4]) == (1280, 720)
         await reader.readexactly(int.from_bytes(init[-4:], 'big'))
-        writer.write(struct.pack('!BBHi', 2, 0, 1, 7))
+        # These normal native requests precede the first image request. Their
+        # payload is opaque to a read-only demo server, like upstream Veyon.
+        feature = b'veyon-version-request'
+        writer.write(b'\x29' + struct.pack('!I', len(feature)) + feature)
+        writer.write(struct.pack('!BBH', 2, 0, len(advertised)) + struct.pack('!' + 'i' * len(advertised), *advertised))
         writer.write(struct.pack('!BBHHHH', 3, 0, 0, 0, 1280, 720)); await writer.drain()
         update = await reader.readexactly(16)
         assert update[:4] == b'\x00\x00\x00\x01'
@@ -288,6 +293,8 @@ def test_auto_routes_verified_recipients_direct_and_others_via_relay(monkeypatch
             direct_probe_callback_url='https://cmnc.example.local')
         session = service.get(result['id']); await session.worker
         assert probe.await_count == 1
+        server_start = next(c for c in b.operate.await_args_list if c.args[1] == 'demo-server')
+        assert server_start.kwargs['arguments']['vncServerPortOffset'] == 0
         clients = {c.args[0].device_id: c.kwargs['arguments'] for c in b.operate.await_args_list if c.args[1] == 'demo-window'}
         for device_id in (2, 3):
             if device_id in direct_ids:
@@ -338,4 +345,22 @@ def test_cancel_during_probe_stops_native_server_and_invalidates_callbacks(monke
         assert session.worker.done() and not session.probe_tokens and not service.sessions and not b.demo_hosts
         assert b.demo_frame.await_count == 0
         assert any(c.args[1] == 'demo-server' and c.kwargs.get('active') is False for c in b.operate.await_args_list)
+    asyncio.run(run())
+
+
+def test_relay_rejects_oversized_feature_without_allocating_or_losing_other_clients():
+    async def run():
+        session = SimpleNamespace(id='test', token='a'*64, stopping=False, frame_size=(1920,1080),
+            frame=jpeg(),version=1,changed=asyncio.Condition())
+        relay=DemoRelay({'test':session});await relay.start(0)
+        port=relay.server.sockets[0].getsockname()[1]
+        first, first_writer=await relay_client(port,session.token,(1920,1080))
+        other, other_writer=await relay_client(port,session.token,(1920,1080))
+        try:
+            first_writer.write(b'\x29'+struct.pack('!I',8193));await first_writer.drain()
+            async with asyncio.timeout(2): assert await first.read() == b''
+            await read_frame(other,other_writer,jpeg(),1920,1080)
+        finally:
+            first_writer.close();other_writer.close()
+            await relay.close()
     asyncio.run(run())

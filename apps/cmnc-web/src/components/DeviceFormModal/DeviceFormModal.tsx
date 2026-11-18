@@ -145,7 +145,7 @@ export function DeviceFormModal(props: DeviceFormModalProps) {
 
                 {tab === "actions" && form.mode === "edit-device" && <div role="tabpanel" id="device-actions-panel" aria-labelledby="device-actions-tab">
                     {wakeMessage && <p role="status">{wakeMessage}</p>}
-                    <DeviceActions admin={props.canAdministerVeyon} veyonConfigured={props.veyonConfigured && !noVeyon} device={form.device} canControlWan={canControlWan} wanBusy={wanBusy} wakeBusy={wakeBusy} powerBusy={powerBusy}
+                    <DeviceActions admin={props.canAdministerVeyon} canDemonstrate={props.canAdministerVeyon && props.principalRole === "superadmin"} veyonConfigured={props.veyonConfigured && !noVeyon} device={form.device} canControlWan={canControlWan} wanBusy={wanBusy} wakeBusy={wakeBusy} powerBusy={powerBusy}
                         onToggleWan={onToggleWan} onWake={onWake} onPower={onPower}/>
                 </div>}
                 {tab === "info" && <div role="tabpanel" id="device-info-panel" aria-labelledby="device-info-tab">

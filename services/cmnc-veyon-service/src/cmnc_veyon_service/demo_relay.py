@@ -134,7 +134,6 @@ class DemoRelay:
                 pixel_format = struct.pack('!BBBBHHHBBB3x', 32, 24, 0, 1, 255, 255, 255, 16, 8, 0)
                 writer.write(struct.pack('!HH', width, height) + pixel_format + struct.pack('!I', len(name)) + name)
                 await writer.drain()
-            tight = False
             can_resize = False
             seen = 0
             while not session.stopping and self.sessions.get(session.id) is session:
@@ -148,12 +147,12 @@ class DemoRelay:
                         if count > 256:
                             return
                         encodings = struct.unpack('!' + 'i' * count, await reader.readexactly(count * 4))
-                        tight = 7 in encodings
                         can_resize = -223 in encodings
                     elif kind == 3:
                         request = await reader.readexactly(9)
-                        if not tight:
-                            return
+                        # Veyon's native DemoServer ignores the requested encoding list.
+                        # Its client initially advertises Highest/lossless encodings
+                        # before server-version detection, but still decodes Tight JPEG.
                         # Wait for a newer frame without queuing old frames for slow clients.
                         async with session.changed:
                             await session.changed.wait_for(lambda: session.stopping or getattr(session, "source_error", None) or
@@ -172,6 +171,11 @@ class DemoRelay:
                                      struct.pack('!HHHHi', 0, 0, width, height, 7) +
                                      b'\x90' + compact_length(len(data)) + data)
                         await writer.drain()
+                    elif kind == 41:
+                        # Native Veyon sends version/user/session/monitoring requests
+                        # as length-prefixed FeatureMessages. A demo server discards
+                        # them; it must not close an otherwise valid screen stream.
+                        await message(reader)
                     elif kind in (4, 5):  # ignore read-only input
                         await reader.readexactly(7 if kind == 4 else 5)
                     elif kind == 6:
